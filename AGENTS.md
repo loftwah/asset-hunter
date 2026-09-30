@@ -24,6 +24,7 @@ The product must preserve both halves:
 - Preserve immutable originals, hashes, provenance and exact licence evidence. Unknown/unlicensed/reference material is never presented as cleared for use.
 - Generated/derived examples must be distinguishable from upstream originals.
 - Do not weaken tests or acceptance criteria to make an issue pass.
+- Do not introduce paid GitHub Actions usage. Hosted Actions must remain disabled unless their $0 cost is explicitly demonstrated and justified; prefer local/repository qualification and Cloudflare-native deployment tooling.
 - Preserve unrelated user work and secrets.
 
 ## EmDash / public application invariant
@@ -38,6 +39,17 @@ For work touching the public catalogue, CMS schema/content, admin, media, auth, 
 - use the authorised Cloudflare Workers + D1 + R2 path for the public app unless a later owner-approved issue changes it.
 
 A dependency being installed is not proof that the product uses it. Verify the real public read/edit path.
+
+## Design / product-quality invariant
+
+For work touching public UI, branding, visual composition, responsive behaviour, interaction states or marketing media:
+
+- treat `DESIGN.md` and the repository's UNSLOP guidance from #44 as authoritative once present;
+- load the relevant visual/design-review capability (including Impeccable where available);
+- use the deterministic visual lab from #45 and headless visual evidence from #47 rather than relying on agent taste alone;
+- verify mobile/touch/keyboard/accessibility expectations from #46;
+- prefer real product captures and canonical examples over fake/mock marketing UI;
+- do not introduce generic SaaS card soup, arbitrary gradients, excessive pills/rounded containers or decorative motion without a concrete product reason.
 
 ## Execution expectations
 
