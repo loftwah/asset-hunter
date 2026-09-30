@@ -79,7 +79,17 @@ They may influence ranking and representative selection, but none silently rewri
 
 Admin visibility/curation and user corrections must remain auditable.
 
-## 7. Skills and tool routing
+## 7. Design and visual evidence
+
+For UI/branding/product-media work, repository design authority and rendered evidence are required.
+
+Use the real UI and deterministic fixture states. Test representative mobile/tablet/desktop viewports, keyboard/touch behaviour, complete loading/empty/error states and enlarged-text resilience. A prettier screenshot is not proof of a better product; inspect hierarchy, geometry, hit targets, media focus and actual interaction.
+
+Prefer real product visuals for OG/share/marketing generation. Avoid fake dashboards and generic AI/SaaS composition when the running product can be captured.
+
+Follow the repository's DESIGN.md/UNSLOP authority once established. Use Impeccable or the current adopted visual-review skill where applicable, but do not let a design skill replace issue acceptance or independent visual review.
+
+## 8. Skills and tool routing
 
 Use relevant repository-local skills/guidance automatically.
 
@@ -87,7 +97,7 @@ For EmDash-related work, load the official guidance required by #39 before imple
 
 A missing preferred model/optional tool is a degraded capability, not a global blocker when another safe route exists.
 
-## 8. Headless operation and ownership-safe cleanup
+## 9. Headless operation and ownership-safe cleanup
 
 Do not seize the owner's foreground desktop. Avoid headed browser launches, Finder/Trash automation, clipboard transport, GUI focus changes or unsolicited report windows.
 
@@ -100,9 +110,11 @@ At task completion clean only exact task-owned disposable resources:
 
 Preserve unrelated work, caches, evidence, source originals, licence records and outputs that belong to the deliverable.
 
-## 9. Integration and shipping
+## 10. Integration and shipping
 
 Use branches/PRs and the repository's authorised merge process. Do not bypass branch protections or push directly to main as a shortcut.
+
+Do not introduce paid GitHub Actions usage. Hosted Actions remain off unless $0 cost is explicitly demonstrated and justified. Prefer local qualification and the project's authorised Cloudflare deployment path.
 
 Merge continuously once work has independent review and required checks. Do not leave routine mergeable work waiting for owner approval unless the owner explicitly requested that hold.
 
@@ -113,7 +125,7 @@ Merge continuously once work has independent review and required checks. Do not 
 
 Merged-but-undelivered runtime work remains incomplete when deployment is part of the issue.
 
-## 10. Stop conditions and resumability
+## 11. Stop conditions and resumability
 
 Stop only for:
 - owner instruction;
