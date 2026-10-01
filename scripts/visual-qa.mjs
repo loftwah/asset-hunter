@@ -93,7 +93,22 @@ function pageAuditScript() {
 		issues.push(`horizontal overflow: ${document.documentElement.scrollWidth}px > ${docWidth}px (${wide.join(", ")})`);
 	}
 
-	// 2. Tap targets. 44px is the accepted minimum; the whole tile is the
+	// 2. The shell gutter. `.shell` is what keeps content off the viewport edge,
+	//    and a `padding` shorthand in a component silently replaces its inline
+	//    padding. The result looks like a deliberate full-bleed row until you
+	//    notice a heading touching the screen edge, so it is measured here.
+	for (const el of document.querySelectorAll(".shell")) {
+		const cs = getComputedStyle(el);
+		const left = Number.parseFloat(cs.paddingLeft);
+		const right = Number.parseFloat(cs.paddingRight);
+		if (left < 12 || right < 12) {
+			issues.push(
+				`shell gutter lost: ${(el.className || "").toString().split(" ")[0]} has ${left}px/${right}px inline padding`,
+			);
+		}
+	}
+
+	// 3. Tap targets. 44px is the accepted minimum; the whole tile is the
 	//    target here, so this only fires when a link is genuinely too small.
 	for (const el of document.querySelectorAll("a, button, input, [role='tab']")) {
 		const r = el.getBoundingClientRect();
@@ -107,7 +122,7 @@ function pageAuditScript() {
 		}
 	}
 
-	// 3. Body text contrast against the actual painted background.
+	// 4. Body text contrast against the actual painted background.
 	//    These helpers live inside the page script: `page.evaluate` serialises
 	//    the function body, so it cannot close over module scope.
 	const lum = (rgb) => {
@@ -161,7 +176,7 @@ function pageAuditScript() {
 		}
 	}
 
-	// 4. Images that did not resolve. A broken specimen is a broken tile.
+	// 5. Images that did not resolve. A broken specimen is a broken tile.
 	const broken = [...document.images].filter(
 		(img) => img.complete && img.naturalWidth === 0 && img.getAttribute("src"),
 	);
@@ -169,17 +184,17 @@ function pageAuditScript() {
 		issues.push(`${broken.length} broken image(s): ${broken.map((i) => i.getAttribute("src")).slice(0, 3).join(", ")}`);
 	}
 
-	// 5. Alt text on content images.
+	// 6. Alt text on content images.
 	const noAlt = [...document.images].filter((img) => !img.hasAttribute("alt"));
 	if (noAlt.length) issues.push(`${noAlt.length} image(s) missing alt attribute`);
 
-	// 6. Exactly one h1, and a document language.
+	// 7. Exactly one h1, and a document language.
 	if (document.querySelectorAll("h1").length !== 1) {
 		issues.push(`${document.querySelectorAll("h1").length} h1 elements (expected 1)`);
 	}
 	if (!document.documentElement.getAttribute("lang")) issues.push("no lang on <html>");
 
-	// 7. Headings in order — a skipped level breaks screen-reader navigation.
+	// 8. Headings in order — a skipped level breaks screen-reader navigation.
 	const levels = [...document.querySelectorAll("h1,h2,h3,h4")].map((h) =>
 		Number(h.tagName[1]),
 	);

@@ -218,6 +218,15 @@ Rules:
 - **Search matches the problem, not the vocabulary.** The placeholder says
   "technique, treatment, problem, tool" and the empty state suggests searching for
   the problem rather than the solution.
+- **Search results are rows, not tiles.** A search for a known term is a
+  comparison task, so each hit is a 4:5 thumbnail, a title, its tagline, its
+  vertical/media/rights markers, and a line of the entry's own summary with the
+  query terms marked. The wall is the visual surface; results are a list, and
+  they must not repeat the title, the rights or the metadata the row already
+  shows. EmDash's `search()` returns the matched *title* as its snippet, which
+  is why the reason line is built from the entry's summary instead.
+- **A collection hit shows its member count as the mark**, not a decorative
+  icon, because the count is the thing a visitor is comparing.
 
 ## 9.2 Accessibility expectations
 

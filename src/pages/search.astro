@@ -10,8 +10,14 @@
 import { search } from "emdash";
 import Base from "../layouts/Base.astro";
 import PossibilityTile from "../components/PossibilityTile.astro";
-import { loadPossibilities, type Possibility } from "../lib/catalogue";
-import { RIGHTS_LABEL, VERTICAL_LABEL } from "../lib/vocabulary";
+import ProvenanceMarkers from "../components/ProvenanceMarkers.astro";
+import {
+	loadCollections,
+	loadPossibilities,
+	mediaSrc,
+	type Possibility,
+} from "../lib/catalogue";
+import { MEDIA_LABEL, verticalLabel } from "../lib/vocabulary";
 
 const query = (Astro.url.searchParams.get("q") ?? "").trim();
 const all = query.length > 0 ? await search(query, { limit: 60 }) : { items: [] };
@@ -21,18 +27,80 @@ const bySlug = new Map(possibilities.map((p) => [p.slug, p]));
 
 // Only possibilities and collections are surfaced as results; examples and
 // pages are reachable through their parent rather than as separate hits.
-const hits = all.items
-	.filter((item) => item.collection === "possibilities" || item.collection === "collections")
-	.map((item) => ({
-		item,
-		possibility: item.collection === "possibilities" ? bySlug.get(item.slug ?? "") : undefined,
-	}))
-	.filter((h) => h.item.collection === "collections" || h.possibility);
+const rawHits = all.items.filter(
+	(item) => item.collection === "possibilities" || item.collection === "collections",
+);
+
+/**
+ * EmDash's `snippet` is the matched title, which repeats what the row already
+ * shows. What a search result needs to answer is *why* this matched, so the
+ * line under the title is the entry's own summary with the query terms marked.
+ * The text is escaped before any markup is added.
+ */
+const escapeHtml = (value: string) =>
+	value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** Query words worth matching: two letters match everything, so they are dropped. */
+const queryTerms = query
+	.toLowerCase()
+	.split(/[^\p{L}\p{N}]+/u)
+	.filter((t) => t.length > 2);
+
+const markTerms = (value: string) => {
+	if (!queryTerms.length) return escapeHtml(value);
+	const escaped = escapeHtml(value);
+	// Case-insensitive, bounded alternation, longest-first so "seams" is not
+	// split into "seam" + a stray "s" when both are in the query.
+	const pattern = [...new Set(queryTerms)]
+		.sort((a, b) => b.length - a.length)
+		.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+		.join("|");
+	const re = new RegExp(`(${pattern})`, "gi");
+	// Split/restore rather than a replacer, so the query text itself can never
+	// inject markup: only whole matched groups are wrapped.
+	return escaped
+		.split(re)
+		.map((part, i) => (i % 2 === 1 ? `<mark>${part}</mark>` : part))
+		.join("");
+};
+
+/** A window of the summary around the first match, so the reason stays visible. */
+const reasonFor = (text: string | null | undefined) => {
+	if (!text) return null;
+	const lower = text.toLowerCase();
+	let at = -1;
+	for (const term of queryTerms) {
+		at = lower.indexOf(term);
+		if (at !== -1) break;
+	}
+	const WINDOW = 190;
+	if (at === -1) {
+		const cut = text.length > WINDOW ? `${text.slice(0, WINDOW).trimEnd()}…` : text;
+		return markTerms(cut);
+	}
+	const start = Math.max(0, at - Math.floor(WINDOW / 3));
+	const end = Math.min(text.length, start + WINDOW);
+	return `${start > 0 ? "…" : ""}${markTerms(text.slice(start, end).trim())}${end < text.length ? "…" : ""}`;
+};
+
+const hits = rawHits.map((item) => ({
+	item,
+	possibility: item.collection === "possibilities" ? bySlug.get(item.slug ?? "") : undefined,
+}));
+
+// Collections are only loaded when a collection actually matched: each one
+// costs a reference-resolution request, and most searches hit none.
+const collectionHits = hits.filter((h) => !h.possibility).length;
+const collectionBySlug = collectionHits
+	? new Map((await loadCollections()).collections.map((c) => [c.slug, c]))
+	: new Map<
+			string,
+			{ title: string; tagline?: string | null; summary?: string | null; members: unknown[] }
+		>();
 
 const pages = all.items.filter((i) => i.collection === "pages");
 // Counted separately so the summary line cannot overstate what is listed.
 const possibilityHits = hits.filter((h) => h.possibility).length;
-const collectionHits = hits.length - possibilityHits;
 const verticalsInResults = new Map<string, number>();
 for (const h of hits) {
 	const v = h.possibility?.vertical;
@@ -143,7 +211,7 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 								{verticalFacets.map(([slug, n]) => (
 									<li>
 										<a href={`/?vertical=${slug}`} class="chip">
-											<span>{VERTICAL_LABEL[slug] ?? slug}</span>
+											<span>{verticalLabel(slug)}</span>
 											<span class="chip__n">{n}</span>
 										</a>
 									</li>
@@ -153,35 +221,89 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 					)}
 
 					<h2 class="visually-hidden">Matching possibilities</h2>
-					<div class="grid">
-						{hits.map(({ item, possibility }) =>
-							possibility ? (
-								<div class="hit">
-									<PossibilityTile possibility={possibility} />
-									{item.snippet && (
-										<p
-											class="hit__snippet"
-											// EmDash sanitises this server-side: source text is escaped
-											// and only literal <mark> tags are permitted.
-											set:html={item.snippet}
-										/>
-									)}
-									<p class="hit__rights">
-										{RIGHTS_LABEL[
-											(possibility.rightsStatus ?? "reference") as keyof typeof RIGHTS_LABEL
-										]}
-									</p>
-								</div>
-							) : (
-								<article class="hit hit--collection">
-									<h3>
-										<a href={`/collections/${item.slug}`}>{item.title}</a>
-									</h3>
-									{item.snippet && <p class="hit__snippet" set:html={item.snippet} />}
-								</article>
-							),
-						)}
-					</div>
+					{/*
+						Results are rows, not tiles. The wall is the visual surface;
+						a search for a known term is a comparison task, and four
+						plates at 300px each with the title repeated underneath is
+						neither scannable nor honest about how many things matched.
+					*/}
+					<ol class="found">
+						{
+							hits.map(({ item, possibility }) => {
+								const collection = possibility
+									? undefined
+									: collectionBySlug.get(item.slug ?? "");
+								return (
+									<li class="found__row">
+										<a
+											class="found__link"
+											href={
+												possibility
+													? `/possibilities/${possibility.slug}`
+													: `/collections/${item.slug}`
+											}
+										>
+											<span class="found__thumb">
+												{possibility ? (
+													<img
+														src={mediaSrc(possibility)}
+														alt=""
+														width="800"
+														height="1000"
+														loading="lazy"
+														decoding="async"
+													/>
+												) : (
+													<span class="found__glyph" aria-hidden="true">
+														{collection?.members.length ?? 0}
+														<span class="visually-hidden">
+															possibilities in this collection
+														</span>
+													</span>
+												)}
+											</span>
+											<span class="found__body">
+												<span class="found__title">
+													{possibility?.title ?? collection?.title ?? item.title}
+												</span>
+												<span class="found__sub">
+													{
+														(possibility?.tagline ?? collection?.tagline ?? null) || undefined
+													}
+												</span>
+												<span class="found__meta">
+													{possibility?.vertical && (
+														<span class="tag">{verticalLabel(possibility.vertical)}</span>
+													)}
+													{possibility?.mediaKind && (
+														<span class="tag">
+															{MEDIA_LABEL[possibility.mediaKind] ?? possibility.mediaKind}
+														</span>
+													)}
+													<ProvenanceMarkers
+														rights={possibility?.rightsStatus}
+														origin={possibility?.representativeOrigin}
+														size="sm"
+													/>
+												</span>
+											</span>
+										</a>
+										{reasonFor(possibility?.summary ?? collection?.summary) && (
+											<p
+												class="found__snippet"
+												// Built here from escaped text: `markTerms` escapes the
+												// source and only wraps whole matched groups, so no
+												// query text can reach the page as markup.
+												set:html={reasonFor(
+													possibility?.summary ?? collection?.summary,
+												)}
+											/>
+										)}
+									</li>
+								);
+							})
+						}
+					</ol>
 				</>
 			)
 		}
@@ -195,7 +317,7 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 							<li>
 								<a href={`/pages/${p.slug}`}>
 									<span class="pages-found__title">{p.title}</span>
-									{p.snippet && <span class="hit__snippet" set:html={p.snippet} />}
+									{p.snippet && <span class="pages-found__snippet" set:html={p.snippet} />}
 								</a>
 							</li>
 						))}
@@ -296,67 +418,118 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 		padding-bottom: var(--sp-7);
 	}
 
-	.grid {
+	/* --- Result rows --- */
+
+	.found {
+		list-style: none;
+		padding: 0;
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
-		gap: var(--sp-5) var(--sp-4);
+		/* One row per hit, ranked. A grid of plates would make four results look
+		   like the whole answer, which is the card-soup pattern. */
+		gap: 0;
+		border-top: 1px solid var(--line);
 	}
 
-	.hit {
+	.found__row {
+		border-bottom: 1px solid var(--line);
+	}
+
+	.found__link {
 		display: grid;
-		gap: var(--sp-2);
-		align-content: start;
+		grid-template-columns: 4.5rem minmax(0, 1fr);
+		gap: var(--sp-4);
+		align-items: center;
+		padding-block: var(--sp-3);
+		transition: background var(--dur-fast) var(--ease-out);
 	}
 
-	.hit__snippet {
-		font-size: var(--step--2);
-		line-height: 1.5;
-		color: var(--ink-3);
+	.found__link:hover {
+		background: var(--surface);
 	}
 
-	/* EmDash emits <mark> around matched terms; make the highlight legible on
-	   this dark ground rather than leaving browser defaults. */
-	.hit__snippet :global(mark) {
-		background: var(--ember-wash);
-		color: var(--ink);
-		border-radius: 2px;
-		padding: 0 0.15em;
-	}
-
-	.hit__rights {
-		font-family: var(--font-mono);
-		font-size: var(--step--2);
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-		color: var(--ink-4);
-	}
-
-	.hit--collection {
-		padding: var(--sp-4);
+	.found__thumb {
+		display: grid;
+		place-items: center;
+		aspect-ratio: 4 / 5;
+		overflow: hidden;
 		background: var(--surface);
 		border: 1px solid var(--line);
 		border-radius: var(--radius);
 	}
 
-	.hit--collection h3 {
+	.found__thumb img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	/* Collections have no single plate, so the count is the mark — a number the
+	   visitor can compare, not a decorative icon. */
+	.found__glyph {
 		font-family: var(--font-display);
 		font-weight: 600;
 		font-size: var(--step-1);
+		color: var(--ink-3);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.found__body {
+		display: grid;
+		gap: 0.15rem;
+		min-width: 0;
+	}
+
+	.found__title {
+		font-family: var(--font-display);
+		font-weight: 600;
+		font-size: var(--step-0);
+		letter-spacing: -0.015em;
 		color: var(--ink);
 	}
 
-	/* The whole card is the target, so the title link cannot be the only
-	   thing a touch user has to hit accurately. */
-	.hit--collection a {
-		display: flex;
-		align-items: center;
-		min-height: 2.75rem;
-		margin: calc(var(--sp-2) * -1) 0;
-		padding-block: var(--sp-2);
+	.found__link:hover .found__title {
+		color: var(--ember);
 	}
 
-	.hit--collection a:hover {
-		color: var(--ember);
+	.found__sub {
+		font-size: var(--step--1);
+		color: var(--ink-3);
+	}
+
+	.found__meta {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.3rem 0.85rem;
+		margin-top: 0.2rem;
+	}
+
+	.found__snippet {
+		padding: 0 0 var(--sp-3) calc(4.5rem + var(--sp-4));
+		font-size: var(--step--1);
+		line-height: 1.5;
+		color: var(--ink-3);
+		max-width: 78ch;
+	}
+
+	@media (width <= 560px) {
+		.found__link {
+			grid-template-columns: 3.25rem minmax(0, 1fr);
+			gap: var(--sp-3);
+		}
+
+		.found__snippet {
+			padding-left: calc(3.25rem + var(--sp-3));
+		}
+	}
+
+	/* EmDash emits <mark> around matched terms; make the highlight legible on
+	   this dark ground rather than leaving browser defaults. */
+	.found__snippet :global(mark) {
+		background: var(--ember-wash);
+		color: var(--ink);
+		border-radius: 2px;
+		padding: 0 0.15em;
 	}
 
 	.facets ul {
@@ -458,5 +631,18 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 
 	.pages-found a:hover .pages-found__title {
 		color: var(--ember);
+	}
+
+	.pages-found__snippet {
+		font-size: var(--step--1);
+		line-height: 1.5;
+		color: var(--ink-3);
+	}
+
+	.pages-found__snippet :global(mark) {
+		background: var(--ember-wash);
+		color: var(--ink);
+		border-radius: 2px;
+		padding: 0 0.15em;
 	}
 </style>

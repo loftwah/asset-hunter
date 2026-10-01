@@ -138,13 +138,29 @@ describe("search", () => {
 	live("finds a known term", async () => {
 		const html = await (await fetch(`${baseUrl}/search?q=seam`)).text();
 		assert.match(html, /possibilit(y|ies)/);
-		assert.ok((html.match(/class="tile__link"/g) ?? []).length > 0, "no results for a known term");
+		assert.ok((html.match(/class="found__link"/g) ?? []).length > 0, "no results for a known term");
+	});
+
+	live("shows why each result matched instead of repeating its title", async () => {
+		const html = await (await fetch(`${baseUrl}/search?q=seam`)).text();
+		// The reason line is the entry's summary with the query term marked.
+		assert.match(html, /class="found__snippet"[^>]*>[^<]*<mark>seam<\/mark>/i);
+		// A title must not appear twice in its own row: that is the
+		// "duplicate every card's metadata" pattern DESIGN.md §9.1 rejects.
+		const rows = html.match(/<li class="found__row"[\s\S]*?<\/li>/g) ?? [];
+		assert.ok(rows.length > 0, "no result rows to check");
+		for (const row of rows) {
+			const title = text(row.match(/class="found__title"[^>]*>([\s\S]*?)</)?.[1] ?? "");
+			assert.ok(title.length > 0, "a result row has no title");
+			const occurrences = (text(row).match(new RegExp(title, "gi")) ?? []).length;
+			assert.equal(occurrences, 1, `"${title}" appears ${occurrences} times in its own row`);
+		}
 	});
 
 	live("reports no match honestly for a nonsense query", async () => {
 		const html = await (await fetch(`${baseUrl}/search?q=zzzqqxnothing`)).text();
 		assert.match(html, /No match for/);
-		assert.ok((html.match(/class="tile__link"/g) ?? []).length === 0);
+		assert.ok((html.match(/class="found__link"/g) ?? []).length === 0);
 	});
 
 	live("the result count matches what is listed", async () => {
@@ -168,10 +184,13 @@ describe("search", () => {
 			`could not read a possibility count from: ${statedText}`,
 		);
 
-		// Collection hits carry an extra class, so count the specific variant
-		// separately rather than double-counting the shared `hit` token.
-		const listedPossibilities = (html.match(/<div class="hit"/g) ?? []).length;
-		const listedCollections = (html.match(/<article class="hit hit--collection"/g) ?? []).length;
+		// Possibility rows and collection rows differ only in their link target
+		// and their mark, so they are counted by which of those each carries.
+		const rows = html.match(/<li class="found__row"[\s\S]*?<\/li>/g) ?? [];
+		const listedPossibilities = rows.filter((r) =>
+			r.includes('href="/possibilities/'),
+		).length;
+		const listedCollections = rows.filter((r) => r.includes('href="/collections/')).length;
 
 		assert.equal(
 			statedPossibilities,

@@ -184,7 +184,9 @@ const unmapped =
 
 	.rows {
 		list-style: none;
-		padding: var(--sp-6) 0 0;
+		/* Block-only. A `padding` shorthand here would replace the shell's
+		   inline gutter and push every row flush to the viewport edge. */
+		padding-top: var(--sp-6);
 		display: grid;
 		gap: var(--sp-7);
 	}
