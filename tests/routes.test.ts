@@ -265,6 +265,97 @@ describe("shortlist board", () => {
 	});
 });
 
+describe("signals: ratings and reports", () => {
+	live("the three signals are named separately, never blended", async () => {
+		const html = await (await fetch(`${baseUrl}/possibilities/density-gradient`)).text();
+		for (const label of ["Community", "Editorial", "Machine"]) {
+			assert.ok(html.includes(`>${label}</span>`), `missing signal: ${label}`);
+		}
+		// An unmeasured machine signal says so rather than showing a zero.
+		assert.match(html, /Not measured/);
+		// And each one states what kind of claim it is.
+		assert.match(html, /not a quality score/i);
+	});
+
+	live("an anonymous reader is told why they cannot rate, before they try", async () => {
+		const html = await (await fetch(`${baseUrl}/possibilities/density-gradient`)).text();
+		assert.match(html, /disabled/, "the rating control is disabled without a session");
+		assert.match(html, /cannot revise or withdraw/);
+		assert.match(html, /Filing needs a sign-in/);
+		// The report form is still a form: a disabled <form> cannot be submitted
+		// at all, which turns the explanation into a button that does nothing.
+		assert.match(html, /<form class="report__form"[^>]*action="\/api\/signal"/);
+	});
+
+	live("an unattempted rating is never shown as zero stars", async () => {
+		// Works whether or not this database has ratings yet, because the
+		// invariant is about the empty case specifically: no ratings must read as
+		// "none", never as "0.0 from 0".
+		const html = await (await fetch(`${baseUrl}/possibilities/density-gradient`)).text();
+		assert.equal(/0\.0 from 0/.test(html), false, "an empty aggregate must read as null, not 0");
+		assert.equal(/>0\.0</.test(html), false, "a zero average must never be rendered");
+		const summary = html.match(/signal__value[^>]*>([^<]*rating[^<]*)</)?.[1] ?? "";
+		if (/No ratings/.test(summary)) {
+			assert.match(html, /No ratings yet/);
+		} else {
+			const count = Number.parseInt(summary.match(/from (\d+)/)?.[1] ?? "0", 10);
+			assert.ok(count >= 1, `a rendered average must have at least one rating: ${summary}`);
+		}
+	});
+
+	live("an out-of-range rating is refused rather than stored", async () => {
+		const res = await fetch(`${baseUrl}/api/signal`, {
+			method: "POST",
+			redirect: "manual",
+			headers: { "content-type": "application/x-www-form-urlencoded" },
+			body: new URLSearchParams({
+				intent: "rate",
+				subject_type: "possibility",
+				subject_slug: "density-gradient",
+				stars: "0",
+			}),
+		});
+		assert.equal(res.status, 303);
+		assert.match(res.headers.get("location") ?? "", /note=/);
+	});
+
+	live("a rating needs a session, and says so in words", async () => {
+		const res = await fetch(`${baseUrl}/api/signal`, {
+			method: "POST",
+			redirect: "manual",
+			headers: { "content-type": "application/x-www-form-urlencoded" },
+			body: new URLSearchParams({
+				intent: "rate",
+				subject_type: "possibility",
+				subject_slug: "density-gradient",
+				stars: "5",
+			}),
+		});
+		assert.equal(res.status, 303);
+		// The note comes back URL-encoded and with "+" for spaces.
+		const note = decodeURIComponent(res.headers.get("location") ?? "").replace(/\+/g, " ");
+		assert.match(note, /Sign in to rate/);
+	});
+
+	live("the report endpoint refuses an open redirect like the board does", async () => {
+		const res = await fetch(`${baseUrl}/api/signal`, {
+			method: "POST",
+			redirect: "manual",
+			headers: { "content-type": "application/x-www-form-urlencoded" },
+			body: new URLSearchParams({ intent: "report", back: "https://example.com/evil" }),
+		});
+		assert.equal(res.status, 303);
+		assert.ok(!(res.headers.get("location") ?? "").startsWith("https://"));
+	});
+
+	live("every report reason is offered, and a licence one is present", async () => {
+		const html = await (await fetch(`${baseUrl}/possibilities/density-gradient`)).text();
+		assert.match(html, /Licence or provenance looks wrong or has changed/);
+		assert.match(html, /Dead or moved source/);
+		assert.match(html, /read before anything else/i);
+	});
+});
+
 describe("collections", () => {
 	live("lists every seeded collection", async () => {
 		const html = await (await fetch(`${baseUrl}/collections`)).text();

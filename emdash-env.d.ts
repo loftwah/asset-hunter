@@ -109,6 +109,45 @@ export interface Possibility {
   terms?: Record<string, TaxonomyTerm[]>;
 }
 
+export interface Rating {
+  id: string;
+  slug: string | null;
+  status: string;
+  subject_type?: string;
+  subject_slug?: string;
+  stars?: number;
+  user_id?: string;
+  user_email?: string;
+  signal?: string;
+  title?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  publishedAt: Date | null;
+  byline?: BylineSummary | null;
+  bylines?: ContentBylineCredit[];
+  terms?: Record<string, TaxonomyTerm[]>;
+}
+
+export interface Report {
+  id: string;
+  slug: string | null;
+  status: string;
+  subject_type?: string;
+  subject_slug?: string;
+  reason?: string;
+  detail?: string;
+  user_id?: string;
+  user_email?: string;
+  resolution?: string;
+  title?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  publishedAt: Date | null;
+  byline?: BylineSummary | null;
+  bylines?: ContentBylineCredit[];
+  terms?: Record<string, TaxonomyTerm[]>;
+}
+
 export interface CollectionReferences {
   members: ReferencePage<Possibility>;
 }
@@ -123,6 +162,8 @@ declare module "emdash" {
     examples: Example;
     pages: Page;
     possibilities: Possibility;
+    ratings: Rating;
+    reports: Report;
   }
   interface EmDashCollectionReferences {
     collections: CollectionReferences;

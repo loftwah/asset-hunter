@@ -367,6 +367,117 @@
 			]
 		},
 		{
+			"slug": "ratings",
+			"label": "Ratings",
+			"labelSingular": "Rating",
+			"supports": [
+				"drafts",
+				"search"
+			],
+			"commentsEnabled": false,
+			"fields": [
+				{
+					"slug": "title",
+					"label": "Title",
+					"type": "string",
+					"required": true
+				},
+				{
+					"slug": "subject_type",
+					"label": "Subject type",
+					"type": "select",
+					"required": true
+				},
+				{
+					"slug": "subject_slug",
+					"label": "Subject",
+					"type": "string",
+					"required": true,
+					"searchable": true
+				},
+				{
+					"slug": "stars",
+					"label": "Stars",
+					"type": "integer",
+					"required": true
+				},
+				{
+					"slug": "user_id",
+					"label": "User",
+					"type": "string",
+					"required": true
+				},
+				{
+					"slug": "user_email",
+					"label": "User email",
+					"type": "string"
+				},
+				{
+					"slug": "signal",
+					"label": "Signal",
+					"type": "select",
+					"required": true
+				}
+			]
+		},
+		{
+			"slug": "reports",
+			"label": "Reports",
+			"labelSingular": "Report",
+			"supports": [
+				"drafts",
+				"search"
+			],
+			"commentsEnabled": false,
+			"fields": [
+				{
+					"slug": "title",
+					"label": "Title",
+					"type": "string",
+					"required": true
+				},
+				{
+					"slug": "subject_type",
+					"label": "Subject type",
+					"type": "select",
+					"required": true
+				},
+				{
+					"slug": "subject_slug",
+					"label": "Subject",
+					"type": "string",
+					"required": true,
+					"searchable": true
+				},
+				{
+					"slug": "reason",
+					"label": "Reason",
+					"type": "select",
+					"required": true
+				},
+				{
+					"slug": "detail",
+					"label": "Detail",
+					"type": "text"
+				},
+				{
+					"slug": "user_id",
+					"label": "User",
+					"type": "string"
+				},
+				{
+					"slug": "user_email",
+					"label": "User email",
+					"type": "string"
+				},
+				{
+					"slug": "resolution",
+					"label": "Resolution",
+					"type": "text"
+				}
+			]
+		},
+		{
 			"slug": "pages",
 			"label": "Pages",
 			"labelSingular": "Page",
@@ -1914,6 +2025,8 @@
 					]
 				}
 			}
-		]
+		],
+		"ratings": [],
+		"reports": []
 	}
 }

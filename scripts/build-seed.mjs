@@ -261,6 +261,46 @@ const seed = {
 			],
 		},
 		{
+			// Community ratings (#37). An entry per rating rather than a counter on
+			// the subject, so one person has one active rating and can change it,
+			// and so the raw values stay inspectable instead of collapsing into a
+			// single opaque score.
+			slug: "ratings",
+			label: "Ratings",
+			labelSingular: "Rating",
+			supports: ["drafts", "search"],
+			commentsEnabled: false,
+			fields: [
+				{ slug: "title", label: "Title", type: "string", required: true },
+				{ slug: "subject_type", label: "Subject type", type: "select", required: true },
+				{ slug: "subject_slug", label: "Subject", type: "string", required: true, searchable: true },
+				{ slug: "stars", label: "Stars", type: "integer", required: true },
+				{ slug: "user_id", label: "User", type: "string", required: true },
+				{ slug: "user_email", label: "User email", type: "string" },
+				{ slug: "signal", label: "Signal", type: "select", required: true },
+			],
+		},
+		{
+			// Reports are not ratings. A bug report dressed up as one star is
+			// indistinguishable from a bad opinion once it is averaged, so they get
+			// their own queue with their own reasons.
+			slug: "reports",
+			label: "Reports",
+			labelSingular: "Report",
+			supports: ["drafts", "search"],
+			commentsEnabled: false,
+			fields: [
+				{ slug: "title", label: "Title", type: "string", required: true },
+				{ slug: "subject_type", label: "Subject type", type: "select", required: true },
+				{ slug: "subject_slug", label: "Subject", type: "string", required: true, searchable: true },
+				{ slug: "reason", label: "Reason", type: "select", required: true },
+				{ slug: "detail", label: "Detail", type: "text" },
+				{ slug: "user_id", label: "User", type: "string" },
+				{ slug: "user_email", label: "User email", type: "string" },
+				{ slug: "resolution", label: "Resolution", type: "text" },
+			],
+		},
+		{
 			slug: "pages",
 			label: "Pages",
 			labelSingular: "Page",
@@ -304,6 +344,9 @@ const seed = {
 		examples,
 		collections,
 		pages,
+		// Ratings and reports are created by readers through the app, not seeded.
+		ratings: [],
+		reports: [],
 	},
 };
 

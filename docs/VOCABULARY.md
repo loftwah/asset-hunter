@@ -29,6 +29,7 @@ once and this file exists so it cannot happen twice.
 | Machine observation | **verified sources** (count), **novelty**, **coverage** | stats, metrics, score, quality                     | Each names what was measured. A generic "score" invites reading it as quality. |
 | A person's judgement | **editorial rank**, **featured** | rating, score, popularity                      | Deliberately named differently from community rating so the two never blur. |
 | A reader's judgement | **community rating** | score, stars, quality                              | Named for what it is: one reader's opinion. |
+| A concrete problem with an entry | **report** | bug, complaint, downvote, one-star flag          | A report is a correction, not a bad review, so it has its own queue and its own reasons. |
 
 ## The distinction the whole product rests on
 
@@ -113,6 +114,24 @@ missing and what to do next.
 | Dead upstream source   | "The upstream source is no longer reachable. The evidence recorded here is what was read at the time." — never a silent blank plate. |
 | No plate yet           | The hatched `NO PLATE` placeholder, which says on its face that nothing has been generated.      |
 | 404                    | A search field and the verticals. Not a dead end and not a joke.                                 |
+
+## The three signals
+
+Three judgements exist and are never collapsed into one number, because they
+are three different kinds of claim and a blend of them cannot be explained to
+anyone who asks what it means.
+
+| Signal | Who writes it | What it is | Never called |
+| ------ | ------------ | ---------- | ------------ |
+| **machine quality** | the engine | derived by inspecting the source; `null` when not measured | score, rating |
+| **community rating** | one reader | 1–5 stars, one active rating per person per subject, changeable | quality, popularity |
+| **editorial** | a curator | `editorial_rank`, `featured`, build notes | rating, stars, score |
+
+They appear in three separate blocks on a drill-in, each stating what it is. An
+average with one rating in it is shown with its count, because `4.0★` from one
+person and `4.0★` from forty are not the same claim.
+
+Ranking may use all three. The raw values stay inspectable.
 
 ## Where each term is defined
 
