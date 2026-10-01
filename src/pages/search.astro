@@ -345,6 +345,16 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 		color: var(--ink);
 	}
 
+	/* The whole card is the target, so the title link cannot be the only
+	   thing a touch user has to hit accurately. */
+	.hit--collection a {
+		display: flex;
+		align-items: center;
+		min-height: 2.75rem;
+		margin: calc(var(--sp-2) * -1) 0;
+		padding-block: var(--sp-2);
+	}
+
 	.hit--collection a:hover {
 		color: var(--ember);
 	}
@@ -362,8 +372,9 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 		display: inline-flex;
 		align-items: center;
 		gap: 0.5rem;
-		min-height: 2.25rem;
-		padding: 0.3rem 0.8rem;
+		/* 2.75rem clears the 44px touch minimum with room to spare. */
+		min-height: 2.75rem;
+		padding: 0.3rem 0.9rem;
 		border: 1px solid var(--line);
 		border-radius: 999px;
 		font-family: var(--font-mono);

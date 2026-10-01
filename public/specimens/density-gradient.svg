@@ -19,7 +19,7 @@
 		<g font-family="ui-monospace,Menlo,monospace">
 			<text x="96" y="140" font-size="18" fill="#ff5a1f" letter-spacing="2">01 · PRIMARY</text>
 			<text x="96" y="212" font-size="54" fill="#f4f2ee">Option space</text>
-			<text x="96" y="258" font-size="20" fill="#8b929a">materially different treatments, not files</text>
+			<text x="96" y="258" font-size="19" fill="#8b929a">materially different treatments</text>
 		</g>
 		<!-- tier 1 secondary -->
 		<rect x="512" y="96" width="216" height="284" rx="4" fill="url(#tier1)" stroke="#343b42"/>

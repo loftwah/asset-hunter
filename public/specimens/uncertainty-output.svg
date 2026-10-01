@@ -11,7 +11,7 @@
 
 	<g font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">
 		<text x="72" y="72" fill="#ff5a1f" letter-spacing="2">CONFIDENCE AS CONTENT</text>
-		<text x="728" y="72" text-anchor="end">not a disclaimer below the fold</text>
+		<text x="72" y="92" fill="#6a7178">not a disclaimer below the fold</text>
 	</g>
 
 	<!-- the answer, with the weak clause marked in place -->
@@ -51,7 +51,7 @@
 		<rect x="72" y="404" width="656" height="86" rx="3" fill="#0f1310" stroke="#1f2a22"/>
 		<rect x="72" y="404" width="3" height="86" fill="#4fce8a"/>
 		<g font-family="ui-monospace,Menlo,monospace" font-size="22" fill="#cfe6d8">
-			<text x="92" y="440">Fixed plates recur in 29 of 41 HUD examples.</text>
+			<text x="92" y="440" font-size="20">Fixed plates recur in 29 of 41 examples.</text>
 			<text x="92" y="474" fill="#6a7178">held by 11 distinct sources</text>
 		</g>
 		<text x="712" y="440" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#4fce8a" text-anchor="end">n=29 / 41</text>
@@ -91,8 +91,8 @@
 	<g>
 		<rect x="72" y="864" width="656" height="1" fill="#1c2126"/>
 		<g font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#4d565f">
-			<text x="72" y="900">hatched = insufficient support · outline = awaiting verification</text>
-			<text x="728" y="900" text-anchor="end">tap any claim for its source list</text>
+			<text x="72" y="900">hatched = insufficient support</text>
+			<text x="728" y="924" text-anchor="end">tap any claim for its sources</text>
 		</g>
 	</g>
 </svg>

@@ -6,7 +6,7 @@
 
 	<g font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">
 		<text x="72" y="70" fill="#ff5a1f" letter-spacing="2">TWO INKS, CORRECTED</text>
-		<text x="728" y="70" text-anchor="end">stroke weight is a bug, not a style</text>
+		<text x="72" y="90" fill="#6a7178">stroke weight is a bug, not a style</text>
 	</g>
 
 	<!-- Row 1: single-weight outline — the default, and the problem -->

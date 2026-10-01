@@ -29,9 +29,10 @@
 		"test:routes": "node --test tests/routes.test.ts",
 		"check:specimens": "node scripts/check-specimens.mjs",
 		"check:visual": "node scripts/visual-qa.mjs",
-		"verify": "npm run typecheck && npm run seed:check && npm run seed:validate && npm run check:specimens && npm run test",
+		"verify": "npm run typecheck && npm run seed:check && npm run seed:validate && npm run check:specimens && npm run check:plates && npm run test",
 		"verify:full": "npm run verify && npm run smoke && npm run check:visual",
-		"skills:sync": "node scripts/sync-emdash-skills.mjs"
+		"skills:sync": "node scripts/sync-emdash-skills.mjs",
+		"check:plates": "node scripts/check-plates.mjs"
 	},
 	"dependencies": {
 		"@astrojs/cloudflare": "14.3.3",

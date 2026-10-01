@@ -53,16 +53,19 @@ const ROUTES = [
 	{ path: "/collections/seams", name: "collection", expect: { ".tile": 4 } },
 	{ path: "/pages/about", name: "page-about", expect: { ".prose p": 5 } },
 	{ path: "/pages/licensing", name: "page-licensing", expect: { ".prose h2": 3 } },
+	{ path: "/search?q=seam", name: "search", expect: { ".count": 1 } },
 	{ path: "/nope-does-not-exist", name: "404", expect: {}, allow404: true },
+	// Non-HTML: checked for content type and well-formedness, not pixels.
+	{ path: "/rss.xml", name: "feed", expect: {}, nonHtml: true },
 ];
 
 const audit = [];
 const failures = [];
 const warnings = [];
 
-function record(viewport, route, issues) {
-	audit.push({ viewport: viewport.name, route: route.name, issues });
-	for (const issue of issues) failures.push(`${viewport.name} ${route.name}: ${issue}`);
+function record(group, route, issues) {
+	audit.push({ viewport: group, route: route.name, issues });
+	for (const issue of issues) failures.push(`${group} ${route.name}: ${issue}`);
 }
 
 /**
@@ -187,6 +190,48 @@ function pageAuditScript() {
 	return issues;
 }
 
+/**
+ * Verifies a non-HTML endpoint: correct status, expected content type, and a
+ * body that parses. Screenshots and DOM assertions do not apply.
+ */
+async function auditNonHtml(route) {
+	const issues = [];
+	const res = await fetch(`${baseUrl}${route.path}`);
+	if (res.status !== 200) issues.push(`HTTP ${res.status}`);
+	const type = res.headers.get("content-type") ?? "";
+	if (!type.includes("xml")) issues.push(`content-type is "${type}", expected xml`);
+	const body = await res.text();
+
+	if (route.path.endsWith(".xml")) {
+		if (!body.startsWith("<?xml")) issues.push("missing XML declaration");
+		// Balance check with a stack, so nesting is verified rather than just
+		// counted. Counting alone reports mismatches on well-formed documents
+		// with CDATA and attributes containing `>`; the stack does not.
+		const stack = [];
+		const tagRe = /<(\/?)([a-zA-Z][\w:-]*)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/g;
+		let m;
+		while ((m = tagRe.exec(body)) !== null) {
+			const [, closing, name, , selfClosing] = m;
+			if (selfClosing === "/" || name.startsWith("?")) continue;
+			if (closing === "/") {
+				const open = stack.pop();
+				if (open !== name) {
+					issues.push(`closing </${name}> does not match open <${open ?? "nothing"}>`);
+					if (issues.length > 3) break;
+				}
+			} else {
+				stack.push(name);
+			}
+		}
+		if (stack.length && issues.length <= 3) {
+			issues.push(`unclosed: ${stack.join(", ")}`);
+		}
+		const items = (body.match(/<item>/g) ?? []).length;
+		if (route.path === "/rss.xml" && items === 0) issues.push("feed contains no items");
+	}
+	return issues;
+}
+
 async function main() {
 	if (!auditOnly && existsSync(outDir)) rmSync(outDir, { recursive: true });
 	if (!auditOnly) mkdirSync(outDir, { recursive: true });
@@ -195,6 +240,12 @@ async function main() {
 	let captured = 0;
 
 	for (const route of ROUTES) {
+		// Non-HTML endpoints are verified as data, not screens.
+		if (route.nonHtml) {
+			const issues = await auditNonHtml(route);
+			record("data", route, issues);
+			continue;
+		}
 		for (const viewport of VIEWPORTS) {
 			const context = await browser.newContext({
 				viewport: { width: viewport.width, height: viewport.height },
@@ -270,7 +321,7 @@ async function main() {
 				captured++;
 			}
 
-			record(viewport, route, issues);
+			record(viewport.name, route, issues);
 			await context.close();
 		}
 	}
@@ -298,7 +349,7 @@ async function main() {
 		v.issues += entry.issues.length;
 	}
 	for (const [name, v] of byViewport) {
-		console.log(`  ${name.padEnd(14)} ${v.routes} routes · ${v.issues} issues`);
+		console.log(`  ${String(name).padEnd(14)} ${v.routes} route(s) · ${v.issues} issues`);
 	}
 
 	if (failures.length) {

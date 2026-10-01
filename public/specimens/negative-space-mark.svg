@@ -69,7 +69,7 @@
 	<!-- misfit cases, so the constraint is documented -->
 	<g font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">
 		<path d="M96 946 H704" stroke="#1c2126"/>
-		<text x="96" y="976">holds: flat · reverse · mono · embroidery</text>
-		<text x="704" y="976" text-anchor="end" fill="#ff8a4c">breaks: fine detail below 16px</text>
+		<text x="96" y="976">holds: flat · reverse · one ink · stitch</text>
+		<text x="728" y="976" text-anchor="end" fill="#ff8a4c">breaks below 16px</text>
 	</g>
 </svg>

@@ -10,7 +10,7 @@
 
 	<g font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">
 		<text x="72" y="72" fill="#ff5a1f" letter-spacing="2">CUT ON THE VECTOR</text>
-		<text x="728" y="72" text-anchor="end">not on the eyeline, not on the cut</text>
+		<text x="72" y="92" fill="#6a7178">not on the eyeline, not on the cut</text>
 	</g>
 
 	<!-- shot A: a form travelling right, blur trailing left -->

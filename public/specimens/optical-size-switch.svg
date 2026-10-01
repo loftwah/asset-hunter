@@ -8,7 +8,7 @@
 
 	<g font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">
 		<text x="72" y="70" fill="#ff5a1f" letter-spacing="2">SIZE IS AN AXIS, NOT A SETTING</text>
-		<text x="728" y="70" text-anchor="end">the same cut, re-drawn for the size it lands at</text>
+		<text x="72" y="90" fill="#6a7178">the same cut, re-drawn for the size it lands at</text>
 	</g>
 
 	<!-- What a single optical master actually does at each size -->
@@ -32,7 +32,7 @@
 		<!-- display size: 64px -->
 		<g transform="translate(72,408)">
 			<rect width="656" height="120" fill="url(#gridpaper)" opacity=".6"/>
-			<text x="0" y="92" font-family="Bricolage, Helvetica, Arial, sans-serif" font-size="104" font-weight="700" fill="#f4f2ee" textLength="560" lengthAdjust="spacingAndGlyphs">Handgloves 23</text>
+			<text x="0" y="86" font-family="Bricolage, Helvetica, Arial, sans-serif" font-size="86" font-weight="700" fill="#f4f2ee" textLength="520" lengthAdjust="spacingAndGlyphs">Handgloves 23</text>
 			<g font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#f2a33c">
 				<text x="0" y="114">display · weight raised · contrast lowered · spacing tightened 4% · curves smoothed</text>
 			</g>

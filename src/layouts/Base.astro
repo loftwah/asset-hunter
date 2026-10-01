@@ -45,7 +45,14 @@ const isCurrent = (href: string) =>
 		<link rel="canonical" href={canonical} />
 		{noindex && <meta name="robots" content="noindex, follow" />}
 		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+		<link rel="manifest" href="/site.webmanifest" />
+		<link
+			rel="alternate"
+			type="application/rss+xml"
+			title="Asset Hunter — new possibilities"
+			href="/rss.xml"
+		/>
 		<meta name="theme-color" content="#08090a" />
 		<meta name="color-scheme" content="dark" />
 
@@ -146,6 +153,7 @@ const isCurrent = (href: string) =>
 								<h2 class="tag">Project</h2>
 								<ul>
 									<li><a href="/pages/about">What this is</a></li>
+									<li><a href="/rss.xml">RSS feed</a></li>
 									<li><a href="https://github.com/loftwah/asset-hunter">Source</a></li>
 								</ul>
 							</div>

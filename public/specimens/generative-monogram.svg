@@ -9,7 +9,7 @@
 
 	<g font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">
 		<text x="72" y="70" fill="#ff5a1f" letter-spacing="2">A RULE SET, NOT AN IMAGE</text>
-		<text x="728" y="70" text-anchor="end">recognisable as a family at every seed</text>
+		<text x="72" y="90" fill="#6a7178">recognisable as a family at every seed</text>
 	</g>
 
 	<!-- the grid: 4 × 3 instances from one generator -->
@@ -72,7 +72,7 @@
 
 		<!-- the family test: at thumbnail size -->
 		<g transform="translate(96,452)">
-			<text x="0" y="0" font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#6a7178">the family test — all six at 24px</text>
+			<text x="0" y="-16" font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#6a7178">family test, at 24px</text>
 			<g transform="translate(0,16)">
 				<g transform="translate(12,12) scale(0.2)">
 					<rect x="-7" y="-46" width="14" height="92" fill="#ff5a1f"/><rect x="-46" y="-7" width="92" height="14" fill="#f4f2ee"/>

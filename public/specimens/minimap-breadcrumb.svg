@@ -56,8 +56,8 @@
 		<!-- labels only where they earn their place -->
 		<g font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">
 			<text x="486" y="220" fill="#b6bcc3">archive</text>
-			<text x="120" y="700">depth 6 · 5 nodes · 2 back</text>
-			<text x="728" y="700" text-anchor="end" fill="#4d565f">no breadcrumb trail</text>
+			<text x="120" y="700">depth 6 · 5 nodes</text>
+			<text x="728" y="700" text-anchor="end" fill="#4d565f">no crumb trail</text>
 		</g>
 	</g>
 
@@ -79,7 +79,7 @@
 	</g>
 
 	<g font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#4d565f">
-		<text x="72" y="930">position is a place, not a list of names</text>
-		<text x="728" y="930" text-anchor="end">map remains readable at 120px</text>
+		<text x="72" y="930">position is a place, not a list</text>
+		<text x="728" y="930" text-anchor="end">readable at 120px</text>
 	</g>
 </svg>

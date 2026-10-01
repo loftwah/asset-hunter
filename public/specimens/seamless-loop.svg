@@ -8,7 +8,7 @@
 
 	<g font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">
 		<text x="72" y="70" fill="#ff5a1f" letter-spacing="2">THE SEAM IS A SOLVING PROBLEM</text>
-		<text x="728" y="70" text-anchor="end">crossfading hides it; periodicity removes it</text>
+		<text x="72" y="90" fill="#6a7178">crossfading hides it; periodicity removes it</text>
 	</g>
 
 	<!-- The three ways to close a loop, and what each costs -->
@@ -101,7 +101,7 @@
 			<text x="72" y="794">ambient audio beds</text>
 			<text x="72" y="824">specimen animations on the wall</text>
 		</g>
-		<text x="728" y="734" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#4d565f" text-anchor="end">reduced-motion users get a static frame</text>
+		<text x="728" y="854" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#4d565f" text-anchor="end">reduced motion → static frame</text>
 	</g>
 
 	<g font-family="ui-monospace,Menlo,monospace" font-size="16">

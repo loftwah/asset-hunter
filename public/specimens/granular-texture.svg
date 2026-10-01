@@ -78,7 +78,7 @@
 
 	<g font-family="ui-monospace,Menlo,monospace" font-size="16">
 		<text x="72" y="860" fill="#4fce8a">hold drift above the noise floor</text>
-		<text x="72" y="890" fill="#6a7178">below it, the bed collapses into mush — the one failure mode</text>
-		<text x="728" y="890" text-anchor="end" fill="#4d565f">reversible, and audible</text>
+		<text x="72" y="890" fill="#6a7178">below the noise floor the bed collapses</text>
+		<text x="72" y="916" fill="#4d565f">the one failure mode, and it is audible</text>
 	</g>
 </svg>

@@ -8,7 +8,7 @@
 
 	<g font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">
 		<text x="72" y="72" fill="#ff5a1f" letter-spacing="2">THE NAME IS THE PROOF</text>
-		<text x="728" y="72" text-anchor="end">dedupe and verification for free, by construction</text>
+		<text x="72" y="92" fill="#6a7178">dedupe and verification for free, by construction</text>
 	</g>
 
 	<!-- original bytes in -->
@@ -67,7 +67,7 @@
 			<text x="416" y="336" fill="#f2a33c">hero.recolor.png</text>
 			<text x="416" y="362" fill="#8b929a">derived work</text>
 			<text x="416" y="386" fill="#6a7178">→ own address</text>
-			<text x="416" y="410" fill="#f2a33c">never overwrites parent</text>
+			<text x="416" y="410" fill="#f2a33c">parent kept</text>
 		</g>
 		<!-- derivative 4: the hostile one -->
 		<g>

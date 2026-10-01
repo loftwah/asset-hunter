@@ -9,7 +9,7 @@
 
 	<g font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">
 		<text x="72" y="70" fill="#ff5a1f" letter-spacing="2">INTERPOLATE THE SPECTRUM</text>
-		<text x="728" y="70" text-anchor="end">the ear hears a new timbre, not a crossfade of two</text>
+		<text x="72" y="90" fill="#6a7178">the ear hears a new timbre, not a crossfade of two</text>
 	</g>
 
 	<!-- source tables -->
@@ -32,10 +32,7 @@
 	<g>
 		<text x="460" y="120" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#6a7178">m = 0.00 → 1.00</text>
 		<g>
-			<!-- 0.0 -->
-			<g transform="translate(452,136)">
-				<rect width="0" height="0" fill="none"/>
-			</g>
+			<!-- three morph stops, each three spectra wide apart in y -->
 			<g fill="none" stroke-width="1.6">
 				<path d="M452 250 Q476 200 500 238 Q524 274 548 208 Q572 184 600 220" stroke="#a68bfb" opacity=".9"/>
 				<path d="M452 286 Q476 236 500 274 Q524 310 548 244 Q572 220 600 256" stroke="#ff5a1f" opacity=".85"/>

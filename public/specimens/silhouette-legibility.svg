@@ -9,7 +9,7 @@
 
 	<g font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">
 		<text x="72" y="70" fill="#ff5a1f" letter-spacing="2">READ AT 24 PIXELS</text>
-		<text x="728" y="70" text-anchor="end">if the pose is unclear, the silhouette is wrong</text>
+		<text x="72" y="90" fill="#6a7178">if the pose is unclear, the silhouette is wrong</text>
 	</g>
 
 	<!-- three poses, interior detail removed entirely -->
