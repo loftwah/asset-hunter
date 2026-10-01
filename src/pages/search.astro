@@ -49,7 +49,7 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 			: "Search the Asset Hunter catalogue for distinct creative and technical possibilities."
 	}
 	path={query ? `/search?q=${encodeURIComponent(query)}` : "/search"}
-	noindex={Boolean(query)}
+	noindex
 >
 	<header class="head shell">
 		<p class="tag tag--ember">Search</p>
