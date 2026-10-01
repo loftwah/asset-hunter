@@ -1,0 +1,1 @@
+Follow AGENTS.md and run the autonomous workflow. Work on ALL open GitHub issues and PRs in parallel, including new work. Implement, verify, review, merge and ship. Continue until no executable work remains or the runtime stops you.
