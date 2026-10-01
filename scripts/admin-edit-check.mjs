@@ -15,11 +15,26 @@
  *        [--slug density-gradient]
  */
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 const args = process.argv.slice(2);
 const baseUrl = args[args.indexOf("--url") + 1] ?? "http://localhost:4321";
 const slug = args[args.indexOf("--slug") + 1] ?? "density-gradient";
 const MARKER = "admin-edit-check";
+
+/**
+ * The seeded tagline for `slug`, used only to heal a database that an earlier
+ * interrupted run left holding a marker. `seed/atlas.json` is the readable
+ * source of truth for catalogue copy, so it is the right thing to restore from
+ * — restoring the marker itself would be a no-op.
+ */
+const seededTagline = () => {
+	const atlas = JSON.parse(
+		readFileSync(new URL("../seed/atlas.json", import.meta.url), "utf8"),
+	);
+	const entry = (atlas.possibilities ?? []).find((p) => p.id === slug);
+	return entry?.tagline ?? "";
+};
 
 const results = [];
 const step = (name, ok, detail = "") => {
@@ -49,6 +64,17 @@ async function withSession(fn) {
 
 const publicText = async (path) => (await (await fetch(`${baseUrl}${path}`)).text()).replace(/\s+/g, " ");
 
+/**
+ * The value this check writes, and the one it puts back.
+ *
+ * Held outside the try block so the restore runs even when a step between the
+ * write and the restore throws: a check that can leave its own marker in the
+ * content is worse than no check, because the next reader cannot tell test
+ * residue from real copy.
+ */
+let restore = null;
+let original = "";
+
 try {
 	await withSession(async ({ headers }) => {
 		// --- 1. The CMS API is reachable with the EmDash session --------------
@@ -67,7 +93,16 @@ try {
 			step("read target entry through the CMS", false, `HTTP ${read.status}`);
 			return;
 		}
-		const original = readBody.data.item.data.tagline ?? "";
+		original = readBody.data.item.data.tagline ?? "";
+		if (original.startsWith(MARKER)) {
+			// The value we would restore is our own residue, so restore the
+			// seeded copy instead and say that is what happened.
+			const seeded = seededTagline();
+			console.error(
+				`  ! ${slug} held "${original}" from an earlier interrupted run — restoring the seeded tagline instead`,
+			);
+			original = seeded || original;
+		}
 		step("read target entry through the CMS", true, `${slug}`);
 
 		// --- 3. Anonymous access is refused ----------------------------------
@@ -87,24 +122,35 @@ try {
 			.digest("hex")
 			.slice(0, 8)}`;
 
-		const put = await fetch(`${baseUrl}/_emdash/api/content/possibilities/${slug}`, {
-			method: "PUT",
-			headers,
-			body: JSON.stringify({ data: { tagline: marker } }),
-		});
-		const putBody = await put.json().catch(() => null);
+		const put = async (data) =>
+			fetch(`${baseUrl}/_emdash/api/content/possibilities/${slug}`, {
+				method: "PUT",
+				headers,
+				body: JSON.stringify({ data }),
+			});
+		const publish = () =>
+			fetch(`${baseUrl}/_emdash/api/content/possibilities/${slug}/publish`, {
+				method: "POST",
+				headers,
+			});
+
+		const write = await put({ tagline: marker });
+		const writeBody = await write.json().catch(() => null);
 		step(
 			"edit through the EmDash content API",
-			put.ok && putBody?.success === true,
-			`HTTP ${put.status}`,
+			write.ok && writeBody?.success === true,
+			`HTTP ${write.status}`,
 		);
+		// Armed immediately after the write, before anything else can fail.
+		restore = async () => {
+			const res = await put({ tagline: original });
+			await publish();
+			return res;
+		};
 
 		// --- 5. Publish -------------------------------------------------------
-		const publish = await fetch(
-			`${baseUrl}/_emdash/api/content/possibilities/${slug}/publish`,
-			{ method: "POST", headers },
-		);
-		step("publish through the EmDash content API", publish.ok, `HTTP ${publish.status}`);
+		const published = await publish();
+		step("publish through the EmDash content API", published.ok, `HTTP ${published.status}`);
 
 		// --- 6. The public product reflects it --------------------------------
 		// Poll rather than assume: publishing is synchronous in local D1, but a
@@ -124,26 +170,38 @@ try {
 		step("wall reflects the same edit", wall.includes(marker));
 
 		// --- 8. Restore -------------------------------------------------------
-		const restore = await fetch(`${baseUrl}/_emdash/api/content/possibilities/${slug}`, {
-			method: "PUT",
-			headers,
-			body: JSON.stringify({ data: { tagline: original } }),
-		});
-		await fetch(`${baseUrl}/_emdash/api/content/possibilities/${slug}/publish`, {
-			method: "POST",
-			headers,
-		});
+		const putBack = await restore?.();
+		await publish();
+		restore = null;
 		let restored = false;
 		for (let attempt = 0; attempt < 5 && !restored; attempt++) {
 			const html = await publicText(`/possibilities/${slug}`);
 			restored = !html.includes(marker) && html.includes(original.slice(0, 24));
 			if (!restored) await new Promise((r) => setTimeout(r, 400));
 		}
-		step("original value restored", restored && restore.ok, restored ? "verified on public page" : "not restored");
+		step(
+			"original value restored",
+			restored && putBack?.ok === true,
+			restored ? "verified on public page" : "NOT restored — run again to retry",
+		);
 	});
 } catch (err) {
 	console.error(`\n✖ ${err.message}`);
 	step("setup", false, err.message);
+} finally {
+	// Last-resort cleanup. Reaching here means a step threw between the write
+	// and the restore, so the content is still holding this run's marker.
+	if (restore) {
+		try {
+			await restore();
+			console.log("  ↩ restored after an earlier failure");
+		} catch (err) {
+			console.error(
+				`\n✖ could not restore ${slug}: ${err.message}\n  Set its tagline back to "${original}" by hand.`,
+			);
+			process.exitCode = 1;
+		}
+	}
 }
 
 const failed = results.filter((r) => !r.ok);

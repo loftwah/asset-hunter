@@ -42,15 +42,18 @@ const VIEWPORTS = [
 /**
  * Routes under audit. `expect` is the minimum number of elements that must be
  * present for the page to count as working — it is what distinguishes a real
- * render from an empty state or an error page.
+ * render from an empty state or an error page. `fold` names the selector whose
+ * top edge must land inside the first viewport: on a media-first catalogue, a
+ * wall whose plates start below the fold is a layout bug even though every
+ * other check passes.
  */
 const ROUTES = [
-	{ path: "/", name: "wall", expect: { ".tile": 20 } },
-	{ path: "/?vertical=games", name: "wall-filtered", expect: { ".tile": 2 } },
+	{ path: "/", name: "wall", expect: { ".tile": 20 }, fold: ".tile__plate", plateAspect: ".tile--featured .tile__plate" },
+	{ path: "/?vertical=games", name: "wall-filtered", expect: { ".tile": 2 }, fold: ".tile__plate" },
 	{ path: "/possibilities/density-gradient", name: "detail", expect: { ".section__title": 3 } },
 	{ path: "/verticals", name: "verticals", expect: { ".row": 10 } },
 	{ path: "/collections", name: "collections", expect: { ".collection": 4 } },
-	{ path: "/collections/seams", name: "collection", expect: { ".tile": 4 } },
+	{ path: "/collections/seams", name: "collection", expect: { ".tile": 4 }, fold: ".tile__plate" },
 	{ path: "/pages/about", name: "page-about", expect: { ".prose p": 5 } },
 	{ path: "/pages/licensing", name: "page-licensing", expect: { ".prose h2": 3 } },
 	{ path: "/search?q=seam", name: "search", expect: { ".count": 1 } },
@@ -282,6 +285,63 @@ async function main() {
 				if (found < min) issues.push(`${selector}: ${found} < ${min} expected`);
 			}
 
+			// The fold check. `document` top is the honest measure because the
+			// page has not been scrolled — screenshotting a full-page capture
+			// would hide exactly the problem this catches.
+			if (route.fold) {
+				const plateTop = await page.evaluate((selector) => {
+					const el = document.querySelector(selector);
+					if (!el) return null;
+					return Math.round(el.getBoundingClientRect().top);
+				}, route.fold);
+				if (plateTop === null) {
+					issues.push(`fold: ${route.fold} not found`);
+				} else {
+					const viewportHeight = page.viewportSize()?.height ?? 0;
+					// A sliver of plate counts: the rule is "the media starts
+					// here", not "a whole tile is visible".
+					if (plateTop > viewportHeight * 0.75) {
+						issues.push(
+							`first plate starts ${plateTop}px down, past 75% of the ${viewportHeight}px fold`,
+						);
+					}
+					if (plateTop < 0) {
+						issues.push(`first plate starts ${plateTop}px from the top (content is hidden under the masthead)`);
+					}
+				}
+			}
+
+			// The plate crop check. Specimen plates are 4:5 diagrams whose meaning
+			// is often in an annotation near an edge, so a tile that renders at a
+			// different shape from the plate is cutting content off, not framing
+			// it. This is the assertion that catches a "wider hero" change.
+			if (route.plateAspect) {
+				const ratio = await page.evaluate((selector) => {
+					const el = document.querySelector(selector);
+					if (!el) return null;
+					const r = el.getBoundingClientRect();
+					return r.height > 0 ? r.width / r.height : null;
+				}, route.plateAspect);
+				if (ratio === null) {
+					issues.push(`plate crop: ${route.plateAspect} not found`);
+				} else if (Math.abs(ratio - 0.8) > 0.02) {
+					issues.push(
+						`plate crop: ${route.plateAspect} renders at ${ratio.toFixed(2)}:1, not the plate's 0.80:1 — content is being cropped`,
+					);
+				}
+			}
+
+			// Screenshot before the keyboard probe: focusing the skip link leaves
+			// it on screen, and every capture in the matrix would carry the same
+			// artefact over the masthead.
+			if (!auditOnly) {
+				await page.screenshot({
+					path: `${outDir}${route.name}--${viewport.name}.png`,
+					fullPage: viewport.width >= 768,
+				});
+				captured++;
+			}
+
 			// Keyboard reachability: focus must be able to enter the page from the
 			// top. A page that autofocuses an input (the 404 finder) legitimately
 			// starts focused, so only flag the case where focus goes nowhere.
@@ -311,14 +371,6 @@ async function main() {
 				} else {
 					issues.push(message);
 				}
-			}
-
-			if (!auditOnly) {
-				await page.screenshot({
-					path: `${outDir}${route.name}--${viewport.name}.png`,
-					fullPage: viewport.width >= 768,
-				});
-				captured++;
 			}
 
 			record(viewport.name, route, issues);

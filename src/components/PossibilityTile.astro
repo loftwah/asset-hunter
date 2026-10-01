@@ -145,12 +145,11 @@ const vertical = p.vertical ? (VERTICAL_LABEL[p.vertical] ?? p.vertical) : null;
 		gap: var(--sp-2) var(--sp-3);
 	}
 
-	/* The featured tile earns its size from content, not from a class alone. */
+	/* The featured tile earns its size from the wall's grid, not from a shape of
+	   its own. Every specimen plate is a 4:5 diagram whose meaning often sits in
+	   an annotation near an edge, so a wider crop hides content rather than
+	   framing it. `npm run check:visual` asserts the rendered ratio. */
 	@media (width >= 900px) {
-		.tile--featured .tile__plate {
-			aspect-ratio: 16 / 10;
-		}
-
 		.tile--featured .tile__title {
 			font-size: var(--step-2);
 		}

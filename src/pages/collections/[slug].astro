@@ -2,6 +2,7 @@
 import Base from "../../layouts/Base.astro";
 import PossibilityTile from "../../components/PossibilityTile.astro";
 import { loadCollection, loadCollections } from "../../lib/catalogue";
+import { verticalLabel } from "../../lib/vocabulary";
 
 const { slug } = Astro.params;
 const collection = await loadCollection(slug ?? "");
@@ -50,7 +51,7 @@ for (const m of collection.members) {
 			{
 				[...verticals.entries()].map(([slug, n]) => (
 					<li class="tag">
-						<a href={`/?vertical=${slug}`}>{slug.replace(/-/g, " ")} · {n}</a>
+						<a href={`/?vertical=${slug}`}>{verticalLabel(slug)} · {n}</a>
 					</li>
 				))
 			}

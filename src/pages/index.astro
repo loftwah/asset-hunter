@@ -10,7 +10,7 @@
 import Base from "../layouts/Base.astro";
 import PossibilityTile from "../components/PossibilityTile.astro";
 import { loadPossibilities, tallyVerticals } from "../lib/catalogue";
-import { RIGHTS_LABEL, RIGHTS_MEANING } from "../lib/vocabulary";
+import { RIGHTS_LABEL, RIGHTS_MEANING, verticalLabel } from "../lib/vocabulary";
 
 const { possibilities, cacheHint } = await loadPossibilities();
 if (Astro.cache?.enabled) Astro.cache.set(cacheHint);
@@ -23,18 +23,15 @@ const filtered = activeVertical
 	? possibilities.filter((p) => p.vertical === activeVertical)
 	: possibilities;
 
-// Density ramp: the top entries get a wider plate, so emphasis is decided by the
-// ordering rather than by every tile shouting equally.
-const featuredCount = activeVertical ? 0 : 1;
-const featured = filtered.slice(0, featuredCount);
-const rest = filtered.slice(featuredCount);
+// Density ramp: the first entry of the unfiltered wall gets a lead tile that
+// spans two columns and two rows of the same grid. A filtered view is already
+// narrow, so the ramp does not apply there — one big tile among three would
+// read as a mistake rather than as emphasis.
 
 const rightsTally = new Map<string, number>();
 for (const p of filtered) {
 	if (p.rightsStatus) rightsTally.set(p.rightsStatus, (rightsTally.get(p.rightsStatus) ?? 0) + 1);
 }
-
-const dominantVertical = verticals[0]?.slug ?? null;
 ---
 
 <Base
@@ -42,16 +39,22 @@ const dominantVertical = verticals[0]?.slug ?? null;
 	description="A field guide to what can be made — distinct creative and technical possibilities across games, UI, branding, motion, audio, 3D, shaders, code and architecture, each with representative examples and their rights."
 	path="/"
 >
+	{/*
+		The intro is a band, not a hero. Its whole job is to say what this is and
+		get out of the way: DESIGN.md §5 puts one region above the grid, and the
+		fold check in `npm run check:visual` fails if the plates start below it.
+	*/}
 	<section class="intro shell">
-		<p class="tag tag--ember">Option space, compressed</p>
-		<h1 class="display intro__title">
-			What can be made, and the ways it has already been made
-		</h1>
-		<p class="lede">
-			Each plate is one distinct possibility rather than one file. Drill in for the technique, the
-			build notes, a prompt scaffold and the rights — because knowing a treatment exists says
-			nothing about whether you may copy the asset that showed it to you.
-		</p>
+		<div class="intro__body">
+			<p class="tag tag--ember">Option space, compressed</p>
+			<h1 class="display intro__title">
+				What can be made, and the ways it has already been made
+			</h1>
+			<p class="lede intro__lede">
+				Each plate is one distinct possibility rather than one file. Drill in for the technique,
+				the build notes, a prompt scaffold and the rights.
+			</p>
+		</div>
 		<dl class="tally">
 			<div>
 				<dt class="tag">Possibilities</dt>
@@ -62,17 +65,18 @@ const dominantVertical = verticals[0]?.slug ?? null;
 				<dd class="tally__n">{verticals.length}</dd>
 			</div>
 			<div>
-				<dt class="tag">Upstream sources verified</dt>
-				<dd class="tally__n">
-					{possibilities.reduce((n, p) => n + (p.distinctSources ?? 0), 0)}
-				</dd>
+				<dt class="tag">
+					Verified sources
+					<span class="visually-hidden">counted against a licence read at the source</span>
+				</dt>
+				<dd class="tally__n">{possibilities.reduce((n, p) => n + (p.distinctSources ?? 0), 0)}</dd>
 			</div>
 		</dl>
 	</section>
 
 	<nav class="rail shell" aria-label="Filter by vertical">
 		<h2 class="visually-hidden">Filter by vertical</h2>
-		<ul class="rail__list" data-rail>
+		<ul class="rail__list" data-rail data-scroll-strip>
 			<li>
 				<a
 					href={activeVertical ? "/" : "/"}
@@ -91,8 +95,7 @@ const dominantVertical = verticals[0]?.slug ?? null;
 							aria-current={activeVertical === v.slug ? "true" : undefined}
 							data-vertical={v.slug}
 						>
-							{v.slug === dominantVertical && !activeVertical ? "" : ""}
-							<span data-label>{v.slug.replace(/-/g, " ")}</span>
+							<span data-label>{verticalLabel(v.slug)}</span>
 							<span class="chip__n">{v.count}</span>
 						</a>
 					</li>
@@ -115,28 +118,16 @@ const dominantVertical = verticals[0]?.slug ?? null;
 					</a>
 				</div>
 			) : (
-				<>
-					{featured.length > 0 && (
-						<div class="wall__feature">
-							{featured.map((p) => (
-								<PossibilityTile
-									possibility={p}
-									featured
-									hideVertical={false}
-									eager
-								/>
-							))}
-						</div>
-					)}
-					<div class="grid" data-grid>
-						{rest.map((p) => (
-							<PossibilityTile
-								possibility={p}
-								hideVertical={false}
-							/>
-						))}
-					</div>
-				</>
+				<div class="grid" data-grid>
+					{filtered.map((p, i) => (
+						<PossibilityTile
+							possibility={p}
+							featured={i === 0 && !activeVertical}
+							hideVertical={false}
+							eager={i < 4}
+						/>
+					))}
+				</div>
 			)
 		}
 	</section>
@@ -200,31 +191,45 @@ const dominantVertical = verticals[0]?.slug ?? null;
 	.intro {
 		display: grid;
 		gap: var(--sp-4);
-		padding-block: clamp(var(--sp-7), 7vw, var(--sp-9)) var(--sp-6);
+		padding-block: clamp(var(--sp-5), 3vw, var(--sp-6)) var(--sp-4);
 	}
 
+	.intro__body {
+		display: grid;
+		gap: var(--sp-3);
+	}
+
+	/* Sized against the fold, not against a marketing page: at 1280 this is
+	   ~60px, so the title stays two lines and the plates still start inside
+	   the first viewport. */
 	.intro__title {
-		font-size: var(--step-5);
-		max-width: 22ch;
+		font-size: clamp(1.75rem, 1.2rem + 3.4vw, 3.4rem);
+		max-width: 24ch;
+	}
+
+	.intro__lede {
+		font-size: var(--step-0);
+		max-width: 58ch;
+		color: var(--ink-3);
 	}
 
 	.tally {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--sp-5) var(--sp-7);
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: var(--sp-3) var(--sp-4);
 		margin-top: var(--sp-3);
-		padding-top: var(--sp-4);
+		padding-top: var(--sp-3);
 		border-top: 1px solid var(--line);
 	}
 
 	.tally dt {
-		margin-bottom: 0.2rem;
+		margin-bottom: 0.15rem;
 	}
 
 	.tally__n {
 		font-family: var(--font-display);
 		font-weight: 600;
-		font-size: var(--step-3);
+		font-size: var(--step-2);
 		line-height: 1;
 		color: var(--ink);
 		font-variant-numeric: tabular-nums;
@@ -250,6 +255,24 @@ const dominantVertical = verticals[0]?.slug ?? null;
 		overflow-x: auto;
 		scrollbar-width: thin;
 		scroll-snap-type: x proximity;
+	}
+
+	.rail__list[data-scroll="end"] {
+		mask-image: linear-gradient(to right, #000 calc(100% - 3rem), transparent);
+	}
+
+	.rail__list[data-scroll="start"] {
+		mask-image: linear-gradient(to right, transparent, #000 3rem);
+	}
+
+	.rail__list[data-scroll="both"] {
+		mask-image: linear-gradient(
+			to right,
+			transparent,
+			#000 3rem,
+			#000 calc(100% - 3rem),
+			transparent
+		);
 	}
 
 	.chip {
@@ -299,15 +322,10 @@ const dominantVertical = verticals[0]?.slug ?? null;
 		padding-block: var(--sp-6) var(--sp-7);
 	}
 
-	.wall__feature {
-		display: grid;
-		grid-template-columns: 1fr;
-		gap: var(--sp-5);
-		margin-bottom: var(--sp-6);
-		padding-bottom: var(--sp-6);
-		border-bottom: 1px solid var(--line);
-	}
-
+	/* One grid, one ramp. The lead tile is two columns and two rows of the same
+	   grid rather than a separate band above it: a separate band left a hole
+	   beside a single wide tile, and it changed the plate's aspect ratio, which
+	   crops the annotations off a diagram. */
 	.grid {
 		display: grid;
 		/* Media-first: the tile size is set by the plate, not by a card. */
@@ -402,13 +420,69 @@ const dominantVertical = verticals[0]?.slug ?? null;
 	}
 
 	@media (width >= 900px) {
-		.wall__feature {
-			grid-template-columns: 1.6fr 1fr;
-			gap: var(--sp-5);
+		/* Title block left, honest counts right. Two columns instead of one tall
+		   column is what keeps the plates inside the first viewport. */		.intro {
+			grid-template-columns: minmax(0, 1.7fr) minmax(15rem, 0.8fr);
+			align-items: end;
+			gap: var(--sp-7);
+		}
+
+		.tally {
+			grid-template-columns: 1fr;
+			gap: 0;
+			margin-top: 0;
+			padding-top: 0;
+			border-top: 0;
+			border-left: 1px solid var(--line);
+			padding-left: var(--sp-5);
+		}
+
+		.tally > div {
+			display: flex;
+			align-items: baseline;
+			justify-content: space-between;
+			gap: var(--sp-4);
+			padding-block: var(--sp-2);
+		}
+
+		.tally > div + div {
+			border-top: 1px solid var(--line);
+		}
+
+		.tally dt {
+			margin-bottom: 0;
+		}
+
+		/* Two columns and two rows: 2 × 285px wide at 4:5 lands within a few
+		   pixels of two 356px rows, so the grid resolves without empty cells. */
+		.grid > :global(.tile--featured) {
+			grid-column: span 2;
+			grid-row: span 2;
 		}
 
 		.grid {
 			gap: var(--sp-6) var(--sp-5);
+		}
+	}
+
+	/* A phone gets the same rule harder: the masthead already costs 88px, so
+	   the intro has to give the rest of the fold to plates. */
+	@media (width <= 560px) {
+		.intro {
+			padding-block: var(--sp-4) var(--sp-3);
+		}
+
+		.intro__title {
+			font-size: clamp(1.625rem, 7vw, 1.875rem);
+		}
+
+		.intro__lede {
+			font-size: var(--step--1);
+		}
+
+		.tally {
+			margin-top: var(--sp-2);
+			padding-top: var(--sp-2);
 		}
 	}
 </style>

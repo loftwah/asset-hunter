@@ -13,8 +13,8 @@ node scripts/capture-reference.mjs
 
 | File                        | What it shows                                                   |
 | --------------------------- | --------------------------------------------------------------- |
-| `wall--1280.png`            | The wall at desktop: hero tier, then the grid                    |
-| `wall--390.png`             | The wall on a phone — the check for the fold and the tap targets |
+| `wall--1280.png`            | The wall at desktop: band, filter rail, lead tile, grid          |
+| `wall-mobile--390.png`      | The wall on a phone — the check for the fold and the tap targets |
 | `detail--1280.png`          | Drill-in: plate beside technique, notes, scaffold and rights     |
 | `verticals--1280.png`       | Coverage map, including the deliberately unmapped list           |
 | `collections--1280.png`     | Overlapping curated groupings                                    |
@@ -27,7 +27,10 @@ node scripts/capture-reference.mjs
 `DESIGN.md` is the authority and `docs/UNSLOP.md` is the rejection list. Use
 these captures to answer:
 
-- Is the first row of plates above the fold at 390px?
+- Is the first row of plates above the fold? (`DESIGN.md` §5b has the measured
+  numbers; `npm run check:visual` fails if it regresses)
+- Does the lead tile span two columns of the same grid rather than sitting in a
+  band of its own, and is its plate still 4:5?
 - Is there exactly one region competing for attention?
 - Does any colour appear that is not `--ember`, ink, surface or line?
 - Does the rights language read as permissive anywhere it should not?

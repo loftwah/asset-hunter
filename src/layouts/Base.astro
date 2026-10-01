@@ -86,7 +86,7 @@ const isCurrent = (href: string) =>
 							<span class="brand__name">Asset Hunter</span>
 						</a>
 						<nav class="nav" aria-label="Primary">
-							<ul>
+							<ul data-scroll-strip>
 								{nav.map((item) => (
 									<li>
 										<a
@@ -184,6 +184,42 @@ const isCurrent = (href: string) =>
 				input.select();
 			};
 			document.addEventListener("keydown", focusSearch);
+
+			/**
+			 * Horizontally scrolling strips (primary nav, filter rail) are clipped
+			 * at the shell edge by design, which reads as a broken layout unless
+			 * something says the strip continues. This marks which edges have more
+			 * content so the stylesheet can fade exactly those, and nothing else —
+			 * a fade on a strip that already fits would be a lie.
+			 */
+			const scrollers = () =>
+				Array.from(
+					document.querySelectorAll<HTMLElement>("[data-scroll-strip]"),
+				);
+
+			const updateStrip = (el: HTMLElement) => {
+				const overflow = el.scrollWidth - el.clientWidth;
+				if (overflow <= 1) {
+					el.dataset.scroll = "none";
+					return;
+				}
+				const atStart = el.scrollLeft <= 1;
+				const atEnd = el.scrollLeft >= overflow - 1;
+				el.dataset.scroll = atStart ? "end" : atEnd ? "start" : "both";
+			};
+
+			const syncStrips = () => {
+				for (const el of scrollers()) updateStrip(el);
+			};
+
+			for (const el of scrollers()) {
+				updateStrip(el);
+				el.addEventListener("scroll", () => updateStrip(el), { passive: true });
+			}
+			addEventListener("resize", syncStrips, { passive: true });
+			// A late webfont swap changes the width of every chip, so the first
+			// measurement can be wrong.
+			document.fonts?.ready.then(syncStrips);
 		</script>
 	</body>
 </html>
@@ -234,6 +270,25 @@ const isCurrent = (href: string) =>
 
 	.nav ul::-webkit-scrollbar {
 		display: none;
+	}
+
+	/* Scroll affordance: only the edge with hidden content is faded. */
+	.nav ul[data-scroll="end"] {
+		mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+	}
+
+	.nav ul[data-scroll="start"] {
+		mask-image: linear-gradient(to right, transparent, #000 2.5rem);
+	}
+
+	.nav ul[data-scroll="both"] {
+		mask-image: linear-gradient(
+			to right,
+			transparent,
+			#000 2.5rem,
+			#000 calc(100% - 2.5rem),
+			transparent
+		);
 	}
 
 	.nav__link {
@@ -314,18 +369,33 @@ const isCurrent = (href: string) =>
 			order: 3;
 			grid-column: 1 / -1;
 			padding-bottom: 0.35rem;
+			margin-inline: calc(var(--gutter) * -1);
+			padding-inline: var(--gutter);
 		}
 
 		.search__kbd {
 			display: none;
 		}
 
+		/* Wide enough for the full placeholder: a clipped label in a field
+		   that cannot show it is worse than no field. */
 		.search input {
-			width: 5.5rem;
+			width: 8.5rem;
+			padding-right: 0.7rem;
 		}
 
 		.search input:focus {
 			width: clamp(9rem, 40vw, 14rem);
+		}
+	}
+
+	@media (width <= 400px) {
+		.brand__name {
+			font-size: var(--step--1);
+		}
+
+		.search input {
+			width: 7.5rem;
 		}
 	}
 

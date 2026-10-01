@@ -57,6 +57,19 @@ export const VERTICAL_LABEL: Record<string, string> = {
 	"ai-products": "AI Products",
 };
 
+/**
+ * Public label for a vertical slug.
+ *
+ * Slugs are storage keys and read as `ui web` or `3d` if they are shown raw.
+ * Vocabulary is the single place a term is spelled, so a label is looked up
+ * rather than reformatted per surface — the filter rail, the search facets and
+ * the coverage map all say `UI / Web`, not three different things.
+ */
+export function verticalLabel(slug: string | null | undefined): string {
+	if (!slug) return "Unclassified";
+	return VERTICAL_LABEL[slug] ?? slug.replace(/-/g, " ");
+}
+
 export const MEDIA_LABEL: Record<string, string> = {
 	image: "Image",
 	motion: "Motion",

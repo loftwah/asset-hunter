@@ -9,7 +9,7 @@
  *
  * Usage: node scripts/capture-reference.mjs [--url http://localhost:4321]
  */
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync } from "node:fs";
 import { chromium } from "playwright";
 
 const args = process.argv.slice(2);
@@ -23,9 +23,9 @@ const SHOTS = [
 	{ path: "/collections", name: "collections", viewport: { width: 1280, height: 860 }, dsf: 1 },
 	{ path: "/search?q=seam", name: "search", viewport: { width: 1280, height: 860 }, dsf: 1 },
 	{ path: "/pages/licensing", name: "licensing", viewport: { width: 1280, height: 860 }, dsf: 1 },
-	{ path: "/nope", name: "404--1280", viewport: { width: 1280, height: 860 }, dsf: 1, expect404: true },
+	{ path: "/nope", name: "404", viewport: { width: 1280, height: 860 }, dsf: 1, expect404: true },
 	// The fold check: what a phone sees before scrolling.
-	{ path: "/", name: "wall--390", viewport: { width: 390, height: 844 }, dsf: 2, mobile: true },
+	{ path: "/", name: "wall-mobile", viewport: { width: 390, height: 844 }, dsf: 2, mobile: true },
 ];
 
 try {
@@ -47,8 +47,13 @@ for (const shot of SHOTS) {
 		...(shot.mobile ? { isMobile: true, hasTouch: true } : {}),
 	});
 	const res = await page.goto(`${baseUrl}${shot.path}`, { waitUntil: "networkidle" });
-	if (!res || res.status() >= 400) {
-		console.error(`  ✖ ${shot.path} → HTTP ${res?.status()}`);
+	const status = res?.status() ?? 0;
+	// A 404 page is a real composition worth reviewing, so it is captured
+	// rather than skipped — the point of this directory is what the product
+	// looks like, and "what the product looks like when it has no answer"
+	// is part of that.
+	if (!res || (status >= 400 && !shot.expect404)) {
+		console.error(`  ✖ ${shot.path} → HTTP ${status}`);
 		await page.close();
 		continue;
 	}
@@ -60,6 +65,15 @@ for (const shot of SHOTS) {
 	await page.screenshot({ path: `${outDir}${file}` });
 	written.push(file);
 	await page.close();
+}
+
+// Anything left over from a previous run is a stale composition, which is worse
+// than no composition: it looks like current evidence and is not.
+for (const stale of readdirSync(outDir)) {
+	if (stale.endsWith(".png") && !written.includes(stale)) {
+		rmSync(`${outDir}${stale}`);
+		console.log(`  removed stale ${stale}`);
+	}
 }
 
 await browser.close();

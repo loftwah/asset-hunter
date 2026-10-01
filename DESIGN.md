@@ -89,17 +89,49 @@ Rules:
 ## 5. Density ramp — the core layout idea
 
 Grids do not shout everywhere. Each cell is assigned a **tier**, and the tier
-controls fill opacity, border strength and type size:
+controls its size in the grid, fill opacity, border strength and type size:
 
 | Tier       | Use                                    | Treatment                              |
 | ---------- | -------------------------------------- | -------------------------------------- |
-| 1 (hero)   | Exactly one region per viewport        | Ember wash, 16/10 plate, larger title  |
-| 2          | Secondary                               | Cool wash, standard plate              |
+| 1 (hero)   | Exactly one region per viewport        | Spans 2 columns and 2 rows, larger title |
+| 2          | Secondary                               | Standard plate                         |
 | 3          | Body of the grid                       | `4/5` plate, hairline border           |
 | 4          | Reference rows                         | No border, small mono label            |
 
 The most common failure is **two hero cells**. If two regions are equally loud
 the ramp is not a ramp and the eye has nowhere to land.
+
+**The ramp lives inside the wall's grid, not in a band above it.** An earlier
+version put the hero in its own 1.6fr/1fr row above the grid, which left a
+permanent hole beside a single wide tile. The hero is now the first tile of the
+same grid spanning two columns and two rows, and the band is gone.
+
+**A tier changes size, never shape.** Every specimen plate is 4:5 and its
+annotations often sit near an edge, so no tile may render at a different aspect
+ratio — a 16:10 "wider hero" crops the content that makes the plate worth
+looking at. `npm run check:visual` asserts the rendered ratio and fails if a tile
+crops its plate.
+
+## 5b. The fold
+
+**The catalogue is above the fold.** On the wall, the first plate must start
+inside the first viewport at every width: 50% of a 1280×800 fold, 57% of a
+390×844 one. The intro is a band, not a hero — a title block on the left and the
+honest counts on the right, never a full-height stacked column.
+
+This is the rule `docs/UNSLOP.md` states as "huge hero copy pushing the actual
+catalogue below the fold", and `npm run check:visual` enforces it by measuring
+where the first plate starts rather than by reading the stylesheet.
+
+Measured, at the time of writing:
+
+| Viewport | Masthead | First plate starts | Page height |
+| -------- | -------- | ------------------ | ----------- |
+| 1680×1050 | 57px     | 402px (38%)        | 3822px      |
+| 1280×800  | 57px     | 401px (50%)        | 4370px      |
+| 768×1024  | 88px     | 486px (47%)        | 7595px      |
+| 390×844   | 88px     | 478px (57%)        | 14597px     |
+| 360×780   | 87px     | 473px (61%)        | 13747px     |
 
 ## 6. Specimen plates
 

@@ -80,7 +80,10 @@ describe("wall", () => {
 		// Astro appends a scoping attribute to class attributes, so match the
 		// class token rather than the whole attribute.
 		const tally = text(html.match(/<dl class="tally"[^>]*>([\s\S]*?)<\/dl>/)?.[1] ?? "");
-		assert.match(tally, /Upstream sources verified\s*0/i);
+		// The label has to name what is being counted and the value has to be a
+		// real zero. An estimate here would be fabricated evidence, which is the
+		// thing this assertion exists to prevent.
+		assert.match(tally, /Verified sources\s*counted against a licence read at the source\s*0/i);
 	});
 });
 
