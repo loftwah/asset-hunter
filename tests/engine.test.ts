@@ -244,6 +244,8 @@ describe("candidate store", () => {
 				},
 				files: [],
 				interesting: [],
+				discoveredBy: null,
+				policyApplied: "keep",
 				firstSeen: "2026-01-01T00:00:00Z",
 				lastSeen: "2026-01-01T00:00:00Z",
 				observations: 1,
@@ -303,6 +305,8 @@ const makeCandidate = (fullName: string, description: string, files: string[] = 
 		meaning: "none",
 		assetScoped: false,
 	},
+	discoveredBy: null,
+	policyApplied: "keep",
 	files: files.map((path) => ({
 		path,
 		size: 10,

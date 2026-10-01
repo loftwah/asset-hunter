@@ -13,6 +13,25 @@
 
 export type RightsFloor = "any" | "attribution" | "cleared";
 
+/**
+ * What to do with material whose permission was never established.
+ *
+ * `keep` is the default and the honest one: the material demonstrates a real
+ * possibility, and deleting it because nobody published a licence throws away
+ * the evidence. `metadata-only` keeps the description and the evidence but not
+ * the payload. `reject` is an explicit decision by the operator, never a
+ * default — a catalogue that quietly drops everything unlicensed would report a
+ * coverage that does not exist.
+ */
+export type UnlicensedPolicy = "keep" | "metadata-only" | "reject";
+
+export interface HuntBudgets {
+	/** Files read per repository. */
+	maxFilesPerRepo?: number;
+	/** Total bytes of file content read across the whole hunt. */
+	maxBytes?: number;
+}
+
 export interface HuntConstraints {
 	/**
 	 * Repository topics/names that must not appear. A hunt for sound effects
@@ -35,6 +54,8 @@ export interface HuntConstraints {
 	rightsFloor?: RightsFloor;
 	/** Cap on repositories inspected per wave. */
 	maxCandidates?: number;
+	unlicensedPolicy?: UnlicensedPolicy;
+	budgets?: HuntBudgets;
 }
 
 export interface HuntBrief {
@@ -105,6 +126,20 @@ export function validateBrief(input: unknown): ValidatedBrief {
 	if (constraints.maxCandidates !== undefined && Number(constraints.maxCandidates) <= 0) {
 		problems.push("constraints.maxCandidates must be greater than zero");
 	}
+	if (
+		constraints.unlicensedPolicy !== undefined &&
+		!["keep", "metadata-only", "reject"].includes(String(constraints.unlicensedPolicy))
+	) {
+		problems.push(
+			`constraints.unlicensedPolicy must be keep|metadata-only|reject, got "${constraints.unlicensedPolicy}"`,
+		);
+	}
+	if (constraints.budgets?.maxFilesPerRepo !== undefined && Number(constraints.budgets.maxFilesPerRepo) <= 0) {
+		problems.push("constraints.budgets.maxFilesPerRepo must be greater than zero");
+	}
+	if (constraints.budgets?.maxBytes !== undefined && Number(constraints.budgets.maxBytes) <= 0) {
+		problems.push("constraints.budgets.maxBytes must be greater than zero");
+	}
 
 	const brief: HuntBrief = {
 		intent,
@@ -133,6 +168,9 @@ export function briefFingerprint(brief: HuntBrief): string {
 		minStars: brief.constraints?.minStars ?? 0,
 		rightsFloor: brief.constraints?.rightsFloor ?? "any",
 		maxCandidates: brief.constraints?.maxCandidates ?? 0,
+		unlicensedPolicy: brief.constraints?.unlicensedPolicy ?? "keep",
+		maxFilesPerRepo: brief.constraints?.budgets?.maxFilesPerRepo ?? 0,
+		maxBytes: brief.constraints?.budgets?.maxBytes ?? 0,
 	});
 	// FNV-1a: short, dependency-free and stable across runs. This identifies a
 	// brief, it is not a security boundary.

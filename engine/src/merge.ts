@@ -30,8 +30,22 @@ import { ENGINE_OWNED_FIELDS, HUMAN_OWNED_FIELDS } from "./publish.ts";
 export type Visibility = "draft" | "published" | "hidden";
 
 export interface MergeResult {
-	/** Exactly the fields to write. Absent from the result means "leave alone". */
+	/**
+	 * Exactly the fields the engine decided to change. Absent means "leave
+	 * alone". Used for the report and for the tests.
+	 */
 	write: Record<string, unknown>;
+	/**
+	 * The complete record to send: the existing values with `write` applied over
+	 * them.
+	 *
+	 * EmDash's PUT validates the whole record, so sending only the changed
+	 * fields fails with "title: expected string, received undefined" on any
+	 * entry whose title happened to be unchanged. Sending the merged record is
+	 * also the honest thing: the policy decided the final state of every field,
+	 * so the whole state is what gets written.
+	 */
+	merged: Record<string, unknown>;
 	/** Human-owned fields present in the incoming record that were not written. */
 	preserved: string[];
 	/** Fields the engine changed, for the report. */
@@ -72,10 +86,12 @@ export function mergePossibility(
 		// Creation. The engine supplies an initial rank of 0 so a new machine
 		// entry sorts to the end of the wall instead of competing with curated
 		// work, and `draft` visibility so nothing unreviewed is public.
+		const record = { ...incoming, editorial_rank: 0, featured: false, visibility: "draft" };
 		return {
-			write: { ...incoming, editorial_rank: 0, featured: false, visibility: "draft" },
+			write: record,
+			merged: record,
 			preserved: [],
-			changed: Object.keys(incoming),
+			changed: Object.keys(record),
 			notes: ["created as a draft at rank 0; a human decides whether it is public"],
 		};
 	}
@@ -143,6 +159,7 @@ export function mergePossibility(
 		);
 	}
 
+	result.merged = { ...existing, ...result.write };
 	return result;
 }
 
@@ -152,10 +169,12 @@ export function mergeExample(
 	incoming: Record<string, unknown>,
 ): MergeResult {
 	if (!existing) {
+		const record = { ...incoming, featured: false, visibility: "draft" };
 		return {
-			write: { ...incoming, featured: false, visibility: "draft" },
+			write: record,
+			merged: record,
 			preserved: [],
-			changed: Object.keys(incoming),
+			changed: Object.keys(record),
 			notes: ["created as a draft"],
 		};
 	}
@@ -215,6 +234,7 @@ export function mergeExample(
 	for (const field of ["featured", "visibility"]) {
 		if (field in existing) result.preserved.push(field);
 	}
+	result.merged = { ...existing, ...result.write };
 	return result;
 }
 

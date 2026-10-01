@@ -52,6 +52,14 @@ export interface Candidate {
 	files: FileEvidence[];
 	/** Paths worth reading that were found, for the report. Not fetched. */
 	interesting: string[];
+	/**
+	 * The search wave that found this, so a candidate can be explained rather
+	 * than merely listed. "Why is this here" is a question a person asks of
+	 * every surprising entry.
+	 */
+	discoveredBy: { query: string; page: number; lane: string } | null;
+	/** Whether the unlicensed policy let this candidate keep its payload. */
+	policyApplied: "keep" | "metadata-only" | "rejected";
 	firstSeen: string;
 	lastSeen: string;
 	/** How many times a re-crawl observed this candidate. */
@@ -188,11 +196,27 @@ export function summarise(candidates: Candidate[]) {
 	for (const c of candidates) {
 		byStatus.set(c.rights.status, (byStatus.get(c.rights.status) ?? 0) + 1);
 	}
+	const lanes = new Map<string, number>();
+	for (const c of candidates) {
+		const lane = c.discoveredBy?.lane ?? "(recorded before lanes)";
+		lanes.set(lane, (lanes.get(lane) ?? 0) + 1);
+	}
 	return {
 		total: candidates.length,
 		assetScoped: candidates.filter((c) => c.rights.assetScoped).length,
 		byStatus: Object.fromEntries([...byStatus.entries()].sort((a, b) => b[1] - a[1])),
+		byLane: Object.fromEntries([...lanes.entries()].sort((a, b) => b[1] - a[1])),
 		readFiles: candidates.reduce((n, c) => n + c.files.length, 0),
+		readBytes: candidates.reduce(
+			(n, c) => n + c.files.reduce((m, f) => m + f.size, 0),
+			0,
+		),
+		policyApplied: Object.fromEntries(
+			[...new Set(candidates.map((c) => c.policyApplied))].map((policy) => [
+				policy,
+				candidates.filter((c) => c.policyApplied === policy).length,
+			]),
+		),
 	};
 }
 

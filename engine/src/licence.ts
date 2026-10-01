@@ -389,10 +389,35 @@ export const LICENCE_FILENAMES = [
 	"COPYING",
 	"COPYING.md",
 	"COPYING.txt",
+	"NOTICE",
+	"NOTICE.md",
+	"NOTICE.txt",
 	"UNLICENSE",
 	"license",
 	"License",
 ];
+
+/**
+ * Files that often carry attribution or a licence statement without being the
+ * licence itself. They are read as supplementary evidence: a credits section
+ * naming an author is real evidence about who made something, and it is worth
+ * reading before deciding the material is unattributable.
+ */
+const CREDITS_FILENAMES = [
+	"README.md",
+	"README.rst",
+	"README.txt",
+	"README",
+	"CREDITS",
+	"CREDITS.md",
+	"AUTHORS",
+	"NOTICE.md",
+];
+
+export function isCreditsFile(path: string): boolean {
+	const name = path.split("/").pop() ?? "";
+	return CREDITS_FILENAMES.includes(name);
+}
 
 /** Picks the licence file from a tree, ignoring vendored third-party copies. */
 export function pickLicenceFile(paths: string[]): string | null {

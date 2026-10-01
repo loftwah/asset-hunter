@@ -160,18 +160,45 @@ async function cmdHunt(briefPath: string, baseUrl: string) {
 			console.log(
 				`  ${query} p${page} — ${hits.length} hits, ${kept.length} kept${below ? ` (${below} under ${minStars} stars)` : ""}`,
 			);
+			for (const hit of kept) {
+				(hit as SearchHit & { __query?: string; __page?: number }).__query = query;
+				(hit as SearchHit & { __page?: number }).__page = page;
+			}
 			queue.push(...kept);
 			if (hits.length < PER_PAGE) break;
 			page++;
 		}
 	}
 
+	// Which wave each hit came from, so a candidate can be explained rather
+	// than merely listed.
+	const laneByHit = new Map<string, { query: string; page: number; lane: string }>();
+	for (const hit of queue) {
+		if (!laneByHit.has(hit.fullName)) {
+			laneByHit.set(hit.fullName, { query: hit.__query ?? "", page: hit.__page ?? 1, lane: brief.queries.indexOf(hit.__query ?? "") + 1 });
+		}
+	}
+	const laneOf = (fullName: string) =>
+		laneByHit.get(fullName) ?? { query: "unknown", page: 1, lane: 0 };
+
 	const unique = [...new Map(queue.map((h) => [h.fullName, h])).values()].slice(0, maxCandidates);
 	console.log(`\n  inspecting ${unique.length} repositories\n`);
 
+	const budget = {
+		bytes: 0,
+		maxBytes: brief.constraints?.budgets?.maxBytes ?? 20 * 1024 * 1024,
+		maxFiles: maxCandidates,
+	};
+
 	for (const hit of unique) {
+		if (budget.bytes >= budget.maxBytes) {
+			console.log(
+				`\n  ! byte budget reached (${budget.bytes} of ${budget.maxBytes}); ${unique.length - unique.indexOf(hit)} candidate(s) left uninspected`,
+			);
+			break;
+		}
 		try {
-			await inspect(github, hit, brief);
+			await inspect(github, hit, brief, laneOf(hit.fullName), budget);
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
 			console.error(`  ✖ ${hit.fullName}: ${message}`);
@@ -186,6 +213,14 @@ async function cmdHunt(briefPath: string, baseUrl: string) {
 	console.log(`  asset-scoped ${s.assetScoped} (a licence beside the asset, not just the repo)`);
 	for (const [status, n] of Object.entries(s.byStatus)) {
 		console.log(`  ${status.padEnd(12)}${n}`);
+	}
+	console.log(`  bytes read  ${(s.readBytes / 1024).toFixed(0)}kB`);
+	const lanes = Object.entries(s.byLane).filter(([lane]) => lane !== "(recorded before lanes)");
+	if (lanes.length) {
+		console.log(`  lanes       ${lanes.map(([lane, n]) => `${lane}→${n}`).join(" ")}`);
+	}
+	for (const [policy, n] of Object.entries(s.policyApplied)) {
+		if (policy !== "keep") console.log(`  policy      ${policy}: ${n}`);
 	}
 	if (github.rateLimited) {
 		console.log("\n  ! rate limited during this run — the payload covers less than the queries asked for");
@@ -251,8 +286,20 @@ function hitsExcluded(hit: SearchHit, excluded: Set<string>): boolean {
 	return hit.topics.some((t) => excluded.has(t.toLowerCase()));
 }
 
-/** Reads one repository: pin a commit, list the tree, read what is worth reading. */
-async function inspect(github: GitHub, hit: SearchHit, brief: HuntBrief) {
+/**
+ * Reads one repository: pin a commit, list the tree, read what is worth reading.
+ *
+ * `budget` is threaded through rather than read from a global so the whole hunt
+ * has one place that knows how much has been spent, and stopping mid-hunt is a
+ * decision the report can explain.
+ */
+async function inspect(
+	github: GitHub,
+	hit: SearchHit,
+	brief: HuntBrief,
+	lane: { query: string; page: number; lane: string },
+	budget: { bytes: number; maxBytes: number; maxFiles: number },
+) {
 	const ref = await github.resolve(hit.fullName);
 	const tree = await github.tree(ref);
 	const paths = tree.map((n) => n.path);
@@ -270,7 +317,8 @@ async function inspect(github: GitHub, hit: SearchHit, brief: HuntBrief) {
 	);
 	// Media first, then source: a repository that ships both demonstrates the
 	// technique twice, and the media is the more direct evidence of it.
-	const sample = [...assetPaths.slice(0, 3), ...sourcePaths.slice(0, 2)];
+	const perRepo = brief.constraints?.budgets?.maxFilesPerRepo ?? 5;
+	const sample = [...assetPaths.slice(0, 3), ...sourcePaths.slice(0, 2)].slice(0, perRepo);
 
 	let assetEvidence: { text: string; path: string; url: string | null } | null = null;
 	for (const candidate of sample) {
@@ -293,31 +341,55 @@ async function inspect(github: GitHub, hit: SearchHit, brief: HuntBrief) {
 		assetLicenceUrl: assetEvidence?.url ?? null,
 	});
 
-	// Read a bounded set of assets so the classification has something concrete
-	// behind it. These are bytes for hashing, never for execution.
+	// The unlicensed policy, applied before any payload is read rather than
+	// after. `reject` and `metadata-only` mean the bytes never arrive; keeping
+	// them and then refusing to publish them would be theatre.
+	const unlicensed = !["cleared", "attribution"].includes(classification.status);
+	const policy = brief.constraints?.unlicensedPolicy ?? "keep";
+	const policyApplied: Candidate["policyApplied"] = !unlicensed
+		? "keep"
+		: policy === "reject"
+			? "rejected"
+			: policy === "metadata-only"
+				? "metadata-only"
+				: "keep";
+	const readPayload = policyApplied === "keep";
+
 	const files: FileEvidence[] = [];
-	for (const path of sample) {
-		const file = await github.file(ref, path);
-		if (!file) continue;
-		files.push({
-			path,
-			size: file.size,
-			sha256: (await import("node:crypto")).createHash("sha256").update(file.content).digest("hex"),
-			blobUrl: file.url || null,
-			kind: kindFor(path),
-		});
-	}
+	const hashOf = async (file: { content: string }) =>
+		(await import("node:crypto")).createHash("sha256").update(file.content).digest("hex");
+
 	if (licenceFile) {
 		files.push({
 			path: licencePath as string,
 			size: licenceFile.size,
-			sha256: (await import("node:crypto"))
-				.createHash("sha256")
-				.update(licenceFile.content)
-				.digest("hex"),
+			sha256: await hashOf(licenceFile),
 			blobUrl: licenceFile.url,
 			kind: "licence",
 		});
+	}
+
+	let lfsPointers = 0;
+	if (readPayload) {
+		for (const path of sample) {
+			if (budget.bytes >= budget.maxBytes) break;
+			const file = await github.file(ref, path);
+			if (!file) continue;
+			if (file.lfsPointer) {
+				// A pointer is not the asset. Hashing it would produce evidence
+				// that looks real and proves nothing.
+				lfsPointers++;
+				continue;
+			}
+			files.push({
+				path,
+				size: file.size,
+				sha256: await hashOf(file),
+				blobUrl: file.url || null,
+				kind: kindFor(path),
+			});
+			budget.bytes += file.size;
+		}
 	}
 
 	const now = new Date().toISOString();
@@ -338,15 +410,19 @@ async function inspect(github: GitHub, hit: SearchHit, brief: HuntBrief) {
 		rights: rightsSummaryFrom(classification),
 		files,
 		interesting: [...assetPaths, ...sourcePaths].slice(0, 25),
+		discoveredBy: lane,
+		policyApplied,
 		firstSeen: now,
 		lastSeen: now,
 		observations: 1,
 	};
 	const { isNew } = recordCandidate(engineRoot, candidate);
+	const lfsNote = lfsPointers ? ` (${lfsPointers} LFS pointer skipped)` : "";
+	const policyNote = policyApplied === "keep" ? "" : ` [${policyApplied}]`;
 	console.log(
-		`  ${isNew ? "+" : "↻"} ${hit.fullName.padEnd(42)} ${classification.status.padEnd(11)} ${files.length} files`,
+		`  ${isNew ? "+" : "↻"} ${hit.fullName.padEnd(40)} ${classification.status.padEnd(11)} ${files.length} files${lfsNote}${policyNote}`,
 	);
-	void brief;
+	return candidate;
 }
 
 /** Groups the recorded evidence, one vertical at a time. */
@@ -413,7 +489,7 @@ async function cmdSync(baseUrl: string, dryRun: boolean) {
 					headers,
 					"possibilities",
 					possibility.slug,
-					merge.write,
+					merge.merged,
 					existing?._rev ?? null,
 					// A new machine entry is created as a draft: a crawl does not
 					// decide what the public catalogue shows.
@@ -435,7 +511,7 @@ async function cmdSync(baseUrl: string, dryRun: boolean) {
 					headers,
 					"examples",
 					example.slug,
-					exampleMerge.write,
+					exampleMerge.merged,
 					current?._rev ?? null,
 					!current ? false : shouldPublish(current.data ?? null),
 				);
@@ -543,10 +619,16 @@ async function readEntry(
 	const res = await fetch(`${baseUrl}/_emdash/api/content/${collection}/${slug}`, { headers });
 	if (res.status === 404) return null;
 	if (!res.ok) throw new Error(`read ${collection}/${slug} → HTTP ${res.status}`);
-	const body = (await res.json()) as { success?: boolean; data?: { item?: EntryResponse } };
+	const body = (await res.json()) as {
+		success?: boolean;
+		data?: { item?: EntryResponse; _rev?: string };
+	};
 	const item = body.data?.item;
 	if (!body.success || !item) return null;
-	return { data: item.data ?? {}, _rev: item._rev };
+	// The revision token sits beside the item, not inside it. Reading
+	// `item._rev` yields undefined, which makes the sync fall through to the
+	// create path and fail with SLUG_CONFLICT on an entry that plainly exists.
+	return { data: item.data ?? {}, _rev: body.data?._rev ?? item._rev };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -564,6 +646,7 @@ async function cmdVerify(baseUrl: string) {
 	const { headers } = await session(baseUrl);
 	let checked = 0;
 	const problems: string[] = [];
+	const lastSynced = new Set<string>();
 
 	for (const possibility of payload.possibilities) {
 		const entry = await readEntry(baseUrl, headers, "possibilities", possibility.slug);
@@ -573,6 +656,14 @@ async function cmdVerify(baseUrl: string) {
 			continue;
 		}
 		for (const [field, value] of Object.entries(possibility.data)) {
+			// `machine_synced_at` records when the engine last *wrote*, and the
+			// merge policy only moves it when something real changed. A payload
+			// built later than the last write is the normal case, so comparing it
+			// would report every run as a mismatch.
+			if (field === "machine_synced_at") {
+				lastSynced.add(String(entry.data?.[field] ?? "never"));
+				continue;
+			}
 			if (!sameValue(entry.data?.[field], value)) {
 				problems.push(
 					`${possibility.slug}.${field}: catalogue has ${JSON.stringify(entry.data?.[field])}, payload has ${JSON.stringify(value)}`,
@@ -583,6 +674,7 @@ async function cmdVerify(baseUrl: string) {
 
 	console.log(`\nVerify ${payload.fingerprint}`);
 	console.log(`  checked     ${checked} possibilities against the live catalogue`);
+	console.log(`  last write  ${[...lastSynced].sort().join(", ")}`);
 	if (problems.length) {
 		console.error(`  mismatched  ${problems.length}`);
 		for (const p of problems.slice(0, 20)) console.error(`    ✖ ${p}`);

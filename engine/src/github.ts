@@ -43,6 +43,22 @@ export interface RepoRef {
 	ref: string;
 }
 
+/**
+ * Git LFS pointers.
+ *
+ * A pointer file is ~130 bytes of text that *looks* like a path and *looks* like
+ * a small file. Treating one as media produces an evidence record whose hash
+ * proves nothing about the asset, which is exactly the failure content
+ * addressing is supposed to prevent. Detecting them is three lines.
+ */
+export function isLfsPointer(bytes: string): boolean {
+	return (
+		bytes.length < 512 &&
+		bytes.includes("version https://git-lfs.github.com/spec/") &&
+		/^oid sha256:[0-9a-f]{64}$/m.test(bytes)
+	);
+}
+
 export interface RepoFile {
 	path: string;
 	/** Base64 content, exactly as served. */
@@ -51,6 +67,8 @@ export interface RepoFile {
 	size: number;
 	/** The blob URL, recorded as evidence. */
 	url: string;
+	/** True when the bytes are a Git LFS pointer rather than the asset. */
+	lfsPointer?: boolean;
 }
 
 export interface SearchHit {
@@ -229,12 +247,14 @@ export class GitHub {
 					.join("/")}?ref=${ref.ref}`,
 			);
 			if (!body.content) return null;
+			const content = body.content.replace(/\n/g, "");
 			return {
 				path,
-				content: body.content.replace(/\n/g, ""),
+				content,
 				sha: String(body.sha ?? ""),
 				size: Number(body.size ?? 0),
 				url: String(body.url ?? ""),
+				lfsPointer: isLfsPointer(decodeBase64(content)),
 			};
 		} catch (err) {
 			if (err instanceof GitHubError && err.status === 404) return null;
