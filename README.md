@@ -129,7 +129,7 @@ local database seeded (`curl "http://localhost:4321/_emdash/api/setup/dev-bypass
 
 | Check                    | What it proves                                                     |
 | ------------------------ | ------------------------------------------------------------------ |
-| `verify`                 | Types, seed validity, every plate renders, unit + route tests        |
+| `verify`                 | Types, seed validity, every plate renders, unit + route tests. Route tests skip with no server and **fail** on a server that answers errors |
 | `smoke`                  | The public catalogue reads EmDash, not a shadow data source          |
 | `check:admin-edit`       | An EmDash edit reaches the public site, then is restored             |
 | `check:visual`           | Layout, contrast, tap targets, images, headings, focus, console      |

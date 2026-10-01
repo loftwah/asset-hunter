@@ -11,28 +11,65 @@ import assert from "node:assert/strict";
 
 const baseUrl = process.env.AH_URL ?? "http://localhost:4321";
 
-let serverUp = false;
+/**
+ * `up`, `down` or `broken`.
+ *
+ * The middle case matters. A dev server that answers every route with a 500 —
+ * a stale Vite optimiser cache does exactly this — is reachable, so a naive
+ * "can I connect?" check says the suite should run and every assertion fails for
+ * the wrong reason. The worse failure was the one that started here: the check
+ * was `res.ok`, a 500 made `serverUp` false, and 54 route tests skipped and
+ * the suite reported green. A gate that skips because the thing it checks is
+ * broken is worse than no gate.
+ */
+let server = "down";
 before(async () => {
 	try {
-		const res = await fetch(`${baseUrl}/`);
-		serverUp = res.ok;
+		const res = await fetch(`${baseUrl}/`, { redirect: "manual" });
+		server = res.ok ? "up" : "broken";
+		if (server === "broken") {
+			const body = await res.text().catch(() => "");
+			const reason = body.match(/"message":"([^"]{0,200})/)?.[1];
+			console.error(
+				`✖ ${baseUrl} answered HTTP ${res.status}${reason ? `: ${reason}` : ""}`,
+			);
+		}
 	} catch {
-		serverUp = false;
+		server = "down";
 	}
 });
 
-/** Skips rather than fails when no server is running, so unit tests stay usable. */
+/**
+ * Skips only when there is genuinely no server, so `npm run test:unit` stays
+ * usable on its own. A server that is up but broken fails every live test rather
+ * than skipping them.
+ */
 function live(name, fn) {
 	test(name, async (t) => {
-		if (!serverUp) {
+		if (server === "down") {
 			t.skip(`no server at ${baseUrl} — start with \`npm run dev\``);
 			return;
+		}
+		if (server === "broken") {
+			assert.fail(
+				`${baseUrl} is running but not serving (see the message above). Fix the server before reading anything else here.`,
+			);
 		}
 		await fn();
 	});
 }
 
 const text = (html) => html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+
+describe("the suite itself", () => {
+	test("a reachable server must actually serve", () => {
+		assert.notEqual(
+			server,
+			"broken",
+			`${baseUrl} answered an error. Running the route tests against a broken server produces failures that say nothing about the routes.`,
+		);
+	});
+});
 
 describe("wall", () => {
 	live("renders every seeded possibility", async () => {
