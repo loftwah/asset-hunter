@@ -135,13 +135,24 @@ Plates are always `origin: generated`. Never label a repo-shipped plate
 Every data surface needs a real answer for each state, and the empty state must
 be indistinguishable in quality from the loaded one.
 
-| State    | Required                                                             |
-| -------- | -------------------------------------------------------------------- |
-| Loading  | Skeleton matching final geometry; no spinner over content            |
-| Empty    | States what is missing and offers the next action, with a link       |
-| Error    | Says what failed and what to try; never a bare code                   |
-| 404      | Search field plus vertical links, not a dead end                     |
-| Missing media | The `placeholder.svg` plate, which says so on its face         |
+| State          | Required                                                              |
+| -------------- | --------------------------------------------------------------------- |
+| Loading        | Server-rendered, so there is no loading state for catalogue content. If a future async source exists, a skeleton matching final geometry — never a spinner over content |
+| Empty          | States what is missing and offers the next action. `/` with no entries, an empty collection, and search with no matches all have real copy |
+| Error          | Says what failed and what to try; never a bare status code            |
+| 404            | Search field plus vertical links, not a dead end                       |
+| Missing media  | `placeholder.svg`, which says on its face that no plate exists        |
+| Unverified     | A count of `0` with the label "verified sources", which is an honest answer rather than a gap |
+
+### Overlays and drill-in
+
+**No modal detail view.** A drill-in is a page: linkable, shareable, in history,
+navigable by keyboard, and indexable. An overlay over the wall would save a
+navigation and cost all of those.
+
+The one overlay the site does use is the sticky masthead's backdrop — 88%
+opaque with a 14px blur, which separates chrome from content without blurring
+the specimens.
 
 ## 9. Responsive behaviour
 
@@ -154,6 +165,84 @@ be indistinguishable in quality from the loaded one.
 
 Test at 360 and 390 — the two widths where a filter rail or a long title
 actually breaks.
+
+## 9.1 Search and filter affordances
+
+Search is a text input in the masthead with `/` as a global shortcut, and a full
+page at `/search` with facets. Filter is a sticky horizontal rail of chips on the
+wall, and anchor links on `/verticals`.
+
+Rules:
+
+- **The URL is the filter.** `?vertical=<slug>` is the source of truth. The rail
+  writes to it, and an unknown vertical falls back to the full wall rather than
+  erroring.
+- **Chips show counts.** A filter that hides options is a filter that confuses.
+- **Results are counted honestly.** The search summary names each kind
+  separately — `3 possibilities · 1 collection` — so a mismatch in either cannot
+  cancel out.
+- **Queries are `noindex`.** Including the blank search page: it is a starting
+  point, not a destination.
+- **Search matches the problem, not the vocabulary.** The placeholder says
+  "technique, treatment, problem, tool" and the empty state suggests searching for
+  the problem rather than the solution.
+
+## 9.2 Accessibility expectations
+
+Checked automatically by `npm run check:visual` and structurally by
+`tests/routes.test.ts`.
+
+- Body text clears WCAG AA against its painted background (measured, not assumed).
+- Every interactive element clears 44px, achieved with padding where type is
+  intentionally small.
+- Exactly one `h1` per page; no skipped heading levels. Tile titles take a
+  `headingLevel` prop so a page can place them correctly — an `h3` under an `h1`
+  with no `h2` breaks screen-reader navigation.
+- `<html lang="en">` on every route.
+- First Tab moves focus into the page; a skip link precedes everything.
+- Every image has `alt`. Decorative covers use `alt=""`.
+- Status is never colour alone.
+- `prefers-reduced-motion` collapses all transitions and smooth scrolling.
+- Visible 2px focus ring at 3px offset, never removed.
+
+## 9.3 Light and dark
+
+**Dark only.** The catalogue is a lit-vitrine archive: specimens are technical
+diagrams that were drawn for a near-black ground, and the whole plate system
+assumes it. A light theme would mean re-authoring 25 plates and re-tuning every
+contrast pair, for a second presentation of the same content rather than more
+content.
+
+`color-scheme: dark` is declared so form controls and scrollbars follow. If a
+light mode is ever genuinely wanted, it is a separate visual system, not a token
+flip.
+
+## 9.4 Brand tokens → catalogue usage (#16 mapping)
+
+The brand vocabulary below is the one `docs/UNSLOP.md` refers to. Every token is
+already defined in `src/styles/global.css`; this table is where each one is
+allowed to appear.
+
+| Brand token      | Catalogue usage                                   | Never used for                     |
+| ---------------- | ------------------------------------------------- | ---------------------------------- |
+| Aperture mark    | Masthead wordmark, footer                         | Tile decoration                    |
+| Ember            | Active filter, primary button, hero tier wash, focus ring, breadcrumb current | Body text, secondary metadata      |
+| Ink / ink-2      | Titles, body prose                                | Backgrounds                        |
+| Ink-3 / ink-4    | Labels, provenance text, captions                 | Anything that must be read first   |
+| Surface / -2 / -3 | Footer, legend, example rows, inset tracks       | Page background                    |
+| Line / -strong   | Hairlines, tile borders                           | Fills                              |
+| Origin ring      | Representative provenance marker                  | Rights status (different shape)    |
+| Rights dot       | Rights status, legend, drill-in status panel      | Decoration                         |
+
+**Where things live: public catalogue vs EmDash admin.**
+
+The admin is a tool for authorised operators and inherits EmDash's own
+interface. It is not themed with these tokens — restyling the CMS to match a
+consumer catalogue would make the editing surface worse for its actual job.
+
+The public catalogue owns all visual presentation: masthead, wall, drill-in,
+search, 404, RSS, OG images. If a change touches either side, it belongs to
+exactly one.
 
 ## 10. Metadata and social
 

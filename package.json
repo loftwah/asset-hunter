@@ -34,7 +34,8 @@
 		"skills:sync": "node scripts/sync-emdash-skills.mjs",
 		"check:plates": "node scripts/check-plates.mjs",
 		"check:admin-edit": "node scripts/admin-edit-check.mjs",
-		"generate:og": "node scripts/generate-og.mjs"
+		"generate:og": "node scripts/generate-og.mjs",
+		"capture:reference": "node scripts/capture-reference.mjs"
 	},
 	"dependencies": {
 		"@astrojs/cloudflare": "14.3.3",
