@@ -132,7 +132,8 @@ local database seeded (`curl "http://localhost:4321/_emdash/api/setup/dev-bypass
 | `verify`                 | Types, seed validity, every plate renders, unit + route tests. Route tests skip with no server and **fail** on a server that answers errors |
 | `smoke`                  | The public catalogue reads EmDash, not a shadow data source          |
 | `check:admin-edit`       | An EmDash edit reaches the public site, then is restored             |
-| `check:visual`           | Layout, contrast, tap targets, images, headings, focus, console      |
+| `check:visual`           | Layout, contrast, tap targets, images, headings, focus, fold, crop, gutter |
+| `check:perf`             | Transfer, requests, DOM size, CLS and interaction latency against recorded ceilings |
 | `check:specimens`        | Plates are well-formed XML with usable viewBox and alt text          |
 | `check:plates`           | Plates render without text collisions or cropped marks                |
 | `doctor`                 | What is installed versus what is integrated and used                 |
@@ -157,7 +158,7 @@ three were each a real bug found by reading captures rather than source.
 | `npm run dev`             | Dev server on :4321                              |
 | `npm run build`           | Production build                                 |
 | `npm run deploy`          | Build and deploy the Worker                     |
-| `npm run preview`         | Build and serve locally through wrangler        |
+| `npm run preview`         | Build, then serve the built Worker through wrangler |
 | `npm run typecheck`       | `astro check`                                    |
 | `npm run test`            | Unit, seed-contract and route tests             |
 | `npm run test:unit`       | Only the tests that need no server              |
@@ -167,6 +168,7 @@ three were each a real bug found by reading captures rather than source.
 | `npm run check:specimens` | Validate plate structure                         |
 | `npm run check:plates`    | Render plates and measure them                   |
 | `npm run check:visual`    | Visual QA matrix and assertions                  |
+| `npm run check:perf`      | Measure the wall and compare to recorded ceilings |
 | `npm run hunt -- <brief>` | Run a hunt: crawl, read licences, build the payload   |
 | `npm run hunt:sync`      | Reconcile the payload into the catalogue            |
 | `npm run hunt:verify`    | Prove the catalogue matches the payload             |

@@ -95,9 +95,12 @@ const unmapped =
 					</ul>
 
 					<ul class="row__items">
-						{r.items.map((p) => (
+						{r.items.map((p, i) => (
 							<li>
-								<PossibilityTile possibility={p} />
+								{/* Eager for the first row: a lazy image above the fold is the
+								    slowest thing on the page, which is the wrong way round on
+								    a wall whose whole argument is that the media comes first. */}
+								<PossibilityTile possibility={p} eager={i < 4} />
 							</li>
 						))}
 					</ul>

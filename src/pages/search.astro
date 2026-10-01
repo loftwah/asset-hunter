@@ -168,8 +168,8 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 					</p>
 					<h2 class="tag tag-rule">Browse instead</h2>
 					<div class="suggest">
-						{possibilities.slice(0, 8).map((p: Possibility) => (
-							<PossibilityTile possibility={p} />
+						{possibilities.slice(0, 8).map((p: Possibility, i) => (
+							<PossibilityTile possibility={p} eager={i < 4} />
 						))}
 					</div>
 				</div>
@@ -229,7 +229,7 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 					*/}
 					<ol class="found">
 						{
-							hits.map(({ item, possibility }) => {
+							hits.map(({ item, possibility }, index) => {
 								const collection = possibility
 									? undefined
 									: collectionBySlug.get(item.slug ?? "");
@@ -250,7 +250,9 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 														alt=""
 														width="800"
 														height="1000"
-														loading="lazy"
+														/* The first rows are the answer to the question that
+														   brought someone here, so they do not load last. */
+														loading={index < 4 ? "eager" : "lazy"}
 														decoding="async"
 													/>
 												) : (

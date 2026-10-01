@@ -3,7 +3,7 @@
 	"version": "0.1.0",
 	"private": true,
 	"type": "module",
-	"description": "Asset Hunter \u2014 a discovery engine for creative and technical possibilities.",
+	"description": "Asset Hunter — a discovery engine for creative and technical possibilities.",
 	"emdash": {
 		"seed": "seed/seed.json"
 	},
@@ -13,7 +13,7 @@
 	"scripts": {
 		"dev": "astro dev",
 		"build": "astro build",
-		"preview": "astro build && wrangler dev",
+		"preview": "astro build && wrangler dev --config dist/server/wrangler.json",
 		"deploy": "astro build && wrangler deploy",
 		"typecheck": "astro check",
 		"emdash": "emdash",
@@ -37,11 +37,14 @@
 		"check:specimens": "node scripts/check-specimens.mjs",
 		"check:visual": "node scripts/visual-qa.mjs",
 		"verify": "npm run typecheck && npm run seed:check && npm run seed:validate && npm run check:specimens && npm run check:plates && npm run test",
-		"verify:full": "npm run verify && npm run smoke && npm run check:admin-edit && npm run check:visual",		"skills:sync": "node scripts/sync-emdash-skills.mjs",
+		"verify:full": "npm run verify && npm run smoke && npm run check:admin-edit && npm run check:visual",
+		"skills:sync": "node scripts/sync-emdash-skills.mjs",
 		"check:plates": "node scripts/check-plates.mjs",
 		"check:admin-edit": "node scripts/admin-edit-check.mjs",
 		"generate:og": "node scripts/generate-og.mjs",
-		"capture:reference": "node scripts/capture-reference.mjs"
+		"capture:reference": "node scripts/capture-reference.mjs",
+		"check:perf": "node scripts/measure-perf.mjs",
+		"check:perf:write": "node scripts/measure-perf.mjs --write"
 	},
 	"dependencies": {
 		"@astrojs/cloudflare": "14.3.3",
