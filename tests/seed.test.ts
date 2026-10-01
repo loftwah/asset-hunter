@@ -12,7 +12,10 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { allFixtures } from "../src/lib/fixtures.ts";
+import { MEDIA_LABEL } from "../src/lib/vocabulary.ts";
 
 const root = new URL("../", import.meta.url).pathname;
 
@@ -362,5 +365,43 @@ describe("generated artefacts are current", () => {
 			encoding: "utf8",
 		});
 		assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
+	});
+
+	test("every lab fixture references a plate that exists", () => {
+		// The first version of the lab named `edge-to-solid.svg`, which does not
+		// exist. Nothing in the unit tests or the type checker noticed; the
+		// visual-QA sweep did, as a broken image on a page that is supposed to be
+		// the evidence that media works. A fixture pointing at a missing plate is
+		// worse than no fixture, because it looks like coverage.
+		const missing = new Set<string>();
+		for (const fixture of allFixtures()) {
+			const specimen = fixture.possibility.specimen;
+			const image = fixture.possibility.image?.src;
+			for (const path of [specimen, image].filter(Boolean) as string[]) {
+				if (!existsSync(join(root, "public", path.replace(/^\//, "")))) missing.add(path);
+			}
+		}
+		assert.deepEqual([...missing], [], `fixtures reference missing plates: ${[...missing].join(", ")}`);
+	});
+
+	test("the lab covers every media kind the vocabulary knows", () => {
+		const covered = new Set(
+			allFixtures().map((f) => f.possibility.mediaKind).filter(Boolean) as string[],
+		);
+		const missing = Object.keys(MEDIA_LABEL).filter((kind) => !covered.has(kind));
+		assert.deepEqual(
+			missing,
+			[],
+			`media kinds with no lab fixture: ${missing.join(", ")}. A new handler has to add one.`,
+		);
+	});
+
+	test("the lab covers every rights status", () => {
+		const covered = new Set(
+			allFixtures().map((f) => f.possibility.rightsStatus).filter(Boolean) as string[],
+		);
+		for (const status of ["cleared", "attribution", "review", "reference"]) {
+			assert.ok(covered.has(status), `no lab fixture for rights status "${status}"`);
+		}
 	});
 });

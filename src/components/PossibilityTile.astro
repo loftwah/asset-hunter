@@ -5,9 +5,14 @@
  * Design intent: the specimen is the content and the type is a label, not a
  * summary. The whole tile is one link so the hit area is the media, which is
  * both a larger target and a more honest affordance than a small text link.
+ *
+ * The state props exist because every one of those states is a real answer the
+ * catalogue has to be able to give (DESIGN.md §8), and `src/pages/lab.astro`
+ * renders them with this component rather than in a mockup. A state that only
+ * exists as a screenshot is a state nobody has checked.
  */
 import ProvenanceMarkers from "./ProvenanceMarkers.astro";
-import { VERTICAL_LABEL, MEDIA_LABEL } from "../lib/vocabulary";
+import { MEDIA_LABEL, verticalLabel } from "../lib/vocabulary";
 import { mediaSrc, type Possibility } from "../lib/catalogue";
 
 interface Props {
@@ -23,6 +28,22 @@ interface Props {
 	 * breaks screen-reader navigation.
 	 */
 	headingLevel?: "h2" | "h3";
+	/** Shortlisted or compared. Rendered as a marker, never as a colour alone. */
+	saved?: boolean;
+	/** Chosen on the shortlist board. */
+	selected?: boolean;
+	/** Media is still arriving. Geometry is reserved so nothing jumps. */
+	loading?: boolean;
+	/** The preview failed. Named, with what to do next. */
+	brokenPreview?: boolean;
+	/** The upstream source is gone or unreachable. */
+	deadSource?: boolean;
+	/** Force hover styling without a pointer, for screenshots. */
+	forceHover?: boolean;
+	/** Force the focus ring, for screenshots. */
+	forceFocus?: boolean;
+	/** `href` override, so a lab fixture does not link to a real page. */
+	href?: string | null;
 }
 
 const {
@@ -31,28 +52,77 @@ const {
 	hideVertical = false,
 	eager = false,
 	headingLevel = "h3",
+	saved = false,
+	selected = false,
+	loading = false,
+	brokenPreview = false,
+	deadSource = false,
+	forceHover = false,
+	forceFocus = false,
+	href,
 } = Astro.props;
 const Heading = headingLevel;
 // Exposed so the wall's client-side filter can hide non-matching tiles without
 // a second request, and so the DOM order still reflects the server ordering.
 const verticalAttr = p.vertical ?? "";
 const src = mediaSrc(p);
-const vertical = p.vertical ? (VERTICAL_LABEL[p.vertical] ?? p.vertical) : null;
+const vertical = p.vertical ? verticalLabel(p.vertical) : null;
+// A tile with nothing to show says so rather than rendering an empty frame.
+const hasPlate = Boolean(p.image?.src || p.specimen);
+const status = brokenPreview ? "broken" : loading ? "loading" : null;
 ---
 
-<article class:list={["tile", { "tile--featured": featured }]} data-vertical={verticalAttr}>
-	<a class="tile__link" href={`/possibilities/${p.slug}`}>
-		<div class="tile__plate">
-			<img
-				src={src}
-				alt={p.tagline ? `${p.title} — ${p.tagline}` : p.title}
-				width="800"
-				height="1000"
-				loading={eager ? "eager" : "lazy"}
-				decoding="async"
-				fetchpriority={eager ? "high" : "auto"}
-			/>
+<article
+	class:list={[
+		"tile",
+		{ "tile--featured": featured, "tile--saved": saved, "tile--selected": selected },
+	]}
+	data-vertical={verticalAttr}
+>
+	<a
+		class:list={["tile__link", { "is-hovered": forceHover, "is-focused": forceFocus }]}
+		href={href === null ? undefined : (href ?? `/possibilities/${p.slug}`)}
+		aria-disabled={href === null ? "true" : undefined}
+		tabindex={href === null ? -1 : undefined}
+	>
+		<div class="tile__plate" data-state={status ?? undefined}>
+			{
+				hasPlate ? (
+					<img
+						src={src}
+						alt={p.tagline ? `${p.title} — ${p.tagline}` : p.title}
+						width="800"
+						height="1000"
+						loading={eager || loading ? "eager" : "lazy"}
+						decoding="async"
+						fetchpriority={eager ? "high" : "auto"}
+					/>
+				) : (
+					<span class="tile__absent">
+						<span class="tag">No plate</span>
+						<span>Nothing has been generated for this entry yet.</span>
+					</span>
+				)
+			}
+			{
+				loading && (
+					<span class="tile__loading" aria-hidden="true">
+						<span class="tile__loading-bar" />
+					</span>
+				)
+			}
+			{
+				(saved || selected) && (
+					<span class="tile__flags">
+						{selected && (
+							<span class="tag tile__flag tile__flag--selected">On board</span>
+						)}
+						{saved && <span class="tag tile__flag">Saved</span>}
+					</span>
+				)
+			}
 		</div>
+
 		<div class="tile__label">
 			<Heading class="tile__title">{p.title}</Heading>
 			{
@@ -64,6 +134,16 @@ const vertical = p.vertical ? (VERTICAL_LABEL[p.vertical] ?? p.vertical) : null;
 				)
 			}
 			<ProvenanceMarkers rights={p.rightsStatus} origin={p.representativeOrigin} size="sm" />
+
+			{
+				(brokenPreview || deadSource) && (
+					<p class="tile__notice" role="status">
+						{brokenPreview
+							? "Preview failed to load. The entry and its rights are unaffected."
+							: "The upstream source is no longer reachable. The evidence recorded here is what was read at the time."}
+					</p>
+				)
+			}
 		</div>
 	</a>
 </article>
@@ -102,21 +182,122 @@ const vertical = p.vertical ? (VERTICAL_LABEL[p.vertical] ?? p.vertical) : null;
 
 	/* Hover/focus: lift the plate and warm the border. No drop-shadow soup. */
 	.tile__link:hover .tile__plate,
-	.tile__link:focus-visible .tile__plate {
+	.tile__link:focus-visible .tile__plate,
+	.tile__link.is-hovered .tile__plate,
+	.tile__link.is-focused .tile__plate {
 		border-color: var(--ember-line);
 		transform: translateY(-2px);
 		box-shadow: var(--shadow-lift);
 	}
 
-	.tile__link:hover .tile__plate img {
+	.tile__link:hover .tile__plate img,
+	.tile__link.is-hovered .tile__plate img {
 		transform: scale(1.028);
 	}
 
-	.tile__link:focus-visible {
+	.tile__link:focus-visible,
+	.tile__link.is-focused {
 		outline: 2px solid var(--ember);
 		outline-offset: 4px;
 		border-radius: var(--radius);
 	}
+
+	/* --- States ----------------------------------------------------------- */
+
+	/* A tile that is on the shortlist board or saved reads as selected without
+	   shouting: an inset ring rather than a fill, so the plate stays the thing
+	   being looked at. */
+	.tile--selected .tile__plate {
+		box-shadow: inset 0 0 0 2px var(--ember);
+	}
+
+	.tile--saved .tile__plate {
+		border-color: var(--line-loud);
+	}
+
+	/* Loading: the geometry is already reserved by the aspect ratio, so a
+	   shimmer over an empty plate never moves the page. */
+	.tile__plate[data-state="loading"] img {
+		opacity: 0.18;
+	}
+
+	.tile__loading {
+		position: absolute;
+		inset: 0;
+		display: grid;
+		place-items: center;
+	}
+
+	.tile__loading-bar {
+		width: 42%;
+		height: 2px;
+		background: var(--ember);
+		opacity: 0.75;
+	}
+
+	.tile__plate[data-state="broken"] img {
+		opacity: 0.22;
+		filter: grayscale(1);
+	}
+
+	.tile__plate[data-state="broken"]::after {
+		content: "Preview unavailable";
+		position: absolute;
+		inset: auto 0 1rem;
+		text-align: center;
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--ink-3);
+	}
+
+	.tile__absent {
+		display: grid;
+		place-content: center;
+		gap: var(--sp-2);
+		height: 100%;
+		padding: var(--sp-4);
+		text-align: center;
+		font-size: var(--step--2);
+		color: var(--ink-4);
+		background: repeating-linear-gradient(
+			-45deg,
+			var(--surface) 0 8px,
+			var(--surface-2) 8px 16px
+		);
+	}
+
+	.tile__flags {
+		position: absolute;
+		top: var(--sp-2);
+		left: var(--sp-2);
+		display: flex;
+		gap: var(--sp-2);
+	}
+
+	.tile__flag {
+		padding: 0.15rem 0.45rem;
+		background: var(--canvas);
+		border: 1px solid var(--line-loud);
+		border-radius: 999px;
+		color: var(--ink-2);
+	}
+
+	.tile__flag--selected {
+		border-color: var(--ember);
+		color: var(--ember);
+	}
+
+	.tile__notice {
+		font-size: var(--step--2);
+		line-height: 1.45;
+		color: var(--ink-3);
+		border-left: 2px solid var(--ember-line);
+		padding-left: var(--sp-3);
+	}
+
+	/* --- Label ------------------------------------------------------------ */
 
 	.tile__label {
 		display: grid;
@@ -135,7 +316,8 @@ const vertical = p.vertical ? (VERTICAL_LABEL[p.vertical] ?? p.vertical) : null;
 		transition: color var(--dur-fast) var(--ease-out);
 	}
 
-	.tile__link:hover .tile__title {
+	.tile__link:hover .tile__title,
+	.tile__link.is-hovered .tile__title {
 		color: var(--ember);
 	}
 

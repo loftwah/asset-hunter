@@ -1,0 +1,238 @@
+---
+/**
+ * The visual lab (#45).
+ *
+ * A deterministic environment where every media type, every rights status and
+ * every interaction state is rendered with the **production** components and the
+ * production design tokens. Not a mockup: if a card only exists in a screenshot,
+ * nobody has checked that it works.
+ *
+ * Development only. The fixtures describe media that does not exist — a dead
+ * source, a broken preview, an unrated entry — and shipping them would put lies
+ * on the public catalogue. The guard below is a hard 404, not a redirect, so
+ * nothing here is reachable in a production build even if the route were
+ * somehow included.
+ *
+ * `npm run check:visual` captures `/lab` alongside the real routes, so a state
+ * regression is caught by the same command that checks the public pages.
+ */
+import Base from "../layouts/Base.astro";
+import PossibilityTile from "../components/PossibilityTile.astro";
+import { LAB_SECTIONS, allFixtures } from "../lib/fixtures.ts";
+import { RIGHTS_MEANING, ORIGIN_MEANING } from "../lib/vocabulary.ts";
+
+if (!import.meta.env.DEV) {
+	// A lab on the public site would be both a lie and an invitation to break
+	// the catalogue. Refuse rather than redirect: a 404 tells the truth and
+	// leaves no trace in the router.
+	return new Response("Not found", { status: 404 });
+}
+
+const fixtures = allFixtures();
+const rights = [...new Set(fixtures.map((f) => f.possibility.rightsStatus).filter(Boolean))];
+const origins = [...new Set(fixtures.map((f) => f.possibility.representativeOrigin).filter(Boolean))];
+---
+
+<Base
+	title="Visual lab"
+	description="Development-only fixtures covering every media type, rights status and interaction state the catalogue has to survive."
+	path="/lab"
+	noindex
+>
+	<header class="head shell">
+		<p class="tag tag--ember">Development only</p>
+		<h1 class="display head__title">Visual lab</h1>
+		<p class="lede">
+			Every media type, rights status and interaction state, rendered by the real components with
+			the real tokens. Fixtures are literals and nothing here is read from the CMS, so two runs
+			a week apart produce the same pixels and a screenshot diff means something.
+		</p>
+		<p class="note">
+			<strong>This page does not exist in production.</strong> It is refused with a 404 outside
+			<code>astro dev</code>. The fixtures below describe media that does not exist — a dead
+			source, a broken preview, an unrated entry — and shipping them would put lies on the
+			catalogue.
+		</p>
+		<nav class="jump" aria-label="Jump to a section">
+			{
+				LAB_SECTIONS.map((section) => (
+					<a href={`#${section.id}`}>{section.title}</a>
+				))
+			}
+		</nav>
+	</header>
+
+	<nav class="rail shell" aria-label="Lab sections">
+		<ul>
+			<li class="tag">Media kinds: {new Set(fixtures.map((f) => f.possibility.mediaKind).filter(Boolean)).size}</li>
+			<li class="tag">Rights: {rights.length}</li>
+			<li class="tag">Origins: {origins.length}</li>
+			<li class="tag">Fixtures: {fixtures.length}</li>
+		</ul>
+	</nav>
+
+	{
+		LAB_SECTIONS.map((section) => (
+			<section class="section shell" id={section.id} aria-labelledby={`${section.id}-title`}>
+				<h2 class="display section__title" id={`${section.id}-title`}>
+					{section.title}
+				</h2>
+				<p class="section__why">{section.why}</p>
+				<div class="grid">
+					{section.fixtures.map((fixture) => (
+						<figure class="case" data-forced={fixture.hover ? "hover" : fixture.focus ? "focus" : undefined}>
+							<PossibilityTile
+								possibility={fixture.possibility}
+								hideVertical={false}
+								href={null}
+								saved={fixture.flags?.saved ?? false}
+								selected={fixture.flags?.selected ?? false}
+								loading={fixture.flags?.loading ?? false}
+								brokenPreview={fixture.flags?.brokenPreview ?? false}
+								deadSource={fixture.flags?.deadSource ?? false}
+								forceHover={fixture.hover ?? false}
+								forceFocus={fixture.focus ?? false}
+							/>
+							<figcaption class="tag case__note">{fixture.note}</figcaption>
+						</figure>
+					))}
+				</div>
+			</section>
+		))
+	}
+
+	<section class="section shell" id="vocabulary" aria-labelledby="vocabulary-title">
+		<h2 class="display section__title" id="vocabulary-title">Wording the marks promise</h2>
+		<p class="section__why">
+			The tiles above carry these marks. Their meaning is only as good as the sentence that
+			explains them, so the sentences sit next to the evidence.
+		</p>
+		<div class="prose">
+			<h3>Rights</h3>
+			<ul>
+				{rights.map((status) => (
+					<li>
+						<strong>{status}</strong> — {RIGHTS_MEANING[status as keyof typeof RIGHTS_MEANING]}
+					</li>
+				))}
+			</ul>
+			<h3>Origin</h3>
+			<ul>
+				{origins.map((origin) => (
+					<li>
+						<strong>{origin}</strong> — {ORIGIN_MEANING[origin as keyof typeof ORIGIN_MEANING]}
+					</li>
+				))}
+			</ul>
+		</div>
+	</section>
+</Base>
+
+<style>
+	.head {
+		display: grid;
+		gap: var(--sp-4);
+		justify-items: start;
+		padding-block: var(--sp-6) var(--sp-5);
+	}
+
+	.head__title {
+		font-size: var(--step-3);
+	}
+
+	.note {
+		max-width: var(--measure);
+		padding: var(--sp-3) var(--sp-4);
+		border: 1px solid var(--ember-line);
+		border-left-width: 2px;
+		border-radius: var(--radius);
+		background: var(--ember-wash);
+		font-size: var(--step--1);
+		color: var(--ink-2);
+	}
+
+	.note code {
+		font-family: var(--font-mono);
+		color: var(--ink);
+	}
+
+	.jump {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-2);
+	}
+
+	.jump a {
+		display: inline-flex;
+		align-items: center;
+		min-height: 2.75rem;
+		padding: 0.3rem 0.8rem;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		color: var(--ink-2);
+		transition: color var(--dur-fast) var(--ease-out),
+			border-color var(--dur-fast) var(--ease-out);
+	}
+
+	.jump a:hover {
+		color: var(--ink);
+		border-color: var(--ember-line);
+	}
+
+	.rail {
+		padding-block: var(--sp-3);
+		border-block: 1px solid var(--line);
+	}
+
+	.rail ul {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-2) var(--sp-5);
+		list-style: none;
+		padding: 0;
+	}
+
+	.section {
+		padding-block: var(--sp-6);
+		scroll-margin-top: 6rem;
+	}
+
+	.section + .section {
+		border-top: 1px solid var(--line);
+	}
+
+	.section__title {
+		font-size: var(--step-2);
+	}
+
+	.section__why {
+		margin-top: var(--sp-2);
+		max-width: 74ch;
+		color: var(--ink-3);
+		font-size: var(--step--1);
+		line-height: 1.55;
+	}
+
+	.grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+		gap: var(--sp-6) var(--sp-5);
+		margin-top: var(--sp-5);
+	}
+
+	.case {
+		display: grid;
+		gap: var(--sp-2);
+		/* A forced hover state lifts its plate; reserving the space keeps the
+		   row from reflowing when the screenshot is taken. */
+		padding: 2px;
+		margin: -2px;
+		border-radius: var(--radius);
+	}
+
+	.case__note {
+		color: var(--ink-4);
+	}
+</style>
