@@ -356,6 +356,115 @@ describe("signals: ratings and reports", () => {
 	});
 });
 
+/**
+ * A minimal shape for what these tests assert on. `res.json()` is typed
+ * `unknown`, and the alternative — a dozen casts in every assertion — is worse
+ * than declaring the handful of fields the contract promises.
+ */
+interface JsonCatalogue {
+	schema: string;
+	generated: string;
+	fingerprint: string;
+	openReports?: number;
+	counts: {
+		possibilities: number;
+		examples: number;
+		collections: number;
+		verticals: number;
+		rights: Record<string, number>;
+	};
+	possibilities: {
+		id: string;
+		rightsStatus: string | null;
+		novelty: number | null;
+		coverage: number | null;
+		distinctSources: number;
+		communityRating: { average: number | null; count: number };
+		examples: { id: string; rightsStatus: string | null; downloadable: boolean }[];
+	}[];
+	collections: { id: string }[];
+}
+
+const catalogue = async (path = "/api/catalogue.json") =>
+	(await (await fetch(`${baseUrl}${path}`)).json()) as JsonCatalogue;
+
+describe("the agent interface (#58)", () => {
+	live("serves a versioned, published-only catalogue without a token", async () => {
+		const res = await fetch(`${baseUrl}/api/catalogue.json`);
+		assert.equal(res.status, 200);
+		assert.match(res.headers.get("content-type") ?? "", /application\/json/);
+		assert.equal(res.headers.get("x-catalogue-schema"), "asset-hunter.catalogue/1");
+
+		const body = await catalogue();
+		assert.equal(body.schema, "asset-hunter.catalogue/1");
+		assert.ok(body.possibilities.length > 0);
+		assert.equal(body.counts.possibilities, body.possibilities.length);
+		assert.match(body.fingerprint, /^[0-9a-f]{8}$/);
+	});
+
+	live("never includes a draft", async () => {
+		// Machine entries the hunt engine creates are drafts. One that leaked into
+		// the public JSON would be unreviewed crawl output presented as catalogue.
+		const body = await catalogue();
+		const wall = await (await fetch(`${baseUrl}/`)).text();
+		for (const p of body.possibilities) {
+			assert.ok(
+				wall.includes(`/possibilities/${p.id}`),
+				`${p.id} is in the JSON but not on the public wall`,
+			);
+		}
+	});
+
+	live("keeps null distinct from zero", async () => {
+		const body = await catalogue();
+		for (const p of body.possibilities) {
+			for (const field of ["novelty", "coverage"] as const) {
+				const value = p[field];
+				assert.ok(
+					value === null || typeof value === "number",
+					`${p.id}.${field} must be a number or null, got ${typeof value}`,
+				);
+			}
+			const average = p.communityRating.average;
+			assert.ok(average === null || typeof average === "number");
+			assert.ok(Number.isInteger(p.distinctSources));
+		}
+	});
+
+	live("carries rights per example, not just per possibility", async () => {
+		const body = await catalogue();
+		const withExamples = body.possibilities.filter((p) => p.examples.length > 0);
+		assert.ok(withExamples.length > 0);
+		for (const p of withExamples) {
+			for (const e of p.examples) {
+				assert.ok("rightsStatus" in e, `${e.id} has no rightsStatus`);
+				assert.equal(typeof e.downloadable, "boolean");
+			}
+		}
+	});
+
+	live("the fingerprint changes with the content and not with the timestamp", async () => {
+		const first = await catalogue("/api/catalogue.json?fresh=1");
+		const second = await catalogue("/api/catalogue.json?fresh=1");
+		assert.equal(first.fingerprint, second.fingerprint, "same content, same digest");
+		assert.equal(
+			JSON.stringify(first.possibilities),
+			JSON.stringify(second.possibilities),
+			"two fresh fetches must agree on the content",
+		);
+	});
+
+	live("answers a conditional request", async () => {
+		const first = await fetch(`${baseUrl}/api/catalogue.json`);
+		const etag = first.headers.get("etag");
+		assert.ok(etag, "no ETag on a polled endpoint");
+		const second = await fetch(`${baseUrl}/api/catalogue.json`, {
+			headers: { "if-none-match": etag },
+		});
+		assert.equal(second.status, 304);
+	});
+});
+
 describe("collections", () => {
 	live("lists every seeded collection", async () => {
 		const html = await (await fetch(`${baseUrl}/collections`)).text();

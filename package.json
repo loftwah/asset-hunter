@@ -32,6 +32,8 @@
 		"hunt:sync": "node --experimental-strip-types engine/src/cli.ts sync",
 		"hunt:sync:dry": "node --experimental-strip-types engine/src/cli.ts sync --dry-run",
 		"hunt:verify": "node --experimental-strip-types engine/src/cli.ts verify",
+		"catalogue": "node scripts/catalogue.mjs",
+		"catalogue:fetch": "node scripts/catalogue.mjs fetch --out /tmp/asset-hunter-catalogue.json",
 		"check:specimens": "node scripts/check-specimens.mjs",
 		"check:visual": "node scripts/visual-qa.mjs",
 		"verify": "npm run typecheck && npm run seed:check && npm run seed:validate && npm run check:specimens && npm run check:plates && npm run test",

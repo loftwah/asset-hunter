@@ -204,6 +204,14 @@ Astro server-rendered on Cloudflare Workers.
 
 **No `getStaticPaths`.** CMS content is dynamic; every route is server-rendered.
 
+### The agent interface
+
+`GET /api/catalogue.json` serves the published catalogue as a versioned JSON
+contract, built by `src/lib/catalogue-json.ts` from the same loaders the pages
+use, so it cannot drift from what the site shows. Drafts are excluded by the
+query rather than by a filter afterwards, which is why the doctor check for
+leaked machine drafts and this endpoint agree.
+
 ### Content access
 
 All reads go through `src/lib/catalogue.ts`:
@@ -229,9 +237,11 @@ silently rather than erroring:
 - **No parallel CMS, auth or media library.** EmDash owns all three.
 - **No vector database.** Full-text search via EmDash's FTS index is sufficient
   at catalogue scale.
-- **No custom agent framework or MCP surface yet.** An agent-native interface
-  (#58) should read the same catalogue through a documented route, not a
-  parallel store.
+- **No custom agent framework or MCP surface yet.** The agent interface (#58) is
+  a documented read-only JSON route plus a small CLI over it — see
+  [`docs/AGENT_API.md`](AGENT_API.md) — not a parallel store. An MCP surface, if
+  it arrives, should be a thin wrapper over that contract so there is only ever
+  one catalogue to be wrong about.
 
 ## Related issues
 

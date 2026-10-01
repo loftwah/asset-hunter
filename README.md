@@ -173,6 +173,24 @@ three were each a real bug found by reading captures rather than source.
 | `npm run generate:og`     | Regenerate social images from the running product |
 | `npm run skills:sync`     | Refresh vendored EmDash agent skills             |
 
+## The catalogue as an API
+
+An agent should not have to scrape HTML to ask the catalogue a question, so it is
+also a documented JSON contract at `/api/catalogue.json` — read-only,
+published-only, no token, because everything it serves is already public HTML.
+
+```bash
+npm run catalogue -- summary
+npm run catalogue -- search "loop without a seam"
+npm run catalogue -- rights --status reference
+npm run catalogue -- fetch --out /tmp/catalogue.json   # diff a change as a diff
+```
+
+The full contract is in [`docs/AGENT_API.md`](docs/AGENT_API.md). Three things
+survive into it deliberately: `null` is not `0`, rights are per example, and a
+community rating is never blended with a machine measurement or an editorial
+decision.
+
 ## Vocabulary and roadmap
 
 [`docs/VOCABULARY.md`](docs/VOCABULARY.md) is the terminology authority: one

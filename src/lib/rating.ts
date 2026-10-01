@@ -189,7 +189,7 @@ export function aggregateRatings(
 }
 
 /** A readable summary that never overstates what is known. */
-export function ratingSummary(aggregate: Aggregate): string {
+export function ratingSummary(aggregate: Pick<Aggregate, "count" | "average">): string {
 	if (!aggregate.count || aggregate.average === null) {
 		return "No ratings yet. One reader's stars are not a quality score.";
 	}
