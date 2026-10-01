@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Wavetable morph plate: one timbre continuously interpolated between two static spectra">
+	<defs>
+		<linearGradient id="wtbg" x1="0" y1="0" x2="0" y2="1">
+			<stop offset="0%" stop-color="#120f18"/>
+			<stop offset="100%" stop-color="#08090a"/>
+		</linearGradient>
+	</defs>
+	<rect width="800" height="1000" fill="url(#wtbg)"/>
+
+	<g font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">
+		<text x="72" y="70" fill="#ff5a1f" letter-spacing="2">INTERPOLATE THE SPECTRUM</text>
+		<text x="728" y="70" text-anchor="end">the ear hears a new timbre, not a crossfade of two</text>
+	</g>
+
+	<!-- source tables -->
+	<g>
+		<rect x="72" y="104" width="150" height="150" rx="3" fill="#0f0d14" stroke="#2a2436"/>
+		<g stroke="#a68bfb" stroke-opacity=".6" stroke-width="1.2" fill="none">
+			<path d="M72 180 Q96 130 120 168 Q144 206 168 140 Q192 116 222 152"/>
+		</g>
+		<text x="147" y="278" font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#a68bfb" text-anchor="middle">table A · hollow</text>
+	</g>
+	<g>
+		<rect x="250" y="104" width="150" height="150" rx="3" fill="#0d1310" stroke="#22362c"/>
+		<g stroke="#4fce8a" stroke-opacity=".6" stroke-width="1.2" fill="none">
+			<path d="M250 190 Q275 140 300 186 Q325 226 350 150 Q375 130 400 176"/>
+		</g>
+		<text x="325" y="278" font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#4fce8a" text-anchor="middle">table B · reedy</text>
+	</g>
+
+	<!-- the morph, five stops -->
+	<g>
+		<text x="460" y="120" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#6a7178">m = 0.00 → 1.00</text>
+		<g>
+			<!-- 0.0 -->
+			<g transform="translate(452,136)">
+				<rect width="0" height="0" fill="none"/>
+			</g>
+			<g fill="none" stroke-width="1.6">
+				<path d="M452 250 Q476 200 500 238 Q524 274 548 208 Q572 184 600 220" stroke="#a68bfb" opacity=".9"/>
+				<path d="M452 286 Q476 236 500 274 Q524 310 548 244 Q572 220 600 256" stroke="#ff5a1f" opacity=".85"/>
+				<path d="M452 322 Q476 272 500 310 Q524 346 548 280 Q572 256 600 292" stroke="#f2a33c" opacity=".6"/>
+				<path d="M452 250 Q476 236 500 274 Q524 310 548 244 Q572 220 600 256" stroke="#4fce8a" opacity=".25"/>
+			</g>
+			<text x="452" y="352" font-family="ui-monospace,Menlo,monospace" font-size="13" fill="#6a7178">0.00</text>
+			<!-- 0.25 -->
+			<path d="M612 250 Q636 236 660 274 Q684 310 708 244" fill="none" stroke="#a68bfb" stroke-opacity=".8" stroke-width="1.6"/>
+			<path d="M612 286 Q636 236 660 274 Q684 310 708 244" fill="none" stroke="#ff5a1f" stroke-opacity=".8" stroke-width="1.6"/>
+			<path d="M612 322 Q636 272 660 310 Q684 346 708 280" fill="none" stroke="#f2a33c" stroke-opacity=".45" stroke-width="1.6"/>
+			<text x="612" y="352" font-family="ui-monospace,Menlo,monospace" font-size="13" fill="#6a7178">0.25</text>
+			<!-- 0.50 : the midpoint is not either table -->
+			<path d="M452 398 Q476 384 500 414 Q524 442 548 390" fill="none" stroke="#ff5a1f" stroke-width="2.2"/>
+			<circle cx="500" cy="414" r="4" fill="#ff5a1f"/>
+			<text x="452" y="434" font-family="ui-monospace,Menlo,monospace" font-size="13" fill="#ff5a1f">0.50 · no source table here</text>
+		</g>
+	</g>
+
+	<!-- the axis control, and what is actually interpolating -->
+	<g>
+		<rect x="72" y="466" width="656" height="212" rx="3" fill="#0a0d10" stroke="#1c2126"/>
+		<text x="96" y="504" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#6a7178">one parameter, wired to more than one thing</text>
+
+		<g font-family="ui-monospace,Menlo,monospace" font-size="15">
+			<text x="96" y="542" fill="#8b929a">table mix</text>
+			<rect x="220" y="530" width="380" height="6" fill="#1a2026"/>
+			<rect x="220" y="530" width="190" height="6" fill="#ff5a1f"/>
+			<circle cx="410" cy="533" r="6" fill="#f4f2ee"/>
+			<text x="620" y="540" fill="#b6bcc3">0.50</text>
+
+			<text x="96" y="580" fill="#8b929a">odd-harmonic</text>
+			<rect x="220" y="568" width="380" height="6" fill="#1a2026"/>
+			<rect x="220" y="568" width="304" height="6" fill="#a68bfb"/>
+			circle cx="524" cy="571" r="6" fill="#f4f2ee"/>
+			<text x="620" y="578" fill="#b6bcc3">driven</text>
+
+			<text x="96" y="618" fill="#8b929a">even-harmonic</text>
+			<rect x="220" y="606" width="380" height="6" fill="#1a2026"/>
+			<rect x="220" y="606" width="266" height="6" fill="#4fce8a"/>
+			<circle cx="486" cy="609" r="6" fill="#f4f2ee"/>
+			<text x="620" y="616" fill="#b6bcc3">driven</text>
+
+			<text x="96" y="656" fill="#6a7178">spectral tilt</text>
+			<text x="620" y="656" fill="#6a7178" text-anchor="end">follows mix, not a separate knob</text>
+		</g>
+	</g>
+
+	<!-- why not two oscillators with a blend -->
+	<g>
+		<rect x="72" y="714" width="316" height="150" rx="3" fill="#0a0d10" stroke="#1c2126"/>
+		<text x="96" y="750" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#ff8a4c">two osc + blend</text>
+		<g font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#6a7178">
+			<text x="96" y="786">the midpoint sounds like</text>
+			<text x="96" y="810">two detuned things</text>
+			<text x="96" y="840" fill="#6a7178">beating in the midrange</text>
+		</g>
+	</g>
+	<g>
+		<rect x="412" y="714" width="316" height="150" rx="3" fill="#0a0d10" stroke="#4fce8a" stroke-opacity=".3"/>
+		<text x="436" y="750" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#4fce8a">wavetable morph</text>
+		<g font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#8b929a">
+			<text x="436" y="786">one oscillator, one</text>
+			<text x="436" y="810">coherent spectrum</text>
+			<text x="436" y="840" fill="#8b929a">stable under automation</text>
+		</g>
+	</g>
+
+	<g font-family="ui-monospace,Menlo,monospace" font-size="16">
+		<path d="M72 896 H728" stroke="#1c2126"/>
+		<text x="72" y="930" fill="#f4f2ee">One parameter, many consequences — that is what makes it musical.</text>
+		<text x="72" y="962" fill="#6a7178">Build the tables so the midpoint is worth arriving at.</text>
+	</g>
+</svg>

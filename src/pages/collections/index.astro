@@ -1,0 +1,242 @@
+---
+import Base from "../../layouts/Base.astro";
+import { loadCollections, loadPossibilities, mediaSrc } from "../../lib/catalogue";
+
+const { collections, cacheHint } = await loadCollections();
+if (Astro.cache?.enabled) Astro.cache.set(cacheHint);
+const { possibilities } = await loadPossibilities();
+
+// The cover for a collection is the highest-ranked member that has media,
+// chosen from live CMS data rather than a hand-maintained list.
+async function coverFor(slug: string): Promise<string | null> {
+	const member = possibilities.find((p) => p.slug === slug);
+	return member ? mediaSrc(member, "/specimens/placeholder.svg") : null;
+}
+const covers = new Map<string, string | null>();
+for (const c of collections) {
+	if (c.members[0]) covers.set(c.slug, await coverFor(c.members[0].slug));
+}
+
+const totalMembership = collections.reduce((n, c) => n + c.members.length, 0);
+const orphaned = possibilities.filter(
+	(p) => !collections.some((c) => c.members.some((m) => m.slug === p.slug)),
+);
+---
+
+<Base
+	title="Collections"
+	description="Curated, overlapping groupings of Asset Hunter possibilities — the alternative axis to the vertical taxonomy."
+	path="/collections"
+>
+	<header class="head shell">
+		<p class="tag tag--ember">The other axis</p>
+		<h1 class="display head__title">Collections</h1>
+		<p class="lede">
+			Verticals answer "what area is this in". Collections answer "what is it for". They are
+			meant to overlap, and a possibility appearing in three of them is not a mistake.
+		</p>
+		<dl class="tally">
+			<div>
+				<dt class="tag">Collections</dt>
+				<dd>{collections.length}</dd>
+			</div>
+			<div>
+				<dt class="tag">Memberships</dt>
+				<dd>{totalMembership}</dd>
+			</div>
+			<div>
+				<dt class="tag">In no collection</dt>
+				<dd>{orphaned.length}</dd>
+			</div>
+		</dl>
+	</header>
+
+	<div class="list shell">
+		{
+			collections.length === 0 ? (
+				<div class="empty">
+					<h2 class="display empty__title">No collections yet</h2>
+					<p class="lede">
+						Collections are editorial groupings managed in the CMS. None have been
+						published yet — browse the wall by vertical instead.
+					</p>
+					<a class="button" href="/">
+						Open the catalogue
+					</a>
+				</div>
+			) : (
+				collections.map((c) => (
+					<article class="collection">
+						<a class="collection__link" href={`/collections/${c.slug}`}>
+							<div class="collection__cover">
+								<img
+									src={covers.get(c.slug) ?? "/specimens/placeholder.svg"}
+									alt=""
+									width="800"
+									height="1000"
+									loading="lazy"
+									decoding="async"
+								/>
+							</div>
+							<div class="collection__body">
+								<h2 class="collection__title">{c.title}</h2>
+								{c.tagline && <p class="collection__tagline">{c.tagline}</p>}
+								{c.summary && <p class="collection__summary">{c.summary}</p>}
+								<p class="tag">
+									{c.members.length} {c.members.length === 1 ? "possibility" : "possibilities"}
+								</p>
+							</div>
+						</a>
+					</article>
+				))
+			)
+		}
+	</div>
+</Base>
+
+<style>
+	.head {
+		display: grid;
+		gap: var(--sp-4);
+		padding-block: var(--sp-7) var(--sp-6);
+	}
+
+	.head__title {
+		font-size: var(--step-4);
+	}
+
+	.tally {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-4) var(--sp-7);
+		margin-top: var(--sp-3);
+		padding-top: var(--sp-4);
+		border-top: 1px solid var(--line);
+	}
+
+	.tally dt {
+		margin-bottom: 0.15rem;
+	}
+
+	.tally dd {
+		font-family: var(--font-display);
+		font-weight: 600;
+		font-size: var(--step-2);
+		line-height: 1;
+		color: var(--ink);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.list {
+		display: grid;
+		gap: var(--sp-5);
+		padding-bottom: var(--sp-7);
+	}
+
+	.collection {
+		border-top: 1px solid var(--line);
+	}
+
+	.collection__link {
+		display: grid;
+		gap: var(--sp-4);
+		padding-block: var(--sp-5);
+		align-items: start;
+	}
+
+	.collection__cover {
+		width: 100%;
+		max-width: 7rem;
+		aspect-ratio: 4 / 5;
+		overflow: hidden;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		background: var(--surface);
+		transition: border-color var(--dur) var(--ease-out);
+	}
+
+	.collection__cover img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	.collection__link:hover .collection__cover {
+		border-color: var(--ember-line);
+	}
+
+	.collection__link:focus-visible {
+		outline: 2px solid var(--ember);
+		outline-offset: 4px;
+		border-radius: var(--radius);
+	}
+
+	.collection__body {
+		display: grid;
+		gap: var(--sp-2);
+	}
+
+	.collection__title {
+		font-family: var(--font-display);
+		font-weight: 600;
+		font-size: var(--step-3);
+		letter-spacing: -0.025em;
+		color: var(--ink);
+		transition: color var(--dur-fast) var(--ease-out);
+	}
+
+	.collection__link:hover .collection__title {
+		color: var(--ember);
+	}
+
+	.collection__tagline {
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		letter-spacing: 0.03em;
+		color: var(--ember);
+	}
+
+	.collection__summary {
+		color: var(--ink-2);
+		max-width: var(--measure);
+		text-wrap: pretty;
+	}
+
+	.empty {
+		display: grid;
+		gap: var(--sp-4);
+		justify-items: start;
+		padding-block: var(--sp-7);
+		max-width: var(--measure);
+	}
+
+	.empty__title {
+		font-size: var(--step-3);
+	}
+
+	.button {
+		display: inline-flex;
+		align-items: center;
+		min-height: 2.75rem;
+		padding: 0.6rem 1.1rem;
+		background: var(--ember);
+		color: var(--canvas);
+		border: 1px solid var(--ember);
+		border-radius: var(--radius);
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		font-weight: 600;
+		transition: background var(--dur-fast) var(--ease-out);
+	}
+
+	.button:hover {
+		background: color-mix(in srgb, var(--ember) 86%, white);
+	}
+
+	@media (width >= 760px) {
+		.collection__link {
+			grid-template-columns: 7rem minmax(0, 1fr);
+			gap: var(--sp-5);
+		}
+	}
+</style>

@@ -1,0 +1,451 @@
+---
+/**
+ * Search across the catalogue.
+ *
+ * Uses EmDash's full-text search rather than filtering in the browser, so the
+ * result is the same for a visitor with JavaScript, a crawler and a shareable
+ * URL. A blank query is a real state with a real answer (suggest starting
+ * points), not an error.
+ */
+import { search } from "emdash";
+import Base from "../layouts/Base.astro";
+import PossibilityTile from "../components/PossibilityTile.astro";
+import { loadPossibilities, type Possibility } from "../lib/catalogue";
+import { RIGHTS_LABEL, VERTICAL_LABEL } from "../lib/vocabulary";
+
+const query = (Astro.url.searchParams.get("q") ?? "").trim();
+const all = query.length > 0 ? await search(query, { limit: 60 }) : { items: [] };
+
+const { possibilities } = await loadPossibilities();
+const bySlug = new Map(possibilities.map((p) => [p.slug, p]));
+
+// Only possibilities and collections are surfaced as results; examples and
+// pages are reachable through their parent rather than as separate hits.
+const hits = all.items
+	.filter((item) => item.collection === "possibilities" || item.collection === "collections")
+	.map((item) => ({
+		item,
+		possibility: item.collection === "possibilities" ? bySlug.get(item.slug ?? "") : undefined,
+	}))
+	.filter((h) => h.item.collection === "collections" || h.possibility);
+
+const pages = all.items.filter((i) => i.collection === "pages");
+// Counted separately so the summary line cannot overstate what is listed.
+const possibilityHits = hits.filter((h) => h.possibility).length;
+const collectionHits = hits.length - possibilityHits;
+const verticalsInResults = new Map<string, number>();
+for (const h of hits) {
+	const v = h.possibility?.vertical;
+	if (v) verticalsInResults.set(v, (verticalsInResults.get(v) ?? 0) + 1);
+}
+const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a[1]);
+---
+
+<Base
+	title={query ? `Search: ${query}` : "Search"}
+	description={
+		query
+			? `Search results for “${query}” across the Asset Hunter catalogue.`
+			: "Search the Asset Hunter catalogue for distinct creative and technical possibilities."
+	}
+	path={query ? `/search?q=${encodeURIComponent(query)}` : "/search"}
+	noindex={Boolean(query)}
+>
+	<header class="head shell">
+		<p class="tag tag--ember">Search</p>
+		<h1 class="display head__title">{query ? `“${query}”` : "Find a possibility"}</h1>
+
+		<form class="finder" action="/search" method="get" role="search">
+			<label class="visually-hidden" for="q">Search possibilities</label>
+			<input
+				id="q"
+				type="search"
+				name="q"
+				value={query}
+				placeholder="Technique, treatment, problem, tool"
+				autocomplete="off"
+				spellcheck="false"
+				autofocus={!query}
+			/>
+			<button type="submit">Search</button>
+		</form>
+
+		{
+			query && (
+				<p class="count" role="status">
+					{[
+						possibilityHits > 0 &&
+							`${possibilityHits} ${possibilityHits === 1 ? "possibility" : "possibilities"}`,
+						collectionHits > 0 &&
+							`${collectionHits} ${collectionHits === 1 ? "collection" : "collections"}`,
+						pages.length > 0 &&
+							`${pages.length} ${pages.length === 1 ? "page" : "pages"}`,
+					]
+						.filter(Boolean)
+						.join(" · ")}
+					{" · "}
+					for <strong>{query}</strong>
+				</p>
+			)
+		}
+	</header>
+
+	<div class="results shell">
+		{
+			!query && (
+				<div class="blank">
+					<p class="lede">
+						Search by what you are trying to do rather than what you think it is called —
+						"readability at small size", "loop without a seam", "show confidence honestly".
+					</p>
+					<h2 class="tag tag-rule">Browse instead</h2>
+					<div class="suggest">
+						{possibilities.slice(0, 8).map((p: Possibility) => (
+							<PossibilityTile possibility={p} />
+						))}
+					</div>
+				</div>
+			)
+		}
+
+		{
+			query && hits.length === 0 && pages.length === 0 && (
+				<div class="none">
+					<h2 class="display none__title">No match for “{query}”</h2>
+					<p class="lede">
+						Nothing in the catalogue matches that. The catalogue covers 13 verticals and is
+						deliberately partial, so the absence of a result is more likely a gap than an
+						error.
+					</p>
+					<ul class="tries">
+						<li>Try a shorter phrase — full-text search wants keywords, not sentences.</li>
+						<li>Search for the problem rather than the solution.</li>
+						<li>Browse a vertical instead of guessing the vocabulary.</li>
+					</ul>
+					<div class="none__links">
+						<a class="button" href="/verticals">
+							Browse verticals
+						</a>
+						<a class="button button--ghost" href="/">
+							Open the wall
+						</a>
+					</div>
+				</div>
+			)
+		}
+
+		{
+			hits.length > 0 && (
+				<>
+					{verticalFacets.length > 1 && (
+						<nav class="facets" aria-label="Filter results by vertical">
+							<ul>
+								{verticalFacets.map(([slug, n]) => (
+									<li>
+										<a href={`/?vertical=${slug}`} class="chip">
+											<span>{VERTICAL_LABEL[slug] ?? slug}</span>
+											<span class="chip__n">{n}</span>
+										</a>
+									</li>
+								))}
+							</ul>
+						</nav>
+					)}
+
+					<h2 class="visually-hidden">Matching possibilities</h2>
+					<div class="grid">
+						{hits.map(({ item, possibility }) =>
+							possibility ? (
+								<div class="hit">
+									<PossibilityTile possibility={possibility} />
+									{item.snippet && (
+										<p
+											class="hit__snippet"
+											// EmDash sanitises this server-side: source text is escaped
+											// and only literal <mark> tags are permitted.
+											set:html={item.snippet}
+										/>
+									)}
+									<p class="hit__rights">
+										{RIGHTS_LABEL[
+											(possibility.rightsStatus ?? "reference") as keyof typeof RIGHTS_LABEL
+										]}
+									</p>
+								</div>
+							) : (
+								<article class="hit hit--collection">
+									<h3>
+										<a href={`/collections/${item.slug}`}>{item.title}</a>
+									</h3>
+									{item.snippet && <p class="hit__snippet" set:html={item.snippet} />}
+								</article>
+							),
+						)}
+					</div>
+				</>
+			)
+		}
+
+		{
+			pages.length > 0 && (
+				<section class="pages-found">
+					<h2 class="tag tag-rule">Documentation</h2>
+					<ul>
+						{pages.map((p) => (
+							<li>
+								<a href={`/pages/${p.slug}`}>
+									<span class="pages-found__title">{p.title}</span>
+									{p.snippet && <span class="hit__snippet" set:html={p.snippet} />}
+								</a>
+							</li>
+						))}
+					</ul>
+				</section>
+			)
+		}
+	</div>
+</Base>
+
+<style>
+	.head {
+		display: grid;
+		gap: var(--sp-4);
+		justify-items: start;
+		padding-block: var(--sp-7) var(--sp-5);
+	}
+
+	.head__title {
+		font-size: var(--step-4);
+		max-width: 26ch;
+	}
+
+	.finder {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-2);
+		width: 100%;
+		max-width: 40rem;
+	}
+
+	.finder input {
+		flex: 1 1 16rem;
+		min-height: 3rem;
+		padding: 0.7rem 1rem;
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		color: var(--ink);
+		font-family: var(--font-mono);
+		font-size: var(--step-0);
+	}
+
+	.finder input::placeholder {
+		color: var(--ink-4);
+	}
+
+	.finder input:focus {
+		border-color: var(--ember-line);
+		background: var(--surface-2);
+	}
+
+	.finder button,
+	.button {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 3rem;
+		padding: 0.7rem 1.4rem;
+		background: var(--ember);
+		color: var(--canvas);
+		border: 1px solid var(--ember);
+		border-radius: var(--radius);
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		font-weight: 600;
+		cursor: pointer;
+		transition: background var(--dur-fast) var(--ease-out);
+	}
+
+	.finder button:hover,
+	.button:hover {
+		background: color-mix(in srgb, var(--ember) 86%, white);
+	}
+
+	.button--ghost {
+		background: transparent;
+		color: var(--ink-2);
+		border-color: var(--line-loud);
+	}
+
+	.button--ghost:hover {
+		background: var(--surface-2);
+		color: var(--ink);
+	}
+
+	.count {
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		color: var(--ink-3);
+	}
+
+	.count strong {
+		color: var(--ink);
+	}
+
+	.results {
+		padding-bottom: var(--sp-7);
+	}
+
+	.grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+		gap: var(--sp-5) var(--sp-4);
+	}
+
+	.hit {
+		display: grid;
+		gap: var(--sp-2);
+		align-content: start;
+	}
+
+	.hit__snippet {
+		font-size: var(--step--2);
+		line-height: 1.5;
+		color: var(--ink-3);
+	}
+
+	/* EmDash emits <mark> around matched terms; make the highlight legible on
+	   this dark ground rather than leaving browser defaults. */
+	.hit__snippet :global(mark) {
+		background: var(--ember-wash);
+		color: var(--ink);
+		border-radius: 2px;
+		padding: 0 0.15em;
+	}
+
+	.hit__rights {
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		color: var(--ink-4);
+	}
+
+	.hit--collection {
+		padding: var(--sp-4);
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+	}
+
+	.hit--collection h3 {
+		font-family: var(--font-display);
+		font-weight: 600;
+		font-size: var(--step-1);
+		color: var(--ink);
+	}
+
+	.hit--collection a:hover {
+		color: var(--ember);
+	}
+
+	.facets ul {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-2);
+		list-style: none;
+		padding: 0;
+		margin-bottom: var(--sp-5);
+	}
+
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-height: 2.25rem;
+		padding: 0.3rem 0.8rem;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		color: var(--ink-2);
+		transition: color var(--dur-fast) var(--ease-out),
+			border-color var(--dur-fast) var(--ease-out);
+	}
+
+	.chip:hover {
+		color: var(--ink);
+		border-color: var(--ember-line);
+	}
+
+	.chip__n {
+		color: var(--ink-4);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.blank,
+	.none {
+		display: grid;
+		gap: var(--sp-4);
+		justify-items: start;
+		max-width: var(--measure);
+		padding-block: var(--sp-4);
+	}
+
+	.none__title {
+		font-size: var(--step-3);
+	}
+
+	.tries {
+		display: grid;
+		gap: var(--sp-2);
+		padding-left: 1.1rem;
+		color: var(--ink-3);
+		font-size: var(--step--1);
+	}
+
+	.none__links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-3);
+		margin-top: var(--sp-2);
+	}
+
+	.suggest {
+		width: 100%;
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr));
+		gap: var(--sp-5) var(--sp-4);
+	}
+
+	.pages-found {
+		margin-top: var(--sp-7);
+		padding-top: var(--sp-6);
+		border-top: 1px solid var(--line);
+	}
+
+	.pages-found ul {
+		list-style: none;
+		padding: 0;
+		margin-top: var(--sp-4);
+	}
+
+	.pages-found a {
+		display: grid;
+		gap: var(--sp-2);
+		padding: var(--sp-4) 0;
+		border-bottom: 1px solid var(--line);
+	}
+
+	.pages-found__title {
+		font-family: var(--font-display);
+		font-weight: 600;
+		font-size: var(--step-1);
+		color: var(--ink);
+		transition: color var(--dur-fast) var(--ease-out);
+	}
+
+	.pages-found a:hover .pages-found__title {
+		color: var(--ember);
+	}
+</style>

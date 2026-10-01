@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Kinetic type plate: type movement derived from the audio transient rather than an easing curve">
+	<defs>
+		<marker id="ktOn" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+			<path d="M0 0 L6 3 L0 6 Z" fill="#ff5a1f"/>
+		</marker>
+	</defs>
+	<rect width="800" height="1000" fill="#08090a"/>
+
+	<g font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">
+		<text x="72" y="70" fill="#ff5a1f" letter-spacing="2">THE TRANSIENT IS THE KEYFRAME</text>
+		<text x="728" y="70" text-anchor="end">an easing curve cannot anticipate a snare</text>
+	</g>
+
+	<!-- waveform with detected transients marked -->
+	<g>
+		<rect x="72" y="104" width="656" height="176" rx="3" fill="#0a0d10" stroke="#1c2126"/>
+		<path d="M72 192 H728" stroke="#23272c"/>
+		<g stroke="#4cc2f0" stroke-opacity=".7" stroke-width="1.2" fill="none">
+			<path d="M72 192 L84 148 L96 176 L108 128 L120 190 L132 140 L144 192 L156 182 L168 192 L180 176 L192 132 L204 188 L216 158 L228 192 L240 186 L252 192 L264 178 L276 190 L288 192 L300 120 L312 190 L324 160 L336 192 L348 184 L360 192 L372 174 L384 192 L396 188 L408 192 L420 132 L432 190 L444 166 L456 192 L468 180 L480 192 L492 190 L504 192 L516 138 L528 188 L540 158 L552 192 L564 186 L576 192 L588 168 L600 192 L612 190 L624 192 L636 124 L648 190 L660 162 L672 192 L684 182 L696 192 L708 188 L720 192"/>
+		</g>
+		<!-- transients -->
+		<g stroke="#ff5a1f" stroke-width="1.6" stroke-dasharray="3 4" opacity=".85">
+			<path d="M108 104 V280"/><path d="M192 104 V280"/><path d="M300 104 V280"/><path d="M420 104 V280"/><path d="M516 104 V280"/><path d="M636 104 V280"/>
+		</g>
+		<g fill="#ff5a1f">
+			<circle cx="108" cy="128" r="3.5"/><circle cx="192" cy="132" r="3.5"/><circle cx="300" cy="120" r="4"/>
+			<circle cx="420" cy="132" r="3.5"/><circle cx="516" cy="138" r="3.5"/><circle cx="636" cy="124" r="4"/>
+		</g>
+		<g font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#ff5a1f">
+			<text x="108" y="120" text-anchor="middle">1</text>
+			<text x="192" y="124" text-anchor="middle">2</text>
+			<text x="300" y="112" text-anchor="middle">3</text>
+			<text x="420" y="124" text-anchor="middle">4</text>
+			<text x="516" y="130" text-anchor="middle">5</text>
+			<text x="636" y="116" text-anchor="middle">6</text>
+		</g>
+		<text x="88" y="266" font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#6a7178">128 BPM · onset detection · 6 hits in 2 bars</text>
+	</g>
+
+	<!-- the same transients, applied to type -->
+	<g>
+		<rect x="72" y="320" width="656" height="300" rx="3" fill="#0a0d10" stroke="#1c2126"/>
+		<g font-family="Bricolage, Helvetica, Arial, sans-serif" font-weight="800" fill="#f4f2ee">
+			<!-- hit 1: struck, wide -->
+			<text x="88" y="404" font-size="86" textLength="200" lengthAdjust="spacingAndGlyphs">SIGN</text>
+			<!-- hit 2: recovering -->
+			<text x="300" y="404" font-size="76" textLength="184" lengthAdjust="spacingAndGlyphs" opacity=".92">AL</text>
+			<!-- hit 3: the accent — biggest, tightest -->
+			<text x="492" y="404" font-size="106" textLength="150" lengthAdjust="spacingAndGlyphs" fill="#ff5a1f">ON</text>
+			<!-- hit 4: decaying -->
+			<text x="88" y="516" font-size="66" textLength="176" lengthAdjust="spacingAndGlyphs" opacity=".8">THE</text>
+			<!-- hit 5 -->
+			<text x="276" y="516" font-size="58" textLength="164" lengthAdjust="spacingAndGlyphs" opacity=".7">GR</text>
+			<!-- hit 6: release -->
+			<text x="452" y="516" font-size="46" textLength="146" lengthAdjust="spacingAndGlyphs" opacity=".55">ID</text>
+		</g>
+		<!-- attack traces: the size change is the transient -->
+		<g fill="none" stroke="#ff5a1f" stroke-width="1.4" opacity=".7" marker-end="url(#ktOn)">
+			<path d="M84 420 L300 416"/>
+			<path d="M284 420 L492 412"/>
+			<path d="M84 532 L276 524"/>
+			<path d="M270 532 L452 522"/>
+		</g>
+		<text x="88" y="596" font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#6a7178">size = onset energy · width = recovery · the word lands on beat 3</text>
+	</g>
+
+	<!-- what it replaces -->
+	<g>
+		<rect x="72" y="660" width="316" height="176" rx="3" fill="#0a0d10" stroke="#1c2126"/>
+		<text x="96" y="696" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#ff8a4c">the usual approach</text>
+		<g font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">
+			<text x="96" y="732">easeOutBack, 400ms</text>
+			<text x="96" y="764">every word identical</text>
+			<text x="96" y="796">drifts on every mix</text>
+			<text x="96" y="828" fill="#6a7178">and against it</text>
+		</g>
+	</g>
+	<g>
+		<rect x="412" y="660" width="316" height="176" rx="3" fill="#0a0d10" stroke="#1c2126"/>
+		<text x="436" y="696" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#4fce8a">onset-derived</text>
+		<g font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#8b929a">
+			<text x="436" y="732">energy → weight and width</text>
+			<text x="436" y="764">accent is a property of the mix</text>
+			<text x="436" y="796">survives a tempo change</text>
+			<text x="436" y="828" fill="#8b929a">and a different master</text>
+		</g>
+	</g>
+
+	<g font-family="ui-monospace,Menlo,monospace" font-size="16">
+		<text x="72" y="890" fill="#f4f2ee">Cut type on the transient and it stops fighting the music.</text>
+		<text x="72" y="922" fill="#6a7178">Honest warning: you need the transient data, which means analysing the audio.</text>
+		<text x="72" y="954" fill="#4d565f">BPM detection alone is not enough — beats are not accents.</text>
+	</g>
+</svg>

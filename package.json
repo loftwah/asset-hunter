@@ -1,0 +1,50 @@
+{
+	"name": "asset-hunter",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Asset Hunter \u2014 a discovery engine for creative and technical possibilities.",
+	"emdash": {
+		"seed": "seed/seed.json"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"scripts": {
+		"dev": "astro dev",
+		"build": "astro build",
+		"preview": "astro build && wrangler dev",
+		"deploy": "astro build && wrangler deploy",
+		"typecheck": "astro check",
+		"emdash": "emdash",
+		"seed": "seed/seed.json",
+		"seed:build": "node scripts/build-seed.mjs",
+		"seed:check": "node scripts/build-seed.mjs --check",
+		"seed:validate": "emdash seed seed/seed.json --validate",
+		"types": "emdash types",
+		"doctor": "node scripts/doctor.mjs",
+		"smoke": "node scripts/emdash-smoke.mjs",
+		"test": "node --test tests/*.test.ts",
+		"check:specimens": "node scripts/check-specimens.mjs",
+		"check:visual": "node scripts/visual-qa.mjs",
+		"verify": "npm run typecheck && npm run seed:check && npm run seed:validate && npm run check:specimens && npm run test",
+		"skills:sync": "node scripts/sync-emdash-skills.mjs"
+	},
+	"dependencies": {
+		"@astrojs/cloudflare": "14.3.3",
+		"@astrojs/react": "7.0.0",
+		"@emdash-cms/cloudflare": "1.0.1",
+		"astro": "7.3.5",
+		"emdash": "1.0.1",
+		"oxc-transform-react": "^0.145.0",
+		"react": "^19.2.0",
+		"react-dom": "^19.2.0"
+	},
+	"devDependencies": {
+		"@astrojs/check": "0.9.10",
+		"@cloudflare/workers-types": "5.20261001.1",
+		"playwright": "^1.63.0",
+		"typescript": "^5.9.0",
+		"wrangler": "4.145.0"
+	}
+}

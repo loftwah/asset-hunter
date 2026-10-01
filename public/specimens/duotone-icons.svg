@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Duotone icon set plate: two inks and optical size correction rather than one weight of outline">
+	<defs>
+		<g id="ico-bolt"><path d="M34 8 L16 36 H30 L26 60 L46 30 H32 Z"/></g>
+	</defs>
+	<rect width="800" height="1000" fill="#08090a"/>
+
+	<g font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">
+		<text x="72" y="70" fill="#ff5a1f" letter-spacing="2">TWO INKS, CORRECTED</text>
+		<text x="728" y="70" text-anchor="end">stroke weight is a bug, not a style</text>
+	</g>
+
+	<!-- Row 1: single-weight outline — the default, and the problem -->
+	<g>
+		<text x="72" y="116" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#6a7178">outline · one weight · all states identical</text>
+		<g fill="none" stroke="#8b929a" stroke-width="2" stroke-linejoin="round">
+			<g transform="translate(96,140)"><path d="M32 6 L12 34 H28 L24 58 L44 28 H30 Z"/></g>
+			<g transform="translate(216,140)"><circle cx="28" cy="32" r="24"/><path d="M28 14 V32 L42 42"/></g>
+			<g transform="translate(336,140)"><rect x="6" y="10" width="44" height="44" rx="6"/><path d="M18 26 H38 M18 38 H30"/></g>
+			<g transform="translate(456,140)"><path d="M28 6 L50 24 V50 L28 60 L6 50 V24 Z"/></g>
+			<g transform="translate(576,140)"><path d="M8 46 Q28 8 48 46 Z"/><circle cx="28" cy="52" r="5"/></g>
+		</g>
+		<text x="700" y="176" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#ff8a4c" text-anchor="end">small ones go grey</text>
+	</g>
+
+	<!-- Row 2: duotone, with the second ink carrying state -->
+	<g>
+		<text x="72" y="252" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#6a7178">duotone · secondary ink carries meaning, not decoration</text>
+		<g stroke-linejoin="round">
+			<g transform="translate(96,276)">
+				<path d="M32 6 L12 34 H28 L24 58 L44 28 H30 Z" fill="#4cc2f0" opacity=".28"/>
+				<path d="M32 6 L12 34 H28 L24 58 L44 28 H30 Z" fill="none" stroke="#4cc2f0" stroke-width="2"/>
+			</g>
+			<g transform="translate(216,276)">
+				<circle cx="28" cy="32" r="24" fill="#4cc2f0" opacity=".28"/>
+				<path d="M28 14 V32 L42 42" fill="none" stroke="#4cc2f0" stroke-width="2" stroke-linecap="round"/>
+			</g>
+			<g transform="translate(336,276)">
+				<rect x="6" y="10" width="44" height="44" rx="6" fill="#4cc2f0" opacity=".28"/>
+				<path d="M18 26 H38 M18 38 H30" fill="none" stroke="#4cc2f0" stroke-width="2" stroke-linecap="round"/>
+			</g>
+			<g transform="translate(456,276)">
+				<path d="M28 6 L50 24 V50 L28 60 L6 50 V24 Z" fill="#4cc2f0" opacity=".28"/>
+				<path d="M28 6 L50 24 V50 L28 60 L6 50 V24 Z" fill="none" stroke="#4cc2f0" stroke-width="2" stroke-linejoin="round"/>
+			</g>
+			<g transform="translate(576,276)">
+				<path d="M8 46 Q28 8 48 46 Z" fill="#4cc2f0" opacity=".28"/>
+				<path d="M8 46 Q28 8 48 46 Z" fill="none" stroke="#4cc2f0" stroke-width="2" stroke-linejoin="round"/>
+				<circle cx="28" cy="52" r="5" fill="#f4f2ee"/>
+			</g>
+		</g>
+		<text x="700" y="312" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#4fce8a" text-anchor="end">mass is even</text>
+	</g>
+
+	<!-- optical correction: the small one gets a larger frame, not a larger icon -->
+	<g>
+		<text x="72" y="388" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#6a7178">optical size correction · 16 / 20 / 24 / 32 drawn at different apparent weights</text>
+		<g>
+			<g transform="translate(96,412)">
+				<circle cx="26" cy="26" r="22" fill="#ff5a1f" opacity=".9"/>
+			</g>
+			<g transform="translate(216,410)">
+				<circle cx="27" cy="27" r="23" fill="none" stroke="#ff5a1f" stroke-width="4.4"/>
+			</g>
+			<g transform="translate(336,406)">
+				<circle cx="28" cy="28" r="24" fill="none" stroke="#ff5a1f" stroke-width="5"/>
+			</g>
+			<g transform="translate(456,402)">
+				<circle cx="29" cy="29" r="25" fill="none" stroke="#ff5a1f" stroke-width="5.4"/>
+			</g>
+			<g font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#6a7178">
+				<text x="96" y="500">16 · filled</text>
+				<text x="216" y="500">20 · 2.2u</text>
+				<text x="336" y="500">24 · 2.5u</text>
+				<text x="456" y="500">32 · 2.7u</text>
+			</g>
+		</g>
+	</g>
+
+	<!-- the grid every glyph must respect -->
+	<g>
+		<rect x="536" y="400" width="192" height="140" rx="3" fill="#0b0f13" stroke="#1c242a"/>
+		<g stroke="#4cc2f0" stroke-opacity=".22" stroke-width="1">
+			<path d="M536 426 H728 M536 452 H728 M536 478 H728 M536 504 H728 M536 530 H728"/>
+			<path d="M560 400 V540 M584 400 V540 M608 400 V540 M632 400 V540 M656 400 V540 M680 400 V540 M704 400 V540"/>
+		</g>
+		<rect x="560" y="428" width="48" height="48" fill="#ff5a1f" opacity=".8"/>
+		<rect x="608" y="452" width="48" height="48" fill="none" stroke="#ff5a1f" stroke-width="2"/>
+		<rect x="656" y="428" width="48" height="48" fill="none" stroke="#ff5a1f" stroke-width="2.6"/>
+		<text x="632" y="562" font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#4d565f" text-anchor="middle">24 grid · 2u padding</text>
+	</g>
+
+	<!-- the test, stated -->
+	<g font-family="ui-monospace,Menlo,monospace" font-size="16">
+		<path d="M72 606 H728" stroke="#1c2126"/>
+		<text x="72" y="646" fill="#f4f2ee">Blur the set to 40% and read the row as texture, not shapes.</text>
+		<text x="72" y="680" fill="#6a7178">If one glyph reads louder than its neighbours, it is not corrected.</text>
+		<text x="72" y="722" fill="#8b929a">Then check the inverted row — duotone collapses to one ink,</text>
+		<text x="72" y="748" fill="#8b929a">so the outline alone has to survive.</text>
+	</g>
+
+	<!-- inverted proof -->
+	<g>
+		<rect x="72" y="792" width="656" height="112" rx="3" fill="#f4f2ee"/>
+		<g fill="none" stroke="#08090a" stroke-width="2" stroke-linejoin="round">
+			<g transform="translate(112,812)"><path d="M32 6 L12 34 H28 L24 58 L44 28 H30 Z"/></g>
+			<g transform="translate(232,812)"><circle cx="28" cy="32" r="24"/><path d="M28 14 V32 L42 42"/></g>
+			<g transform="translate(352,812)"><rect x="6" y="10" width="44" height="44" rx="6"/><path d="M18 26 H38 M18 38 H30"/></g>
+			<g transform="translate(472,812)"><path d="M28 6 L50 24 V50 L28 60 L6 50 V24 Z"/></g>
+			<g transform="translate(592,812)"><path d="M8 46 Q28 8 48 46 Z"/><circle cx="28" cy="52" r="5"/></g>
+		</g>
+		<g font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#08090a">
+			<text x="688" y="900" text-anchor="end" opacity=".65">one ink · still reads</text>
+		</g>
+	</g>
+
+	<g font-family="ui-monospace,Menlo,monospace" font-size="16">
+		<text x="72" y="944" fill="#6a7178">Duotone is not decoration. The second ink means something.</text>
+	</g>
+</svg>

@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Spatial breadcrumb plate: position communicated by a minimap rather than a path of link crumbs">
+	<defs>
+		<linearGradient id="mapfade" x1="0" y1="0" x2="0" y2="1">
+			<stop offset="0%" stop-color="#4cc2f0" stop-opacity=".26"/>
+			<stop offset="100%" stop-color="#4cc2f0" stop-opacity=".06"/>
+		</linearGradient>
+		<filter id="mapsoft"><feGaussianBlur stdDeviation="10"/></filter>
+	</defs>
+	<rect width="800" height="1000" fill="#08090a"/>
+
+	<!-- the map: a plan, valued by height rather than detail -->
+	<g>
+		<rect x="72" y="112" width="656" height="640" rx="4" fill="#0c1013" stroke="#23272c"/>
+		<!-- rooms as tone masses -->
+		<g stroke="#2c3238" fill="#111619">
+			<path d="M104 144 H360 V300 H104Z"/>
+			<path d="M392 144 H696 V232 H392Z"/>
+			<path d="M392 264 H560 V380 H392Z"/>
+			<path d="M592 264 H696 V440 H592Z"/>
+			<path d="M104 332 H300 V512 H104Z"/>
+			<path d="M332 412 H500 V512 H332Z"/>
+			<path d="M332 544 H560 V716 H332Z"/>
+			<path d="M104 544 H268 V716 H104Z"/>
+			<path d="M592 472 H696 V716 H592Z"/>
+		</g>
+		<!-- connections -->
+		<g stroke="#1e2429" stroke-width="2">
+			<path d="M360 222 H392 M360 266 H392 M446 300 V412 M560 322 H592 M202 300 V332 M316 460 H332 M202 512 V544 M300 630 H332 M560 630 H592"/>
+		</g>
+		<!-- height wash -->
+		<g filter="url(#mapsoft)" opacity=".8">
+			<rect x="120" y="160" width="220" height="120" fill="url(#mapfade)"/>
+			<rect x="408" y="160" width="270" height="56" fill="url(#mapfade)"/>
+			<rect x="120" y="348" width="164" height="148" fill="url(#mapfade)"/>
+			<rect x="348" y="560" width="196" height="140" fill="url(#mapfade)"/>
+		</g>
+
+		<!-- the visited trail, drawn as a single continuous trace -->
+		<path d="M160 620 L206 566 L160 470 L246 400 L336 456 L416 350 L470 214"
+			fill="none" stroke="#ff5a1f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+		<!-- waypoints as nodes, not chevrons -->
+		<g fill="#08090a" stroke="#ff5a1f" stroke-width="2.5">
+			<circle cx="160" cy="620" r="6"/>
+			<circle cx="160" cy="470" r="6"/>
+			<circle cx="246" cy="400" r="6"/>
+			<circle cx="336" cy="456" r="6"/>
+			<circle cx="416" cy="350" r="6"/>
+		</g>
+		<!-- you are here -->
+		<g>
+			<circle cx="470" cy="214" r="16" fill="none" stroke="#ff5a1f" stroke-width="1.5" opacity=".45"/>
+			<circle cx="470" cy="214" r="9" fill="none" stroke="#ff5a1f" stroke-width="1.5" opacity=".7"/>
+			<circle cx="470" cy="214" r="4.5" fill="#ff5a1f"/>
+		</g>
+
+		<!-- labels only where they earn their place -->
+		<g font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">
+			<text x="486" y="220" fill="#b6bcc3">archive</text>
+			<text x="120" y="700">depth 6 · 5 nodes · 2 back</text>
+			<text x="728" y="700" text-anchor="end" fill="#4d565f">no breadcrumb trail</text>
+		</g>
+	</g>
+
+	<!-- a conventional crumb bar, kept for comparison and struck through -->
+	<g opacity=".3">
+		<rect x="72" y="800" width="656" height="1" fill="#23272c"/>
+		<g font-family="ui-monospace,Menlo,monospace" font-size="19">
+			<text x="72" y="844" fill="#6a7178">root</text>
+			<text x="150" y="844" fill="#6a7178">/</text>
+			<text x="172" y="844" fill="#6a7178">systems</text>
+			<text x="278" y="844" fill="#6a7178">/</text>
+			<text x="300" y="844" fill="#6a7178">plugins</text>
+			<text x="392" y="844" fill="#6a7178">/</text>
+			<text x="414" y="844" fill="#6a7178">registry</text>
+			<text x="512" y="844" fill="#6a7178">/</text>
+			<text x="534" y="844" fill="#8b929a">verify</text>
+		</g>
+		<path d="M66 838 L560 850" stroke="#ff5a1f" stroke-width="1.5"/>
+	</g>
+
+	<g font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#4d565f">
+		<text x="72" y="930">position is a place, not a list of names</text>
+		<text x="728" y="930" text-anchor="end">map remains readable at 120px</text>
+	</g>
+</svg>

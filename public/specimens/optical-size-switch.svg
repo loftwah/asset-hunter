@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Optical size switch plate: one typeface whose forms change with size, the way printing always worked">
+	<defs>
+		<pattern id="gridpaper" width="12" height="12" patternUnits="userSpaceOnUse">
+			<path d="M12 0 H0 V12" fill="none" stroke="#141a1f" stroke-width="1"/>
+		</pattern>
+	</defs>
+	<rect width="800" height="1000" fill="#08090a"/>
+
+	<g font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">
+		<text x="72" y="70" fill="#ff5a1f" letter-spacing="2">SIZE IS AN AXIS, NOT A SETTING</text>
+		<text x="728" y="70" text-anchor="end">the same cut, re-drawn for the size it lands at</text>
+	</g>
+
+	<!-- What a single optical master actually does at each size -->
+	<g>
+		<!-- caption size: 11px equivalent, terminals cut, spacing opened -->
+		<g transform="translate(72,120)">
+			<rect width="656" height="120" fill="url(#gridpaper)" opacity=".6"/>
+			<text x="0" y="76" font-family="Bricolage, Helvetica, Arial, sans-serif" font-size="62" fill="#f4f2ee" textLength="600" lengthAdjust="spacingAndGlyphs">Handgloves 23</text>
+			<g font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#4cc2f0">
+				<text x="0" y="104">caption · terminals squared · spacing +6% · thin joints restored</text>
+			</g>
+		</g>
+		<!-- text size: 16px -->
+		<g transform="translate(72,264)">
+			<rect width="656" height="120" fill="url(#gridpaper)" opacity=".6"/>
+			<text x="0" y="76" font-family="Bricolage, Helvetica, Arial, sans-serif" font-size="62" fill="#f4f2ee" textLength="600" lengthAdjust="spacingAndGlyphs">Handgloves 23</text>
+			<g font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#4fce8a">
+				<text x="0" y="104">text · default master · normal spacing</text>
+			</g>
+		</g>
+		<!-- display size: 64px -->
+		<g transform="translate(72,408)">
+			<rect width="656" height="120" fill="url(#gridpaper)" opacity=".6"/>
+			<text x="0" y="92" font-family="Bricolage, Helvetica, Arial, sans-serif" font-size="104" font-weight="700" fill="#f4f2ee" textLength="560" lengthAdjust="spacingAndGlyphs">Handgloves 23</text>
+			<g font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#f2a33c">
+				<text x="0" y="114">display · weight raised · contrast lowered · spacing tightened 4% · curves smoothed</text>
+			</g>
+		</g>
+	</g>
+
+	<!-- the counter-case: what breaks without the axis -->
+	<g>
+		<rect x="72" y="568" width="316" height="176" rx="3" fill="#0d0809" stroke="#ff8a4c" stroke-opacity=".3"/>
+		<text x="96" y="602" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#ff8a4c">single master at 11px</text>
+		<text x="96" y="644" font-family="Bricolage, Helvetica, Arial, sans-serif" font-size="30" fill="#8b929a">Handgloves 23</text>
+		<g font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#6a7178">
+			<text x="96" y="676">counters close up</text>
+			<text x="96" y="700">thin strokes disappear</text>
+			<text x="96" y="724" fill="#6a7178">it reads heavier than it is</text>
+		</g>
+	</g>
+	<g>
+		<rect x="412" y="568" width="316" height="176" rx="3" fill="#08100c" stroke="#4fce8a" stroke-opacity=".3"/>
+		<text x="436" y="602" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#4fce8a">optical size 11</text>
+		<text x="436" y="644" font-family="Bricolage, Helvetica, Arial, sans-serif" font-size="30" fill="#f4f2ee">Handgloves 23</text>
+		<g font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#8b929a">
+			<text x="436" y="676">counters opened</text>
+			<text x="436" y="700">strokes thickened slightly</text>
+			<text x="436" y="724" fill="#8b929a">it reads lighter, as intended</text>
+		</g>
+	</g>
+
+	<!-- the axis, continuous -->
+	<g>
+		<rect x="72" y="780" width="656" height="128" rx="3" fill="#0a0d10" stroke="#1c2126"/>
+		<text x="96" y="812" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#6a7178">opsz 8 → 144, continuous, interpolated at render time</text>
+		<g>
+			<rect x="96" y="832" width="608" height="6" fill="#141a1f"/>
+			<rect x="96" y="832" width="608" height="6" fill="url(#none)"/>
+			<g stroke="#ff5a1f" stroke-width="2">
+				<path d="M96 838 V844"/>
+			</g>
+			<rect x="96" y="830" width="608" height="10" fill="#ff5a1f" opacity=".25"/>
+			<g font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#8b929a">
+				<text x="96" y="872">8</text>
+				<text x="352" y="872" text-anchor="middle">text</text>
+				<text x="704" y="872" text-anchor="end">144</text>
+			</g>
+			<g fill="#ff5a1f">
+				<circle cx="96" cy="835" r="3.5"/>
+				<circle cx="400" cy="835" r="3.5"/>
+				<circle cx="704" cy="835" r="3.5"/>
+			</g>
+		</g>
+	</g>
+
+	<g font-family="ui-monospace,Menlo,monospace" font-size="16">
+		<text x="72" y="944" fill="#f4f2ee">Screen type has always had this problem. It mostly did not have the axis.</text>
+	</g>
+</svg>

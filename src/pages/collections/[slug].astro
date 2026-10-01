@@ -1,0 +1,245 @@
+---
+import Base from "../../layouts/Base.astro";
+import PossibilityTile from "../../components/PossibilityTile.astro";
+import { loadCollection, loadCollections } from "../../lib/catalogue";
+
+const { slug } = Astro.params;
+const collection = await loadCollection(slug ?? "");
+
+if (!collection) {
+	return Astro.rewrite("/404");
+}
+
+const { collections } = await loadCollections();
+// Siblings share members more often than not; suggest the most overlapping one.
+const mine = new Set(collection.members.map((m) => m.slug));
+const siblings = collections
+	.filter((c) => c.slug !== collection.slug)
+	.map((c) => ({
+		c,
+		overlap: c.members.filter((m) => mine.has(m.slug)).length,
+	}))
+	.filter((x) => x.overlap > 0)
+	.sort((a, b) => b.overlap - a.overlap)
+	.slice(0, 3);
+
+const verticals = new Map<string, number>();
+for (const m of collection.members) {
+	if (m.vertical) verticals.set(m.vertical, (verticals.get(m.vertical) ?? 0) + 1);
+}
+---
+
+<Base
+	title={collection.title}
+	description={collection.summary ?? collection.tagline ?? "A curated collection of Asset Hunter possibilities."}
+	path={`/collections/${collection.slug}`}
+>
+	<header class="head shell">
+		<nav class="crumbs" aria-label="Breadcrumb">
+			<a href="/">Catalogue</a>
+			<span aria-hidden="true">/</span>
+			<a href="/collections">Collections</a>
+			<span aria-hidden="true">/</span>
+			<span class="crumbs__here">{collection.title}</span>
+		</nav>
+		{collection.tagline && <p class="tag tag--ember">{collection.tagline}</p>}
+		<h1 class="display head__title">{collection.title}</h1>
+		{collection.summary && <p class="lede">{collection.summary}</p>}
+		<ul class="spread">
+			<li class="tag">{collection.members.length} possibilities</li>
+			{
+				[...verticals.entries()].map(([slug, n]) => (
+					<li class="tag">
+						<a href={`/?vertical=${slug}`}>{slug.replace(/-/g, " ")} · {n}</a>
+					</li>
+				))
+			}
+		</ul>
+	</header>
+
+	{
+		collection.members.length === 0 ? (
+			<div class="empty shell">
+				<h2 class="display empty__title">This collection is empty</h2>
+				<p class="lede">
+					The collection exists in the CMS but has no members yet, which is different from it
+					not existing. Browse the full catalogue instead.
+				</p>
+				<a class="button" href="/">
+					Open the catalogue
+				</a>
+			</div>
+		) : (
+			<section class="wall shell" aria-label={collection.title}>
+					<div class="grid">
+					{collection.members.map((p) => (
+						<PossibilityTile possibility={p} headingLevel="h2" />
+					))}
+				</div>
+			</section>
+		)
+	}
+
+	{
+		siblings.length > 0 && (
+			<aside class="siblings shell" aria-labelledby="siblings-title">
+				<h2 id="siblings-title" class="tag tag-rule">Overlapping collections</h2>
+				<ul>
+					{siblings.map(({ c, overlap }) => (
+						<li>
+							<a href={`/collections/${c.slug}`}>
+								<span class="siblings__title">{c.title}</span>
+								<span class="tag">{overlap} shared</span>
+							</a>
+						</li>
+					))}
+				</ul>
+			</aside>
+		)
+	}
+</Base>
+
+<style>
+	.head {
+		display: grid;
+		gap: var(--sp-4);
+		padding-block: var(--sp-5) var(--sp-6);
+	}
+
+	.crumbs {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.1rem 0.5rem;
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		color: var(--ink-4);
+	}
+
+	.crumbs a,
+	.crumbs__here {
+		display: inline-flex;
+		align-items: center;
+		min-height: 1.75rem;
+		padding-inline: 0.15rem;
+	}
+
+	.crumbs a {
+		color: var(--ink-3);
+		transition: color var(--dur-fast) var(--ease-out);
+	}
+
+	.crumbs a:hover {
+		color: var(--ink);
+	}
+
+	.crumbs__here {
+		color: var(--ink-2);
+	}
+
+	.head__title {
+		font-size: var(--step-4);
+	}
+
+	.spread {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-1) var(--sp-5);
+		list-style: none;
+		padding: var(--sp-3) 0 0;
+		border-top: 1px solid var(--line);
+	}
+
+	.spread li,
+	.spread a {
+		display: inline-flex;
+		align-items: center;
+		min-height: 1.9rem;
+	}
+
+	.spread a {
+		padding-inline: 0.2rem;
+	}
+
+	.spread a:hover {
+		color: var(--ember);
+	}
+
+	.wall {
+		padding-bottom: var(--sp-7);
+	}
+
+	.grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+		gap: var(--sp-5) var(--sp-4);
+	}
+
+	.empty {
+		display: grid;
+		gap: var(--sp-4);
+		justify-items: start;
+		padding-block: var(--sp-7);
+		max-width: var(--measure);
+	}
+
+	.empty__title {
+		font-size: var(--step-3);
+	}
+
+	.button {
+		display: inline-flex;
+		align-items: center;
+		min-height: 2.75rem;
+		padding: 0.6rem 1.1rem;
+		background: var(--ember);
+		color: var(--canvas);
+		border: 1px solid var(--ember);
+		border-radius: var(--radius);
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		font-weight: 600;
+		transition: background var(--dur-fast) var(--ease-out);
+	}
+
+	.button:hover {
+		background: color-mix(in srgb, var(--ember) 86%, white);
+	}
+
+	.siblings {
+		padding-block: var(--sp-6) var(--sp-7);
+		border-top: 1px solid var(--line);
+	}
+
+	.siblings ul {
+		list-style: none;
+		padding: 0;
+		margin-top: var(--sp-4);
+		display: grid;
+		gap: var(--sp-2);
+	}
+
+	.siblings a {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: var(--sp-3);
+		padding: var(--sp-3) 0;
+		border-bottom: 1px solid var(--line);
+	}
+
+	.siblings__title {
+		font-family: var(--font-display);
+		font-weight: 600;
+		font-size: var(--step-1);
+		color: var(--ink);
+		transition: color var(--dur-fast) var(--ease-out);
+	}
+
+	.siblings a:hover .siblings__title {
+		color: var(--ember);
+	}
+</style>

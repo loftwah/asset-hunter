@@ -1,0 +1,402 @@
+---
+/**
+ * Base layout. Owns the document shell, the masthead, the skip link and the
+ * footer. Global tokens are imported here so no page can accidentally render
+ * unstyled.
+ */
+import Wordmark from "../components/Wordmark.astro";
+import "../styles/global.css";
+
+interface Props {
+	title: string;
+	description: string;
+	/** Canonical path, used for the OG URL and canonical link. */
+	path?: string;
+	ogImage?: string;
+	/** Hide the masthead on pages that provide their own full-bleed header. */
+	bare?: boolean;
+	noindex?: boolean;
+}
+const { title, description, path, ogImage = "/og.png", bare = false, noindex = false } = Astro.props;
+
+const canonical = new URL(path ?? Astro.url.pathname, Astro.site ?? Astro.url.origin).href;
+const ogUrl = new URL(ogImage, Astro.site ?? Astro.url.origin).href;
+const fullTitle = path && path !== "/" ? `${title} — Asset Hunter` : "Asset Hunter — A field guide to what can be made";
+
+const nav = [
+	{ href: "/", label: "Catalogue" },
+	{ href: "/verticals", label: "Verticals" },
+	{ href: "/collections", label: "Collections" },
+	{ href: "/pages/licensing", label: "Licensing" },
+	{ href: "/pages/about", label: "About" },
+];
+const current = Astro.url.pathname;
+const isCurrent = (href: string) =>
+	href === "/" ? current === "/" : current === href || current.startsWith(`${href}/`);
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>{fullTitle}</title>
+		<meta name="description" content={description} />
+		<link rel="canonical" href={canonical} />
+		{noindex && <meta name="robots" content="noindex, follow" />}
+		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+		<meta name="theme-color" content="#08090a" />
+		<meta name="color-scheme" content="dark" />
+
+		<meta property="og:type" content="website" />
+		<meta property="og:site_name" content="Asset Hunter" />
+		<meta property="og:title" content={fullTitle} />
+		<meta property="og:description" content={description} />
+		<meta property="og:url" content={canonical} />
+		<meta property="og:image" content={ogUrl} />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:title" content={fullTitle} />
+		<meta name="twitter:description" content={description} />
+		<meta name="twitter:image" content={ogUrl} />
+
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
+		<meta property="og:image:alt" content={description} />
+
+		<link rel="preload" href="/fonts/bricolage.woff2" as="font" type="font/woff2" crossorigin />
+		<link rel="preload" href="/fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin />
+	</head>
+	<body>
+		<a class="skip-link" href="#main">Skip to catalogue</a>
+
+		{
+			!bare && (
+				<header class="masthead">
+					<div class="masthead__inner shell">
+						<a class="brand" href="/" aria-label="Asset Hunter — home">
+							<Wordmark size={20} />
+							<span class="brand__name">Asset Hunter</span>
+						</a>
+						<nav class="nav" aria-label="Primary">
+							<ul>
+								{nav.map((item) => (
+									<li>
+										<a
+											href={item.href}
+											class="nav__link"
+											aria-current={isCurrent(item.href) ? "page" : undefined}
+										>
+											{item.label}
+										</a>
+									</li>
+								))}
+							</ul>
+						</nav>
+						<form class="search" action="/search" method="get" role="search">
+							<label class="visually-hidden" for="q">
+								Search possibilities
+							</label>
+							<input
+								id="q"
+								type="search"
+								name="q"
+								placeholder="Search"
+								autocomplete="off"
+								spellcheck="false"
+							/>
+							<kbd class="search__kbd" aria-hidden="true">/</kbd>
+						</form>
+					</div>
+				</header>
+			)
+		}
+
+		<main id="main">
+			<slot />
+		</main>
+
+		{
+			!bare && (
+				<footer class="footer">
+					<div class="shell footer__inner">
+						<div class="footer__brand">
+							<Wordmark size={18} />
+							<p class="footer__tagline">
+								A discovery engine for creative and technical possibilities.
+							</p>
+						</div>
+						<div class="footer__cols">
+							<div>
+								<h2 class="tag">Catalogue</h2>
+								<ul>
+									<li><a href="/">All possibilities</a></li>
+									<li><a href="/verticals">By vertical</a></li>
+									<li><a href="/collections">Collections</a></li>
+								</ul>
+							</div>
+							<div>
+								<h2 class="tag">Rights</h2>
+								<ul>
+									<li><a href="/pages/licensing">How we classify</a></li>
+									<li><a href="/pages/licensing#statuses">The four statuses</a></li>
+								</ul>
+							</div>
+							<div>
+								<h2 class="tag">Project</h2>
+								<ul>
+									<li><a href="/pages/about">What this is</a></li>
+									<li><a href="https://github.com/loftwah/asset-hunter">Source</a></li>
+								</ul>
+							</div>
+						</div>
+					</div>
+					<p class="footer__legal shell">
+						Reference-only material is never presented as cleared for use. Always read the
+						licence on the source asset.
+					</p>
+				</footer>
+			)
+		}
+
+		<script>
+			// "/" focuses search from anywhere outside a field, which is the
+			// convention for a catalogue with a command palette.
+			const focusSearch = (event: KeyboardEvent) => {
+				if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
+				const target = event.target as HTMLElement | null;
+				const tag = target?.tagName;
+				if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) {
+					return;
+				}
+				const input = document.getElementById("q") as HTMLInputElement | null;
+				if (!input) return;
+				event.preventDefault();
+				input.focus();
+				input.select();
+			};
+			document.addEventListener("keydown", focusSearch);
+		</script>
+	</body>
+</html>
+
+<style>
+	.masthead {
+		position: sticky;
+		top: 0;
+		z-index: 40;
+		background: color-mix(in srgb, var(--canvas) 88%, transparent);
+		backdrop-filter: blur(14px) saturate(140%);
+		border-bottom: 1px solid var(--line);
+	}
+
+	.masthead__inner {
+		display: grid;
+		grid-template-columns: auto 1fr auto;
+		align-items: center;
+		gap: var(--sp-5);
+		min-height: 3.5rem;
+	}
+
+	.brand {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.55rem;
+		min-height: 2.75rem;
+		color: var(--ink);
+	}
+
+	.brand__name {
+		font-family: var(--font-display);
+		font-weight: 600;
+		font-size: var(--step-0);
+		letter-spacing: -0.015em;
+		white-space: nowrap;
+	}
+
+	.nav ul {
+		display: flex;
+		align-items: center;
+		gap: clamp(0.5rem, 1.4vw, 1.5rem);
+		list-style: none;
+		padding: 0;
+		overflow-x: auto;
+		scrollbar-width: none;
+	}
+
+	.nav ul::-webkit-scrollbar {
+		display: none;
+	}
+
+	.nav__link {
+		display: inline-block;
+		padding: 0.5rem 0;
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--ink-3);
+		white-space: nowrap;
+		border-bottom: 1px solid transparent;
+		transition: color var(--dur-fast) var(--ease-out),
+			border-color var(--dur-fast) var(--ease-out);
+	}
+
+	.nav__link:hover {
+		color: var(--ink);
+	}
+
+	.nav__link[aria-current="page"] {
+		color: var(--ink);
+		border-bottom-color: var(--ember);
+	}
+
+	.search {
+		position: relative;
+		display: flex;
+		align-items: center;
+	}
+
+	.search input {
+		width: clamp(7rem, 14vw, 12rem);
+		padding: 0.4rem 2rem 0.4rem 0.7rem;
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		color: var(--ink);
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		transition: border-color var(--dur-fast) var(--ease-out),
+			background var(--dur-fast) var(--ease-out);
+	}
+
+	.search input::placeholder {
+		color: var(--ink-4);
+	}
+
+	.search input:focus {
+		border-color: var(--line-loud);
+		background: var(--surface-2);
+	}
+
+	.search input::-webkit-search-cancel-button {
+		filter: invert(0.6);
+	}
+
+	.search__kbd {
+		position: absolute;
+		right: 0.4rem;
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		color: var(--ink-4);
+		background: var(--surface-2);
+		border: 1px solid var(--line);
+		border-radius: 2px;
+		padding: 0 0.3em;
+		pointer-events: none;
+	}
+
+	@media (width <= 860px) {
+		.masthead__inner {
+			grid-template-columns: 1fr auto;
+			row-gap: 0;
+		}
+
+		.nav {
+			order: 3;
+			grid-column: 1 / -1;
+			padding-bottom: 0.35rem;
+		}
+
+		.search__kbd {
+			display: none;
+		}
+
+		.search input {
+			width: 5.5rem;
+		}
+
+		.search input:focus {
+			width: clamp(9rem, 40vw, 14rem);
+		}
+	}
+
+	.footer {
+		margin-top: var(--sp-9);
+		border-top: 1px solid var(--line);
+		padding-top: var(--sp-6);
+		background: var(--surface);
+	}
+
+	.footer__inner {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+		gap: var(--sp-6);
+		padding-bottom: var(--sp-6);
+	}
+
+	.footer__brand {
+		display: flex;
+		flex-direction: column;
+		gap: var(--sp-3);
+		color: var(--ink-3);
+	}
+
+	.footer__tagline {
+		font-size: var(--step--1);
+		max-width: 28ch;
+		color: var(--ink-3);
+	}
+
+	.footer__cols {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: var(--sp-5);
+	}
+
+	.footer__cols h2 {
+		margin-bottom: var(--sp-3);
+	}
+
+	.footer__cols ul {
+		list-style: none;
+		padding: 0;
+		display: grid;
+		gap: var(--sp-2);
+	}
+
+	/* Inline footer links get a real tap target: the text is small, so the
+	   padding — not the type size — has to carry the 44px minimum. */
+	.footer__cols a {
+		display: inline-block;
+		padding-block: 0.35rem;
+		min-height: 2rem;
+		font-size: var(--step--1);
+		color: var(--ink-2);
+		transition: color var(--dur-fast) var(--ease-out);
+	}
+
+	.footer__cols a:hover {
+		color: var(--ink);
+	}
+
+	.footer__legal {
+		padding-block: var(--sp-4);
+		border-top: 1px solid var(--line);
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		color: var(--ink-4);
+		letter-spacing: 0.02em;
+	}
+
+	@media (width <= 760px) {
+		.footer__inner {
+			grid-template-columns: 1fr;
+		}
+
+		.footer__cols {
+			grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+			gap: var(--sp-5) var(--sp-4);
+		}
+	}
+</style>

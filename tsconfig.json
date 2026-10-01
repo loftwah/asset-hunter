@@ -1,0 +1,18 @@
+{
+	"extends": "astro/tsconfigs/base",
+	"compilerOptions": {
+		// @cloudflare/workers-types supplies `ExportedHandler` and the rest of
+		// the Workers runtime globals used by src/worker.ts.
+		"types": ["node", "@cloudflare/workers-types"],
+		"strictNullChecks": true
+	},
+	"include": [
+		"src",
+		".astro/types.d.ts",
+		"emdash-env.d.ts",
+		"worker-configuration.d.ts",
+		"tests",
+		"scripts"
+	],
+	"exclude": ["dist", "node_modules"]
+}

@@ -1,0 +1,294 @@
+---
+import Base from "../layouts/Base.astro";
+import PossibilityTile from "../components/PossibilityTile.astro";
+import { loadPossibilities, tallyVerticals } from "../lib/catalogue";
+import { MEDIA_LABEL, VERTICAL_LABEL } from "../lib/vocabulary";
+
+const { possibilities, cacheHint } = await loadPossibilities();
+if (Astro.cache?.enabled) Astro.cache.set(cacheHint);
+
+const verticals = tallyVerticals(possibilities);
+
+/**
+ * Coverage is the point of this page. A vertical with one entry and a vertical
+ * with six are not equally mapped, and the layout makes that visible instead of
+ * presenting a flat list that implies completeness.
+ */
+const rows = verticals.map((v) => {
+	const items = possibilities.filter((p) => p.vertical === v.slug);
+	const media = new Map<string, number>();
+	for (const p of items) {
+		if (p.mediaKind) media.set(p.mediaKind, (media.get(p.mediaKind) ?? 0) + 1);
+	}
+	const sources = items.reduce((n, p) => n + (p.distinctSources ?? 0), 0);
+	return {
+		...v,
+		items,
+		sources,
+		media: [...media.entries()].sort((a, b) => b[1] - a[1]),
+		// Shared scale so bar widths are comparable across rows.
+		share: possibilities.length ? v.count / possibilities.length : 0,
+	};
+});
+
+const maxCount = Math.max(...rows.map((r) => r.count), 1);
+const unmapped =
+	possibilities.length - rows.reduce((n, r) => n + r.count, 0);
+---
+
+<Base
+	title="Verticals"
+	description="Coverage of the Asset Hunter catalogue by vertical, with per-vertical media mix and verified upstream source counts."
+	path="/verticals"
+>
+	<header class="head shell">
+		<p class="tag tag--ember">Coverage map</p>
+		<h1 class="display head__title">Verticals</h1>
+		<p class="lede">
+			The catalogue spans {possibilities.length} possibilities across {verticals.length} verticals.
+			This is a map of what is currently mapped — not a claim that the space is covered.
+		</p>
+	</header>
+
+	<nav class="jump shell" aria-label="Jump to vertical">
+		<ul>
+			{
+				rows.map((r) => (
+					<li>
+						<a href={`#${r.slug}`}>
+							<span>{VERTICAL_LABEL[r.slug] ?? r.slug}</span>
+							<span class="jump__n">{r.count}</span>
+						</a>
+					</li>
+				))
+			}
+		</ul>
+	</nav>
+
+	<ol class="rows shell">
+		{
+			rows.map((r) => (
+				<li class="row" id={r.slug}>
+					<div class="row__head">
+						<h2 class="row__title">
+							<a href={`/?vertical=${r.slug}`}>{VERTICAL_LABEL[r.slug] ?? r.slug}</a>
+						</h2>
+						<p class="row__stats">
+							<span class="tag">{r.count} {r.count === 1 ? "possibility" : "possibilities"}</span>
+							<span class="tag">{r.sources} verified sources</span>
+						</p>
+					</div>
+
+					<div
+						class="row__bar"
+						style={`--w:${(r.count / maxCount) * 100}%`}
+						role="img"
+						aria-label={`${r.count} of ${maxCount}, the most mapped vertical`}
+					/>
+
+					<ul class="row__media">
+						{r.media.map(([kind, n]) => (
+							<li class="tag">
+								{MEDIA_LABEL[kind] ?? kind} · {n}
+							</li>
+						))}
+					</ul>
+
+					<ul class="row__items">
+						{r.items.map((p) => (
+							<li>
+								<PossibilityTile possibility={p} />
+							</li>
+						))}
+					</ul>
+				</li>
+			))
+		}
+	</ol>
+
+	<footer class="gap shell">
+		<h2 class="tag tag-rule">Unmapped</h2>
+		<p class="gap__text">
+			{
+				unmapped === 0
+					? "Every catalogued possibility is filed under a vertical. That is a statement about the catalogue, not about the space — the map below is deliberately labelled as partial."
+					: `${unmapped} catalogued possibilities are not yet filed under a vertical.`
+			}
+		</p>
+		<ul class="gap__list">
+			<li>Illustration and character design</li>
+			<li>Generative typography beyond variable axes</li>
+			<li>Live and spatial web</li>
+			<li>Hardware and physical prototyping</li>
+			<li>Writing and narrative systems</li>
+			<li>Data visualisation as an art form</li>
+		</ul>
+		<p class="gap__note">
+			Deliberately left unmapped. A vertical that appears here without entries would be a claim
+			about coverage the catalogue cannot currently support.
+		</p>
+	</footer>
+</Base>
+
+<style>
+	.head {
+		display: grid;
+		gap: var(--sp-4);
+		padding-block: var(--sp-7) var(--sp-5);
+	}
+
+	.head__title {
+		font-size: var(--step-4);
+	}
+
+	.jump {
+		padding-block: var(--sp-3);
+		border-block: 1px solid var(--line);
+	}
+
+	.jump ul {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-2);
+		list-style: none;
+		padding: 0;
+	}
+
+	.jump a {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.45rem;
+		min-height: 2rem;
+		padding: 0.3rem 0.7rem;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		color: var(--ink-2);
+		transition: color var(--dur-fast) var(--ease-out),
+			border-color var(--dur-fast) var(--ease-out);
+	}
+
+	.jump a:hover {
+		color: var(--ink);
+		border-color: var(--ember-line);
+	}
+
+	.jump__n {
+		font-size: 0.85em;
+		color: var(--ink-4);
+		font-variant-numeric: tabular-nums;
+	}
+
+	/* --- Rows --- */
+
+	.rows {
+		list-style: none;
+		padding: var(--sp-6) 0 0;
+		display: grid;
+		gap: var(--sp-7);
+	}
+
+	.row {
+		display: grid;
+		gap: var(--sp-3);
+		scroll-margin-top: 5rem;
+	}
+
+	.row__head {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: var(--sp-3);
+	}
+
+	.row__title {
+		font-family: var(--font-display);
+		font-weight: 600;
+		font-size: var(--step-2);
+		letter-spacing: -0.02em;
+	}
+
+	.row__title a:hover {
+		color: var(--ember);
+	}
+
+	.row__stats {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-3) var(--sp-5);
+	}
+
+	/* Coverage bar: one shared scale so the shape of the map is honest. */
+	.row__bar {
+		height: 3px;
+		background: var(--surface-3);
+		border-radius: 2px;
+		overflow: hidden;
+	}
+
+	.row__bar::before {
+		content: "";
+		display: block;
+		height: 100%;
+		width: var(--w);
+		background: linear-gradient(90deg, var(--ember-dim), var(--ember));
+	}
+
+	.row__media {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-2) var(--sp-4);
+		list-style: none;
+		padding: 0;
+		color: var(--ink-4);
+	}
+
+	.row__items {
+		list-style: none;
+		padding: 0;
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr));
+		gap: var(--sp-5) var(--sp-4);
+		margin-top: var(--sp-2);
+	}
+
+	/* --- Unmapped --- */
+
+	.gap {
+		margin-top: var(--sp-8);
+		padding-block: var(--sp-6);
+		border-top: 1px solid var(--line);
+	}
+
+	.gap__text {
+		margin-top: var(--sp-4);
+		color: var(--ink-2);
+		max-width: var(--measure);
+	}
+
+	.gap__list {
+		list-style: none;
+		padding: 0;
+		margin-top: var(--sp-4);
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+		gap: var(--sp-2) var(--sp-4);
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		color: var(--ink-4);
+	}
+
+	.gap__list li::before {
+		content: "— ";
+		color: var(--line-loud);
+	}
+
+	.gap__note {
+		margin-top: var(--sp-5);
+		font-size: var(--step--1);
+		color: var(--ink-4);
+		max-width: var(--measure);
+	}
+</style>

@@ -1,0 +1,75 @@
+---
+/**
+ * Provenance markers. Rights is the single most consequential fact on a
+ * catalogue tile, so it gets a dot plus a real label rather than colour alone —
+ * colour-blind users and greyscale screenshots must carry the same meaning.
+ */
+import { RIGHTS_LABEL, ORIGIN_LABEL, rightsColor, originColor } from "../lib/vocabulary";
+
+interface Props {
+	rights?: string | null;
+	origin?: string | null;
+	/** Hide the origin marker when the whole wall shares one origin. */
+	showOrigin?: boolean;
+	size?: "sm" | "md";
+}
+const { rights, origin, showOrigin = true, size = "md" } = Astro.props;
+const fs = size === "sm" ? "0.94rem" : "1rem";
+---
+
+<div class="markers" style={`--fs:${fs}`}>
+	{
+		rights && (
+			<span class="marker marker--rights" style={`--c:${rightsColor(rights)}`}>
+				<span class="dot" aria-hidden="true" />
+				<span class="label">{RIGHTS_LABEL[rights as keyof typeof RIGHTS_LABEL] ?? rights}</span>
+			</span>
+		)
+	}
+	{
+		showOrigin && origin && (
+			<span class="marker marker--origin" style={`--c:${originColor(origin)}`}>
+				<span class="dot dot--hollow" aria-hidden="true" />
+				<span class="label">{ORIGIN_LABEL[origin as keyof typeof ORIGIN_LABEL] ?? origin}</span>
+			</span>
+		)
+	}
+</div>
+
+<style>
+	.markers {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.35rem 0.85rem;
+		font-family: var(--font-mono);
+		font-size: var(--fs);
+		line-height: 1.3;
+	}
+
+	.marker {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4em;
+		color: var(--ink-3);
+		white-space: nowrap;
+	}
+
+	.dot {
+		width: 0.5em;
+		height: 0.5em;
+		border-radius: 50%;
+		background: var(--c);
+		flex: none;
+	}
+
+	.dot--hollow {
+		background: none;
+		box-shadow: inset 0 0 0 1.5px var(--c);
+	}
+
+	/* The label carries the meaning; the dot is reinforcement. */
+	.label {
+		letter-spacing: 0.04em;
+	}
+</style>

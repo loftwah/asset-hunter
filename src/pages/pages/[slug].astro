@@ -1,0 +1,213 @@
+---
+/**
+ * Editorial pages (About, Licensing) rendered from EmDash `pages` content.
+ * Portable Text is rendered by EmDash's own component so formatting stays
+ * consistent with the CMS rather than being reimplemented here.
+ */
+import { getEmDashEntry } from "emdash";
+import { PortableText } from "emdash/ui";
+import Base from "../../layouts/Base.astro";
+import HeadingBlock from "../../components/HeadingBlock.astro";
+
+const { slug } = Astro.params;
+const { entry, cacheHint } = await getEmDashEntry("pages", slug ?? "");
+if (Astro.cache?.enabled && cacheHint) Astro.cache.set(cacheHint);
+
+if (!entry) {
+	return Astro.rewrite("/404");
+}
+
+// `entry.id` is the slug used in URLs; `entry.data.id` is the database record
+// id. They are different things and mixing them up yields silent empty results.
+const page = {
+	slug: entry.id,
+	...(entry.data as {
+		title: string;
+		summary?: string;
+		content?: unknown[];
+	}),
+};
+
+// Anchor ids for the licensing page's subheadings, so the footer's deep links
+// resolve. Derived from the heading text rather than maintained by hand.
+function anchorFor(text: string, used: Set<string>): string {
+	const slug = text
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-|-$/g, "");
+	let id = slug;
+	let n = 2;
+	while (used.has(id)) id = `${slug}-${n++}`;
+	used.add(id);
+	return id;
+}
+
+/**
+ * Walks the Portable Text value once, assigning a stable id to each heading.
+ * The same walk feeds both the table of contents and the rendered output, so a
+ * TOC link can never point at an id that does not exist.
+ */
+const used = new Set<string>();
+type Block = { _type?: string; style?: string; children?: { text?: string }[] };
+
+const blocks: { block: Block; id: string | null }[] = (page.content ?? []).map((raw) => {
+	const b = raw as Block;
+	const isHeading = typeof b.style === "string" && /^h[1-6]$/.test(b.style);
+	const text = (b.children ?? []).map((c) => c.text ?? "").join("");
+	return { block: b, id: isHeading ? anchorFor(text, used) : null };
+});
+
+const toc = blocks.filter((b) => b.id && b.block.style === "h2");
+
+/**
+ * Heading ids are attached to the blocks themselves so the renderer can read
+ * them off the node it was handed — PortableText only passes `node` to a block
+ * override, so an id cannot be injected as a separate prop.
+ */
+const content = blocks.map(({ block, id }) => (id ? { ...block, anchorId: id } : block));
+
+// Portable Text maps block *styles* ("h2", "h3"), so both point at one component
+// that reads the level back off the node.
+const headingBlocks = { h2: HeadingBlock, h3: HeadingBlock };
+---
+
+<Base
+	title={page.title}
+	description={page.summary ?? "Asset Hunter documentation."}
+	path={`/pages/${page.slug ?? slug}`}
+>
+	<article class="page shell">
+		<nav class="crumbs" aria-label="Breadcrumb">
+			<a href="/">Catalogue</a>
+			<span aria-hidden="true">/</span>
+			<span class="crumbs__here">{page.title}</span>
+		</nav>
+
+		<header class="head">
+			<h1 class="display head__title">{page.title}</h1>
+			{page.summary && <p class="lede">{page.summary}</p>}
+		</header>
+
+		{
+			toc.length > 1 && (
+				<nav class="toc" aria-labelledby="toc-title">
+					<h2 id="toc-title" class="tag">
+						On this page
+					</h2>
+					<ul>
+						{toc.map((h) => (
+							<li>
+								<a href={`#${h.id}`}>
+									{h.block.children?.map((c) => c.text ?? "").join("")}
+								</a>
+							</li>
+						))}
+					</ul>
+				</nav>
+			)
+		}
+
+		{/* EmDash's PortableText does the rendering; only the heading block
+		    styles are overridden so the anchor ids from the walk above land on
+		    the real heading elements. Everything else (marks, lists, links,
+		    custom types) stays with the CMS component. */}
+		<div class="prose">
+			<PortableText value={content as never} components={{ block: headingBlocks }} />
+		</div>
+	</article>
+</Base>
+
+<style>
+	.page {
+		max-width: 68rem;
+		padding-block: var(--sp-6) var(--sp-8);
+	}
+
+	.crumbs {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.1rem 0.5rem;
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		color: var(--ink-4);
+	}
+
+	.crumbs a,
+	.crumbs__here {
+		display: inline-flex;
+		align-items: center;
+		min-height: 1.75rem;
+		padding-inline: 0.15rem;
+	}
+
+	.crumbs a {
+		color: var(--ink-3);
+		transition: color var(--dur-fast) var(--ease-out);
+	}
+
+	.crumbs a:hover {
+		color: var(--ink);
+	}
+
+	.crumbs__here {
+		color: var(--ink-2);
+	}
+
+	.head {
+		display: grid;
+		gap: var(--sp-4);
+		padding-block: var(--sp-5) var(--sp-5);
+	}
+
+	.head__title {
+		font-size: var(--step-4);
+	}
+
+	.toc {
+		padding: var(--sp-4);
+		margin-bottom: var(--sp-6);
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+	}
+
+	.toc ul {
+		list-style: none;
+		padding: 0;
+		margin-top: var(--sp-2);
+		display: grid;
+	}
+
+	.toc a {
+		display: flex;
+		align-items: center;
+		min-height: 2.25rem;
+		padding-block: 0.25rem;
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		color: var(--ink-2);
+		transition: color var(--dur-fast) var(--ease-out);
+	}
+
+	.toc a:hover {
+		color: var(--ember);
+	}
+
+	.prose {
+		max-width: var(--measure);
+	}
+
+	/* EmDash renders Portable Text as block children; style them through here so
+	   headings and paragraphs match the rest of the site. */
+	.prose :global(h2) {
+		scroll-margin-top: 5rem;
+		margin-top: var(--sp-7);
+	}
+
+	.prose :global(h3) {
+		scroll-margin-top: 5rem;
+	}
+</style>

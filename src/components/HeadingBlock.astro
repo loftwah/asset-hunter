@@ -1,0 +1,23 @@
+---
+/**
+ * Portable Text block override that applies an anchor id to a heading.
+ *
+ * Needed so the table of contents on an editorial page links to real heading
+ * elements. Astro cannot define a component with JSX inside frontmatter, so
+ * this lives in its own file and is bound to ids by the caller through a prop.
+ */
+interface Props {
+	/** Heading level, from the Portable Text block style. */
+	level?: "h2" | "h3";
+	node?: { children?: { text?: string }[]; anchorId?: string; style?: string };
+}
+
+const { level = "h2", node } = Astro.props;
+// Portable Text passes the block `style` on the node; fall back to the prop so
+// the component also works when used directly.
+const style = typeof node?.style === "string" ? node.style : null;
+const Tag = (style === "h2" || style === "h3" ? style : level) as "h2" | "h3";
+const text = (node?.children ?? []).map((c) => c.text ?? "").join("");
+---
+
+<Tag id={node?.anchorId}>{text}</Tag>

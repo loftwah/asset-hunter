@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Seamless loop plate: a cycle closed by construction rather than by crossfade">
+	<defs>
+		<marker id="slArrow" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto">
+			<path d="M0 0 L7 3.5 L0 7 Z" fill="#4fce8a"/>
+		</marker>
+	</defs>
+	<rect width="800" height="1000" fill="#08090a"/>
+
+	<g font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">
+		<text x="72" y="70" fill="#ff5a1f" letter-spacing="2">THE SEAM IS A SOLVING PROBLEM</text>
+		<text x="728" y="70" text-anchor="end">crossfading hides it; periodicity removes it</text>
+	</g>
+
+	<!-- The three ways to close a loop, and what each costs -->
+	<g>
+		<rect x="72" y="104" width="200" height="260" rx="3" fill="#0a0d10" stroke="#1c2126"/>
+		<text x="92" y="136" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#ff8a4c">1 · crossfade</text>
+		<g>
+			<rect x="92" y="156" width="160" height="120" fill="#141a20"/>
+			<rect x="92" y="156" width="160" height="34" fill="#ff5a1f" opacity=".22"/>
+			<rect x="92" y="242" width="160" height="34" fill="#4cc2f0" opacity=".18"/>
+			<path d="M92 276 H252" stroke="#4fce8a" stroke-width="1.6" stroke-dasharray="4 4"/>
+		</g>
+		<g font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#6a7178">
+			<text x="92" y="308">the dip you can hear</text>
+			<text x="92" y="332">doubles your length</text>
+			<text x="92" y="352" fill="#6a7178">kills the transient</text>
+		</g>
+	</g>
+
+	<g>
+		<rect x="300" y="104" width="200" height="260" rx="3" fill="#0a0d10" stroke="#1c2126"/>
+		<text x="320" y="136" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#f2a33c">2 · ping-pong</text>
+		<g>
+			<rect x="320" y="156" width="160" height="120" fill="#141a20"/>
+			<g stroke="#a68bfb" stroke-opacity=".5" stroke-width="1.4" fill="none">
+				<path d="M320 200 Q348 168 376 200 Q404 232 432 200"/>
+				<path d="M320 216 Q348 184 376 216 Q404 248 432 216"/>
+			</g>
+			<path d="M320 276 H480" stroke="#f2a33c" stroke-width="1.6" stroke-dasharray="4 4"/>
+			<text x="400" y="292" font-family="ui-monospace,Menlo,monospace" font-size="13" fill="#f2a33c" text-anchor="middle">reversal point</text>
+		</g>
+		<g font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#6a7178">
+			<text x="320" y="320">free and instant</text>
+			<text x="320" y="344">but the reversal is</text>
+			<text x="320" y="364">always audible</text>
+		</g>
+	</g>
+
+	<g>
+		<rect x="528" y="104" width="200" height="260" rx="3" fill="#0a0d10" stroke="#4fce8a" stroke-opacity=".35"/>
+		<text x="548" y="136" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#4fce8a">3 · periodicity</text>
+		<g>
+			<rect x="548" y="156" width="160" height="120" fill="#141a20"/>
+			<!-- a cycle whose last state equals its first -->
+			<g stroke="#4fce8a" stroke-opacity=".55" stroke-width="1.4" fill="none">
+				<path d="M548 232 Q572 172 596 208 Q620 244 644 184 Q668 172 708 200"/>
+			</g>
+			<g stroke="#4fce8a" stroke-opacity=".25" stroke-width="1" fill="none">
+				<path d="M548 220 Q572 162 596 198 Q620 234 644 176 Q668 164 708 192"/>
+				<path d="M548 244 Q572 182 596 218 Q620 254 644 192 Q668 180 708 208"/>
+			</g>
+			<circle cx="548" cy="232" r="4" fill="#4fce8a"/>
+			<circle cx="708" cy="200" r="4" fill="none" stroke="#4fce8a"/>
+			<path d="M712 200 Q726 214 712 228" fill="none" stroke="#4fce8a" stroke-width="1.4" marker-end="url(#slArrow)"/>
+		</g>
+		<g font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#8b929a">
+			<text x="548" y="320">end state = start state</text>
+			<text x="548" y="344">no dip, no reversal</text>
+			<text x="548" y="364" fill="#8b929a">you must design for it</text>
+		</g>
+	</g>
+
+	<!-- the constraint, as a graph -->
+	<g>
+		<rect x="72" y="404" width="656" height="240" rx="3" fill="#0a0d10" stroke="#1c2126"/>
+		<text x="96" y="440" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#6a7178">value at t = 0 must equal value at t = period</text>
+		<g stroke="#1e2429">
+			<path d="M96 480 H704 M96 530 H704 M96 580 H704"/>
+			<path d="M96 470 V600 M240 480 V600 M384 470 V600 M528 480 V600 M704 470 V600"/>
+		</g>
+		<g fill="none" stroke="#4fce8a" stroke-width="2">
+			<path d="M96 596 Q168 520 240 540 Q312 560 384 500 Q456 440 528 512 Q600 584 672 508 Q690 490 704 472"/>
+		</g>
+		<!-- the endpoint check -->
+		<g>
+			<circle cx="96" cy="596" r="5" fill="#4fce8a"/>
+			<circle cx="704" cy="472" r="5" fill="none" stroke="#4fce8a" stroke-dasharray="3 3"/>
+			<path d="M96 596 Q96 472 704 472" fill="none" stroke="#4fce8a" stroke-opacity=".3" stroke-dasharray="4 6"/>
+			<text x="716" y="466" font-family="ui-monospace,Menlo,monospace" font-size="13" fill="#4fce8a" text-anchor="end">same</text>
+		</g>
+		<text x="96" y="628" font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#6a7178">the dotted line is the error you are trying to eliminate — solve for the derivative, not the value</text>
+	</g>
+
+	<!-- where this shows up across the product -->
+	<g font-family="ui-monospace,Menlo,monospace" font-size="16">
+		<text x="72" y="700" fill="#8b929a">applies to</text>
+		<g fill="#6a7178">
+			<text x="72" y="734">scroll-linked marquees and background motion</text>
+			<text x="72" y="764">shader time uniforms (mod the period, not the offset)</text>
+			<text x="72" y="794">ambient audio beds</text>
+			<text x="72" y="824">specimen animations on the wall</text>
+		</g>
+		<text x="728" y="734" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#4d565f" text-anchor="end">reduced-motion users get a static frame</text>
+	</g>
+
+	<g font-family="ui-monospace,Menlo,monospace" font-size="16">
+		<path d="M72 862 H728" stroke="#1c2126"/>
+		<text x="72" y="898" fill="#f4f2ee">A crossfade is a patch. Periodicity is a design.</text>
+		<text x="72" y="932" fill="#6a7178">The second one is invisible because nothing has to be hidden.</text>
+	</g>
+</svg>

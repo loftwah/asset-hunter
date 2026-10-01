@@ -1,0 +1,163 @@
+---
+/**
+ * 404. Astro renders this for unmatched routes and for pages that rewrite here.
+ *
+ * The search field is the useful action on a dead end, so it is offered rather
+ * than a bare "not found" — and it is autofocused, since arriving here by typo
+ * means the user's next move is a correction.
+ */
+import Base from "../layouts/Base.astro";
+import { loadPossibilities, tallyVerticals } from "../lib/catalogue";
+import { VERTICAL_LABEL } from "../lib/vocabulary";
+
+const { possibilities } = await loadPossibilities();
+const verticals = tallyVerticals(possibilities);
+---
+
+<Base
+	title="Not found"
+	description="That page does not exist. Search the Asset Hunter catalogue instead."
+	path="/404"
+	noindex
+>
+	<section class="lost shell">
+		<p class="tag tag--ember">404</p>
+		<h1 class="display lost__title">Nothing catalogued at this address</h1>
+		<p class="lede">
+			The page you asked for does not exist. The catalogue itself is intact — search it, or start
+			from a vertical.
+		</p>
+
+		<form class="finder" action="/search" method="get" role="search">
+			<label class="visually-hidden" for="lost-q">Search possibilities</label>
+			<input
+				id="lost-q"
+				type="search"
+				name="q"
+				placeholder="Try a technique, a treatment, a problem"
+				autocomplete="off"
+				spellcheck="false"
+				autofocus
+			/>
+			<button type="submit">Search</button>
+		</form>
+
+		<nav class="starts" aria-label="Browse the catalogue">
+			<h2 class="tag">Or start from a vertical</h2>
+			<ul>
+				{
+					verticals.slice(0, 8).map((v) => (
+						<li>
+							<a href={`/?vertical=${v.slug}`}>
+								<span>{VERTICAL_LABEL[v.slug] ?? v.slug}</span>
+								<span class="starts__n">{v.count}</span>
+							</a>
+						</li>
+					))
+				}
+			</ul>
+		</nav>
+	</section>
+</Base>
+
+<style>
+	.lost {
+		display: grid;
+		gap: var(--sp-5);
+		justify-items: start;
+		padding-block: clamp(var(--sp-7), 8vw, var(--sp-9));
+		max-width: 56rem;
+	}
+
+	.lost__title {
+		font-size: var(--step-4);
+		max-width: 18ch;
+	}
+
+	.finder {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-2);
+		width: 100%;
+		max-width: 34rem;
+		margin-top: var(--sp-2);
+	}
+
+	.finder input {
+		flex: 1 1 14rem;
+		min-height: 3rem;
+		padding: 0.7rem 1rem;
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		color: var(--ink);
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+	}
+
+	.finder input::placeholder {
+		color: var(--ink-4);
+	}
+
+	.finder input:focus {
+		border-color: var(--line-loud);
+		background: var(--surface-2);
+	}
+
+	.finder button {
+		min-height: 3rem;
+		padding: 0.7rem 1.4rem;
+		background: var(--ember);
+		color: var(--canvas);
+		border: 1px solid var(--ember);
+		border-radius: var(--radius);
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		font-weight: 600;
+		cursor: pointer;
+		transition: background var(--dur-fast) var(--ease-out);
+	}
+
+	.finder button:hover {
+		background: color-mix(in srgb, var(--ember) 86%, white);
+	}
+
+	.starts {
+		width: 100%;
+		padding-top: var(--sp-5);
+		border-top: 1px solid var(--line);
+	}
+
+	.starts ul {
+		list-style: none;
+		padding: 0;
+		margin-top: var(--sp-3);
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+		gap: 0 var(--sp-4);
+	}
+
+	.starts a {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--sp-3);
+		min-height: 2.75rem;
+		border-bottom: 1px solid var(--line);
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		color: var(--ink-2);
+		transition: color var(--dur-fast) var(--ease-out),
+			border-color var(--dur-fast) var(--ease-out);
+	}
+
+	.starts a:hover {
+		color: var(--ember);
+		border-color: var(--ember-line);
+	}
+
+	.starts__n {
+		color: var(--ink-4);
+		font-variant-numeric: tabular-nums;
+	}
+</style>

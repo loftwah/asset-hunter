@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Bento density gradient plate: a grid where emphasis steps down in a deliberate diagonal">
+	<defs>
+		<linearGradient id="tier1" x1="0" y1="0" x2="1" y2="1">
+			<stop offset="0%" stop-color="#ff5a1f" stop-opacity=".2"/>
+			<stop offset="100%" stop-color="#ff5a1f" stop-opacity=".05"/>
+		</linearGradient>
+		<linearGradient id="tier2" x1="0" y1="0" x2="1" y2="1">
+			<stop offset="0%" stop-color="#4cc2f0" stop-opacity=".16"/>
+			<stop offset="100%" stop-color="#4cc2f0" stop-opacity=".04"/>
+		</linearGradient>
+	</defs>
+	<rect width="800" height="1000" fill="#08090a"/>
+
+	<!-- one 6-column grid. Every cell carries a step of a density ramp,
+	     so attention falls where the ramp says, not where a card box ends. -->
+	<g>
+		<!-- tier 1: hero, spans 3x2 -->
+		<rect x="72" y="96" width="424" height="284" rx="4" fill="url(#tier1)" stroke="#343b42"/>
+		<g font-family="ui-monospace,Menlo,monospace">
+			<text x="96" y="140" font-size="18" fill="#ff5a1f" letter-spacing="2">01 · PRIMARY</text>
+			<text x="96" y="212" font-size="54" fill="#f4f2ee">Option space</text>
+			<text x="96" y="258" font-size="20" fill="#8b929a">materially different treatments, not files</text>
+		</g>
+		<!-- tier 1 secondary -->
+		<rect x="512" y="96" width="216" height="284" rx="4" fill="url(#tier1)" stroke="#343b42"/>
+		<g font-family="ui-monospace,Menlo,monospace">
+			<text x="536" y="140" font-size="18" fill="#ff5a1f" letter-spacing="2">COUNT</text>
+			<text x="536" y="268" font-size="96" fill="#f4f2ee">34</text>
+		</g>
+
+		<!-- tier 2 band -->
+		<g stroke="#2c3238" fill="#101214">
+			<rect x="72" y="404" width="204" height="180" rx="4"/>
+			<rect x="292" y="404" width="204" height="180" rx="4"/>
+			<rect x="512" y="404" width="216" height="180" rx="4"/>
+		</g>
+		<g font-family="ui-monospace,Menlo,monospace">
+			<text x="96" y="452" font-size="17" fill="#4cc2f0" letter-spacing="2">GAMES</text>
+			<text x="96" y="512" font-size="38" fill="#dfe5ea">4</text>
+			<text x="316" y="452" font-size="17" fill="#4cc2f0" letter-spacing="2">UI / WEB</text>
+			<text x="316" y="512" font-size="38" fill="#dfe5ea">4</text>
+			<text x="536" y="452" font-size="17" fill="#4cc2f0" letter-spacing="2">MOTION</text>
+			<text x="536" y="512" font-size="38" fill="#dfe5ea">4</text>
+		</g>
+
+		<!-- tier 3 band: quieter still, denser grid -->
+		<g stroke="#242a30" fill="#0d0f12">
+			<rect x="72" y="608" width="126" height="126" rx="4"/>
+			<rect x="210" y="608" width="126" height="126" rx="4"/>
+			<rect x="348" y="608" width="126" height="126" rx="4"/>
+			<rect x="486" y="608" width="126" height="126" rx="4"/>
+			<rect x="624" y="608" width="104" height="126" rx="4"/>
+			<rect x="72" y="746" width="204" height="112" rx="4"/>
+			<rect x="288" y="746" width="204" height="112" rx="4"/>
+			<rect x="504" y="746" width="224" height="112" rx="4"/>
+		</g>
+		<g font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">
+			<text x="88" y="644">LOGO</text>
+			<text x="226" y="644">ICON</text>
+			<text x="364" y="644">AUDIO</text>
+			<text x="502" y="644">3D</text>
+			<text x="640" y="644">TYPE</text>
+			<text x="88" y="782">SHADER</text>
+			<text x="304" y="782">CODE</text>
+			<text x="520" y="782">SYSTEMS</text>
+		</g>
+
+		<!-- tier 4: a single reference row, no box at all -->
+		<g font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#4d565f">
+			<path d="M72 902 H728" stroke="#1c2126"/>
+			<text x="72" y="938">21 lower-confidence verticals remain unmapped →</text>
+		</g>
+
+		<!-- the ramp, annotated: this is the design decision, made legible -->
+		<g font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">
+			<text x="728" y="938" text-anchor="end" fill="#8b929a">density ↓</text>
+		</g>
+		<g>
+			<rect x="72" y="962" width="60" height="4" fill="#ff5a1f" opacity=".85"/>
+			<rect x="132" y="962" width="60" height="4" fill="#ff5a1f" opacity=".5"/>
+			<rect x="192" y="962" width="60" height="4" fill="#4cc2f0" opacity=".45"/>
+			<rect x="252" y="962" width="60" height="4" fill="#4cc2f0" opacity=".22"/>
+			<rect x="312" y="962" width="60" height="4" fill="#4d565f" opacity=".5"/>
+			<rect x="372" y="962" width="60" height="4" fill="#2c3238"/>
+		</g>
+	</g>
+</svg>

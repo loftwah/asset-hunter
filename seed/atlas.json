@@ -1,0 +1,584 @@
+{
+	"$comment": "Asset Hunter vertical atlas — the seed content source of truth. scripts/build-seed.mjs composes this into seed/seed.json, which EmDash inlines. Edit here, then run `npm run seed:build`. JSON rather than JS so the file cannot break the generator with quoting. Honesty rules: every representative is a plate generated for this catalogue, so representative_origin is always `generated`; example_count is 1 (the plate) and distinct_sources is 0 until the hunt engine supplies real observations. Unverified counts are never invented.",
+
+	"verticals": [
+		{ "slug": "games", "label": "Games" },
+		{ "slug": "ui-web", "label": "UI / Web" },
+		{ "slug": "interaction", "label": "Interaction" },
+		{ "slug": "branding", "label": "Branding" },
+		{ "slug": "logos", "label": "Logos" },
+		{ "slug": "icons", "label": "Icons" },
+		{ "slug": "typography", "label": "Typography" },
+		{ "slug": "motion-video", "label": "Motion / Video" },
+		{ "slug": "audio-music", "label": "Audio / Music" },
+		{ "slug": "3d", "label": "3D" },
+		{ "slug": "shaders", "label": "Shaders" },
+		{ "slug": "software-architecture", "label": "Software / Architecture" },
+		{ "slug": "ai-products", "label": "AI Products" }
+	],
+
+	"origins": ["generated", "derived", "upstream"],
+	"rights": ["cleared", "attribution", "review", "reference"],
+	"media": ["image", "motion", "audio", "3d", "code", "shader", "type"],
+
+	"possibilities": [
+		{
+			"id": "diegetic-damage",
+			"title": "Health you read off the world, not off a bar",
+			"tagline": "Damage as cracked glass instead of a red rectangle",
+			"vertical": "games",
+			"media": "image",
+			"summary": "Replace the health bar with a surface that degrades. The player infers remaining health from the condition of the thing they are already looking at — a visor that cracks, armour that dents, a screen that desaturates. Costs the player nothing to read, because the information arrives inside an image they are already attending to.",
+			"technique": "Layer a damage-state overlay on a first-person frame. Three discrete states (intact / hairline / breached) rather than a continuous fill, so the state is legible at a glance and at any resolution. Pair the overlay with a colour shift the player never has to be told about.",
+			"rights": "reference",
+			"rightsNote": "The technique is free to use. Any specific visor or crack texture is reference-only until its licence is verified — discovery of a possibility never grants rights to the source asset.",
+			"buildNotes": "Three-state overlay beats a continuous fill for readability: it survives small screens, it survives colour-blindness, and it needs no animation. Keep the crack geometry subtle enough not to obscure a target at the centre of frame.",
+			"prompt": "First-person game frame. A cracked helmet visor overlay concentrated at the edges of the frame, hairline fractures radiating from one impact point, subtle warm rim glow at the breach. Damage is legible as material condition, not as a UI element. Muted environment behind the glass.",
+			"editorialRank": 0.82
+		},
+		{
+			"id": "crowd-fluid",
+			"title": "Crowds that move as a fluid, not as agents",
+			"tagline": "Screen-space density field instead of per-agent simulation",
+			"vertical": "games",
+			"media": "code",
+			"summary": "Solve for density and velocity in screen space and derive the crowd from it, rather than simulating thousands of independent agents. The crowd gains coherent flow, obstacle avoidance and emergent eddies for a fraction of the cost, and it never needs per-agent bookkeeping.",
+			"technique": "Keep a coarse density and velocity texture. Move it with a semi-Lagrangian advection step, add a divergence-free projection pass, and inject avoidance force from a blurred obstacle mask. Sample the field when placing agents.",
+			"rights": "reference",
+			"rightsNote": "Method is not protectable; implementations are. Treat upstream repositories as reference until licence is confirmed per file.",
+			"buildNotes": "A 128×128 field drives several thousand convincing agents. Projection is the step people skip, and it is the step that makes motion look like liquid rather than smoke.",
+			"prompt": "Technical plate: a crowd rendered as a screen-space density and velocity field. Streaklines integrated through the field, sampled particles as bright points, a density probe rail on the left. Dark ground, cool cyan to warm ember gradient along the flow.",
+			"editorialRank": 0.9
+		},
+		{
+			"id": "silhouette-legibility",
+			"title": "Characters readable as pure silhouette",
+			"tagline": "Designing poses for the smallest zoom level",
+			"vertical": "games",
+			"media": "image",
+			"summary": "Remove interior detail entirely and check the pose against a plain background. If the character is not identifiable as a solid shape at 24 pixels, no amount of texture work will save it. Negative space between limbs is a measurable constraint, not a matter of taste.",
+			"technique": "Fill the character as a single opaque shape and reduce to target size. Enforce a minimum gap of 2 px between limbs at the smallest zoom the game ever uses. Keep the centre of mass low and the stance wide.",
+			"rights": "reference",
+			"rightsNote": "Study plate. Original character designs remain the property of their creators.",
+			"buildNotes": "A merged arm-and-torso mass is the most common failure. Fix it in the source pose rather than adding an outline shader at render time — an outline cannot recover articulation that is not there.",
+			"prompt": "Design study plate: three character poses rendered as flat black silhouettes on a dark field, one passing legibility at small size and one failing by merging into a single mass. Minimum negative space between limbs annotated at 2 pixels.",
+			"editorialRank": 0.74
+		},
+		{
+			"id": "command-palette",
+			"title": "Command palette as the only navigation",
+			"tagline": "One omnibar instead of a menu tree",
+			"vertical": "ui-web",
+			"media": "image",
+			"summary": "Give the keyboard a single entry point that can reach every action, page and record, and let the menu bar become a fallback. Navigation stops being a tree the user has to learn and becomes a query they can improvise.",
+			"technique": "Fuzzy-match on every registered action and route, ranked by recency and prefix weight. Results carry an affordance glyph — enter to run, tab to select — so the keyboard path is discoverable without documentation.",
+			"rights": "reference",
+			"rightsNote": "Interaction pattern is not licensable; the specific component implementation may be.",
+			"buildNotes": "Ranking is the whole product. Recency-weighted prefix matches beat pure fuzzy scoring almost every time. Show a keyboard shortcut on every result — a palette nobody discovers is a feature nobody uses.",
+			"prompt": "Interface plate: a command palette floating over a dimmed application. A single search field with typed input and a caret, results ranked with a bright left rule on the selected row, monospaced affordance glyphs on the right. Everything else pushed back in value.",
+			"editorialRank": 0.86
+		},
+		{
+			"id": "minimap-breadcrumb",
+			"title": "Breadcrumbs as a map, not a list of names",
+			"tagline": "Spatial position instead of a trail of ancestors",
+			"vertical": "ui-web",
+			"media": "image",
+			"summary": "When the hierarchy is spatial, show the hierarchy spatially. A small plan view with the visited route drawn and the current node marked communicates depth, sibling count and backtracking in one glance, which a list of ancestor slugs never will.",
+			"technique": "Render a reduced plan: rooms as tone masses, connections as hairlines, the visited route as a single continuous stroke, the current position as concentric rings. Keep labels off the plan except for the current node.",
+			"rights": "reference",
+			"rightsNote": "Pattern is free; map artwork is not. Keep the plan abstract rather than reproducing a real floorplan.",
+			"buildNotes": "The route stroke is what makes it a breadcrumb rather than a map. Without the travelled path the user learns where they are but not how they got there, and loses the ability to back out.",
+			"prompt": "Interface plate: an abstract architectural plan in cool low-contrast tone, a single ember stroke tracing the route taken, concentric rings marking the current room, nodes at each waypoint. A conventional breadcrumb bar ghosted below and struck through.",
+			"editorialRank": 0.78
+		},
+		{
+			"id": "density-gradient",
+			"title": "Bento layouts with a deliberate density ramp",
+			"tagline": "One grid where emphasis steps down diagonally",
+			"vertical": "ui-web",
+			"media": "image",
+			"summary": "Card grids usually shout everywhere at once. Put every cell on one grid and let a density ramp decide emphasis: one hero region, one secondary, a quieter band, then plain reference rows. Attention falls where the ramp says rather than where a border ends.",
+			"technique": "Assign each cell a tier. Tier sets fill opacity, border strength, type size and colour. Never mix tiers inside a single row. Reserve the highest tier for exactly one region per viewport.",
+			"rights": "reference",
+			"rightsNote": "Layout logic is free to implement. Type, colour and imagery must each clear their own rights.",
+			"buildNotes": "The most common failure is a second hero cell. If two regions are both loud, the ramp is not a ramp and the eye has nowhere to land. Tier changes should be visible in the outline weight alone.",
+			"prompt": "Layout plate: a twelve-column bento wall on near-black. One wide ember-washed hero region, a tall count block beside it, a middle band of three, a denser grid below, and a borderless reference row. A density ramp annotated along the bottom.",
+			"editorialRank": 0.88
+		},
+		{
+			"id": "physics-sheet",
+			"title": "Gestures that hand off velocity to a spring",
+			"tagline": "A dismiss that knows how fast you meant it",
+			"vertical": "interaction",
+			"media": "motion",
+			"summary": "Carry the gesture's velocity into the release, then let a critically-tuned spring finish the movement. Whether the sheet commits or returns is decided by crossing a threshold with momentum behind it, which is why it feels like an object rather than an animation.",
+			"technique": "Spring on position with initial velocity from the gesture. Scale rotation by drag distance. Once the threshold is crossed, stop tracking the finger and hand off entirely. Allow re-grab mid-flight.",
+			"rights": "reference",
+			"rightsNote": "Physics approach is free. Any easing curve taken from a paid library is not.",
+			"buildNotes": "Position and velocity handoff is the whole trick; most implementations reset velocity on release and lose the feeling instantly. Respect prefers-reduced-motion by presenting a plain crossfade rather than disabling dismissal.",
+			"prompt": "Motion study plate: a bottom sheet captured mid-dismiss, rotated and offset with a dashed trail through the positions the gesture actually passed. Below it, a position-over-time curve with the release moment marked and the threshold line crossed.",
+			"editorialRank": 0.8
+		},
+		{
+			"id": "negative-space-mark",
+			"title": "Negative-space marks",
+			"tagline": "A form that exists only where two shapes meet",
+			"vertical": "logos",
+			"media": "image",
+			"summary": "Build a mark out of two solid shapes and let the gap between them be the figure. The identity reads as one form the viewer completes, which survives reproduction far better than a drawn symbol and needs no outline to hold it together.",
+			"technique": "Draw two solids, then find the shared boundary. That boundary is the mark. Test the reduction ladder — 48, 24, 16, 12 px — and the inverted version. One ink, flat, no gradients.",
+			"rights": "reference",
+			"rightsNote": "A negative-space idea is not yours to trademark. Distinctiveness comes from the specific geometry; do not lift a competitor's construction and change the angles.",
+			"buildNotes": "The 12px test is the honest one. If the counter closes there, the mark is one that works in a deck and nowhere else — decide early whether that is acceptable.",
+			"prompt": "Mark construction plate: two solid wedges on a dark field with dashed construction lines, the shared diagonal called out as the actual mark. A reduction ladder at 48, 24, 16 and 12 pixels below, the 12 marked as a failure. An inverted one-ink proof to the side.",
+			"editorialRank": 0.75
+		},
+		{
+			"id": "adaptive-mark",
+			"title": "One identity, four redraws",
+			"tagline": "A mark recomposed per placement instead of scaled",
+			"vertical": "branding",
+			"media": "image",
+			"summary": "Ship a family of marks rather than one file. Recompose proportions for an app icon, a horizontal lockup, a stacked lockup and a one-ink version, bound by a small set of invariants so all four are recognisably the same identity.",
+			"technique": "Fix the invariants — apex angle, unit stroke, open counter — and let proportion, colour count and clear space vary per context. Recompute markspacing per lockup rather than inheriting a global value.",
+			"rights": "reference",
+			"rightsNote": "Brand systems are among the most heavily policed marks. Register and clear before use in commerce.",
+			"buildNotes": "Colour count is the constraint that gets broken first. A brand with a fixed two-colour rule must define what happens when only one ink is available, and that answer has to exist before a designer needs it.",
+			"prompt": "Brand system plate: four placements of one mark — a single-colour app icon, a horizontal lockup, a stacked lockup with recomputed clear space, and a one-ink paper version. Construction lines showing the shared 2:1 apex angle.",
+			"editorialRank": 0.84
+		},
+		{
+			"id": "generative-monogram",
+			"title": "Generative marks with a bounded rule set",
+			"tagline": "A family that stays recognisable across every seed",
+			"vertical": "branding",
+			"media": "code",
+			"summary": "Generate marks from a rule set rather than drawing them one at a time, and bound the parameters hard enough that every output reads as the same family. The output is unbounded; the identity is not.",
+			"technique": "Fix the structural invariants — a shared centre, equal bar lengths, open counter, square ends — and bound the variable ones, typically an angle range. Ship one fixed master alongside the generator.",
+			"rights": "reference",
+			"rightsNote": "A generated output does not clear a mark for trademarking, and generative brand systems need a human check per output before public use.",
+			"buildNotes": "Test at thumbnail size before shipping the generator. If six seeds do not read as one identity at 24 pixels, the angle bound is too wide or the invariants too weak.",
+			"prompt": "Generative brand plate: a grid of six monogram instances produced by one rule set, ember and paper bars on a fixed centre at varying angles, the upper bound marked. Below, the same six reduced to 24 pixels as a family test.",
+			"editorialRank": 0.71
+		},
+		{
+			"id": "duotone-icons",
+			"title": "Duotone icon sets that survive being small",
+			"tagline": "Two inks carrying meaning, plus optical size correction",
+			"vertical": "icons",
+			"media": "image",
+			"summary": "A single-weight outline set goes muddy at small sizes because every glyph renders at roughly the same visual mass. Give the set a second ink that carries state, and correct apparent weight per size so the row reads as even texture.",
+			"technique": "Build on a 24-unit grid with 2u padding. Provide a filled cut for 16px and progressively heavier strokes to 32px. Blur the whole set to 40% and check it reads as texture rather than as shapes.",
+			"rights": "reference",
+			"rightsNote": "Icon sets are frequently derived from proprietary libraries. Confirm the licence of the master file, not just of the tool that exported it.",
+			"buildNotes": "Duotone is not decoration — the second ink must mean something. And duotone collapses to one ink when inverted, so the outline has to stand on its own. Check the inverted row.",
+			"prompt": "Icon design plate: two rows of five glyphs on dark. An outline row that goes grey at small size, and a duotone row with a cyan primary and a translucent secondary carrying state. Below, four optical size corrections of one glyph at increasing stroke weight, beside a 24-unit grid.",
+			"editorialRank": 0.77
+		},
+		{
+			"id": "variable-width-type",
+			"title": "Re-fit type to the measure",
+			"tagline": "A width axis instead of four separate cuts",
+			"vertical": "typography",
+			"media": "type",
+			"summary": "When a headline does not fit the measure, most systems pick a different font or break the line. A variable width axis re-fits the same design to the space, preserving the voice and eliminating the drift that comes with swapping families.",
+			"technique": "Expose wdth on the variable axis and set textLength against the measure. Keep one optical size and one weight for the whole family so the letterforms stay related.",
+			"rights": "reference",
+			"rightsNote": "Variable font licences vary enormously in what they allow — some restrict the number of static instances you may ship. Read the actual licence.",
+			"buildNotes": "Condensing to fit is usually better than dropping a line, but only within a sane range. Past roughly 15% condensation the letterforms start to hurt; at that point break the line instead.",
+			"prompt": "Typographic plate: the same short word set twice at different width axis positions on a near-black ground, with a measurement ruler beneath showing the fit. A condensed tabular numeral in ember. A line of body text demonstrating an overlong setting marked in warning orange.",
+			"editorialRank": 0.83
+		},
+		{
+			"id": "optical-size-switch",
+			"title": "Optical size as a continuous axis",
+			"tagline": "The way printing has always done it",
+			"vertical": "typography",
+			"media": "type",
+			"summary": "One typeface master re-drawn for the size it will land at. At 11 pixels terminals square off, spacing opens and thin joints return; at 144 pixels weight rises, contrast falls and curves smooth. Print has done this for centuries; screen type mostly has not.",
+			"technique": "Set the opsz axis from the computed font size and let the renderer interpolate. Do not round to discrete masters — the axis is continuous and intermediates are where most of the value is.",
+			"rights": "reference",
+			"rightsNote": "Optical sizes ship in the font file. Confirm your font licence permits the axis and any derived masters.",
+			"buildNotes": "The payoff is largest in the small end, where a single master closes its counters. If your typeface has no optical axis, the second-best move is a separate small-size cut.",
+			"prompt": "Typography plate: the same phrase rendered three times at caption, text and display sizes over a faint grid, each annotated with what the optical size changes — terminals, spacing, weight, contrast. A comparison of single master and optical cut at small size.",
+			"editorialRank": 0.79
+		},
+		{
+			"id": "match-cut",
+			"title": "Cutting on the motion vector",
+			"tagline": "Velocity continuity instead of subject continuity",
+			"vertical": "motion-video",
+			"media": "motion",
+			"summary": "Match the screen-space displacement of a tracked feature across a cut and the seam disappears, even when subject, framing and palette all change. The perceived continuity comes from velocity, not from identity.",
+			"technique": "Track a feature through both shots. Plot per-frame displacement. Solve for the cut frame where displacement matches, then place the cut there. Velocity matching is cheaper and more forgiving than a full optical-flow solve.",
+			"rights": "reference",
+			"rightsNote": "Technique is free. The footage is not, and cutting to another work's footage raises separate authorship questions.",
+			"buildNotes": "The cost is real: the cut can no longer be motivated by story, so the grade must carry whatever narrative the edit gave up. Do this for rhythm, not for plot.",
+			"prompt": "Edit study plate: two shots in frames, each with a tracked feature and its motion vector drawn, a dashed line spanning between the frames marking the matched displacement. Below, a per-frame displacement plot with the chosen cut frame marked.",
+			"editorialRank": 0.72
+		},
+		{
+			"id": "kinetic-type",
+			"title": "Kinetic type cut on transients",
+			"tagline": "The transient is the keyframe",
+			"vertical": "motion-video",
+			"media": "motion",
+			"summary": "Detected onsets, not beats, are what make type feel attached to music. Map onset energy onto weight and width and the word lands on the snare instead of near it. An easing curve applied to every word identically will always feel slightly late.",
+			"technique": "Run onset detection on the audio to get per-hit energy and position. Drive type size from energy, width from recovery after the hit. Re-derive on tempo change rather than storing absolute times.",
+			"rights": "reference",
+			"rightsNote": "Method is free. The music is not, and syncing to a licensed track in published work needs the licence to permit it.",
+			"buildNotes": "BPM detection is not enough. Beats are regular; accents are not, and the difference between them is exactly what makes type feel locked. You need the audio, not the tempo map.",
+			"prompt": "Motion study plate: an audio waveform with detected transients marked and numbered above, and the same six transients applied to a word below as varying size and width, with attack traces between letters. A muted alternative approach shown alongside.",
+			"editorialRank": 0.76
+		},
+		{
+			"id": "seamless-loop",
+			"title": "Loops closed by periodicity",
+			"tagline": "Solve for the cycle instead of hiding the seam",
+			"vertical": "motion-video",
+			"media": "motion",
+			"summary": "Crossfading the ends of a loop doubles its length and leaves an audible dip. Making the state at t equal the state at the period removes the seam entirely — but it constrains the motion you can design, which is a design decision rather than a post-process.",
+			"technique": "Author the cycle so the final state equals the initial state, then validate numerically rather than by ear. For shaders, modulate the period rather than the offset. For audio, choose grains that overlap the boundary.",
+			"rights": "reference",
+			"rightsNote": "Technique is free. Any loop built from someone else's recording inherits that recording's licence.",
+			"buildNotes": "Solving for the derivative rather than the value is what makes periodicity practical. A validator that compares endpoint state is worth more than an hour of ear-checking.",
+			"prompt": "Motion study plate: three panels comparing crossfade, ping-pong and periodicity, each showing the seam. Below, a cycle plotted as a curve whose start and end states are marked equal, with a dotted line showing the error being eliminated.",
+			"editorialRank": 0.8
+		},
+		{
+			"id": "granular-texture",
+			"title": "Sustained beds from granular overlap",
+			"tagline": "Thousands of windowed grains instead of a loop",
+			"vertical": "audio-music",
+			"media": "audio",
+			"summary": "Take a short recording, window it into many small overlapping grains and scatter their pitch and timing. The result is a sustained texture that is not a loop, has no audible seam, and can be steered continuously.",
+			"technique": "Hann-window each grain, jitter pitch and start offset per grain, spread the grains across the stereo field and filter the result. Above roughly 30% overlap the bed stops sounding granular and starts sounding continuous.",
+			"rights": "reference",
+			"rightsNote": "Grain a recording you do not own and you have made a derivative work. Verify the source licence before it becomes part of anything published.",
+			"buildNotes": "Hold drift above the noise floor or the bed collapses into mush — that is the one failure mode. Density below about 40% grains per second will sound granular in the wrong sense.",
+			"prompt": "Audio study plate: a short source waveform, a bed of overlapping grains with pitch and offset jitter, and below a resulting sustained texture with no seam at the loop point. Four labelled controls — density, jitter, drift, cutoff — plus a note that drift must stay above the noise floor.",
+			"editorialRank": 0.73
+		},
+		{
+			"id": "wavetable-morph",
+			"title": "Timbre as a continuous parameter",
+			"tagline": "Interpolate the spectrum, not two oscillators",
+			"vertical": "audio-music",
+			"media": "audio",
+			"summary": "Blending two oscillators gives you two detuned things beating in the midrange. Interpolating one wavetable between two static spectra gives you a coherent timbre that passes through something worth hearing and stays stable under automation.",
+			"technique": "Build the tables so the midpoint is a good sound, not an average of two. Map one macro parameter to table mix and to several harmonic weights, so the timbre travels coherently rather than linearly.",
+			"rights": "reference",
+			"rightsNote": "Synthesis method is free. Sampled wavetables are derivative works of their source recordings.",
+			"buildNotes": "The design work is in the tables, not the routing. If the midpoint sounds like nothing, the morph will feel like a switch with extra steps.",
+			"prompt": "Synthesis plate: two source spectra labelled hollow and reedy, then five morph stops between them with the midpoint marked as existing in no source table. Below, one macro parameter driving table mix, odd harmonic and even harmonic simultaneously.",
+			"editorialRank": 0.69
+		},
+		{
+			"id": "edge-fade",
+			"title": "Edge-to-solid level of detail",
+			"tagline": "Crossfading geometry instead of swapping it",
+			"vertical": "3d",
+			"media": "3d",
+			"summary": "Draw the same geometry at every distance and shift the shading weight from edges to fill as the camera approaches. Nothing pops in, and you never have to author a separate far model — the transition is continuous because the geometry never changed.",
+			"technique": "Keep one mesh. Ramp a fill opacity and an edge opacity from a distance threshold, with the crossover positioned so both are legible. Cheapest LOD is the one you never had to build.",
+			"rights": "reference",
+			"rightsNote": "Technique is free to implement. Any base mesh is the property of its author.",
+			"buildNotes": "A hard LOD swap draws the eye; a crossfade does not. The cost is one extra pass over triangles you were already drawing, which is usually cheaper than authoring and maintaining the second model.",
+			"prompt": "Technical plate: three frames of the same form at increasing distance — pure structure with no fill, edges with fill arriving, then solid surface with edges gone. Below, a plot of edge and fill opacity against distance with the crossover marked.",
+			"editorialRank": 0.81
+		},
+		{
+			"id": "raymarched-sdf",
+			"title": "Geometry as a distance function",
+			"tagline": "Editing the function instead of the model",
+			"vertical": "shaders",
+			"media": "shader",
+			"summary": "Describe the scene as signed distance functions and raymarch it. There is no mesh, no texture and no vertex buffer — so the interesting edit is a change to a function, and shapes can be combined with smooth-min in ways a modeller would not attempt.",
+			"technique": "Define primitives as distance functions, combine with union, subtract and smooth-min, then sphere-trace with a bounded step count. One directional light term is enough to read form; add emissive accumulation as a separate pass.",
+			"rights": "reference",
+			"rightsNote": "Signed distance functions as a technique are not protectable. Specific shader source in a repository is, and must be licence-checked before reuse.",
+			"buildNotes": "Step count is the whole performance story. A well-bounded SDF converges in far fewer steps than the maximum you budget for, so raising the cap costs nothing until it does — usually on the far plane.",
+			"prompt": "Render study plate: a raymarched scene of a sphere, a surrounding torus and an infinite floor with a glow pass, on a dark violet ground. A readout noting the step budget and that no mesh, texture or vertex buffer is involved.",
+			"editorialRank": 0.87
+		},
+		{
+			"id": "event-sourced-core",
+			"title": "Append-only facts with disposable projections",
+			"tagline": "Never mutate history; rebuild the reads",
+			"vertical": "software-architecture",
+			"media": "code",
+			"summary": "Keep an append-only log of what happened and derive every read model from it. Projections are rebuildable and disposable; the log is the record. Two readers can want opposite things from the same facts without either compromising the other.",
+			"technique": "Append immutable events with a monotonic sequence. Build projections asynchronously and make them idempotent so replay is safe. Publish to the CMS through a projection, never by writing its tables directly.",
+			"rights": "reference",
+			"rightsNote": "Architectural pattern is not protectable. Event schemas are yours; the code that reads them is not, if you copied it.",
+			"buildNotes": "The schema is forever and the projections are disposable. Decide that up front or you will end up with a projection that something else has started depending on, which is the worst of both worlds.",
+			"prompt": "Architecture plate: an append-only event log on the left feeding two separate projections on the right — a coverage index and a licence ledger — each labelled rebuildable. Annotated with the trade-offs: audit trail gained, projection cost paid, event schema permanent.",
+			"editorialRank": 0.85
+		},
+		{
+			"id": "capability-negotiation",
+			"title": "Capabilities declared, not assumed",
+			"tagline": "A missing capability is a value, not an exception",
+			"vertical": "software-architecture",
+			"media": "code",
+			"summary": "Extensions should ask for what they need and adapt to what the host can honour. A feature the host cannot support is removed from the surface entirely, so it can never be half-broken — the alternative is a UI that renders a control which fails when pressed.",
+			"technique": "Declare required, optional and declined capabilities separately. For each optional capability provide a working fallback, not a disabled control. Test the degraded configuration as a first-class target.",
+			"rights": "reference",
+			"rightsNote": "Pattern is free. Plugin permission models are worth reviewing before adopting any specific registry.",
+			"buildNotes": "Installed is not supported. The failure mode to avoid is a plugin that renders its full feature set against a host that quietly does not honour half of it.",
+			"prompt": "Architecture plate: a host advertising storage, database, auth and admin capabilities, connected to two deployment targets that answer differently. Below, the plugin's declaration list separating required, optional and declined capabilities with the fallback behaviour for each.",
+			"editorialRank": 0.78
+		},
+		{
+			"id": "content-addressed",
+			"title": "Content-addressed asset storage",
+			"tagline": "The name is the proof",
+			"vertical": "software-architecture",
+			"media": "code",
+			"summary": "Identify assets by hashing their bytes. Dedupe becomes exact, a provenance chain is just a list of addresses, and originals are immutable by construction because a derived file necessarily gets a different address. A verifier can recompute the whole chain offline.",
+			"technique": "Hash on ingest and store under the hash. Record the parent address for every derivative and never overwrite a parent. Resolve names to addresses at the edge, so a filename can change without moving a byte.",
+			"rights": "reference",
+			"rightsNote": "Technique is standard and freely implementable. The hashes, paths and filenames inside are content and carry their own provenance obligations.",
+			"buildNotes": "This is what makes a licence correction cheap: rewrite the record, never the bytes. It also means the same asset found in two places is one catalogue entry with two sources, which is exactly what option-space coverage needs.",
+			"prompt": "Systems plate: source bytes entering a hash, the hash as identity, then four derivatives fanning out — one deduplicated, two derived with parent records, and one that shares a filename with different bytes. Immutable originals and verifiable chains annotated below.",
+			"editorialRank": 0.8
+		},
+		{
+			"id": "uncertainty-output",
+			"title": "Confidence rendered as content",
+			"tagline": "Never let a weak claim read as a strong one",
+			"vertical": "ai-products",
+			"media": "image",
+			"summary": "An AI system that states weak inferences as plainly as strong ones has miscalibrated its output. Show support counts inline, texture the uncertain parts rather than only colouring them, and let every claim be traced to the sources behind it.",
+			"technique": "Attach a support count to each claim and render it at the point of the claim. Encode uncertainty in texture and weight as well as colour so it survives greyscale and colour-blindness. Link every claim to its source list.",
+			"rights": "reference",
+			"rightsNote": "Presentation patterns are free, but never let an uncertainty display imply a licence or provenance conclusion it has not actually verified.",
+			"buildNotes": "Keep machine evidence separate from editorial judgement in the data model too, not only in the interface — otherwise a well-designed uncertainty display will be fed confident nonsense.",
+			"prompt": "Interface plate: a generated answer where strong clauses are set plainly and a weak clause is filled with diagonal hatching, outlined dashed and annotated with its support count. Below, coverage and novelty plotted as bars, and a note that uncertainty never uses colour alone.",
+			"editorialRank": 0.83
+		}
+	],
+
+	"collections": [
+		{
+			"id": "replacing-the-obvious",
+			"slug": "replacing-the-obvious",
+			"title": "Replacing the obvious",
+			"tagline": "Default solutions and the distinct alternatives to them",
+			"summary": "Most interface and game problems get solved the same way every time. Each entry here is a materially different way to answer a question you already know the default answer to.",
+			"members": [
+				"diegetic-damage",
+				"command-palette",
+				"minimap-breadcrumb",
+				"density-gradient",
+				"physics-sheet",
+				"uncertainty-output"
+			]
+		},
+		{
+			"id": "procedural-without-an-engine",
+			"slug": "procedural-without-an-engine",
+			"title": "Procedural without an engine",
+			"tagline": "Simulation and geometry written as maths, not imported as a plugin",
+			"summary": "Approaches where the interesting part is the maths and the dependency budget is zero. Often cheaper, often smaller, occasionally the only thing that fits the constraint.",
+			"members": ["crowd-fluid", "raymarched-sdf", "edge-fade", "granular-texture"]
+		},
+		{
+			"id": "the-system-is-the-artwork",
+			"slug": "the-system-is-the-artwork",
+			"title": "The system is the artwork",
+			"tagline": "Bounded rules that produce a recognisable family",
+			"summary": "Marks, sets and sounds generated from a rule set rather than drawn individually. The output varies; the identity does not. The hard part is always the bound.",
+			"members": [
+				"generative-monogram",
+				"adaptive-mark",
+				"negative-space-mark",
+				"wavetable-morph",
+				"duotone-icons"
+			]
+		},
+		{
+			"id": "seams",
+			"slug": "seams",
+			"title": "Seams",
+			"tagline": "Problems that live entirely at a boundary",
+			"summary": "Loop points, edit points, cut points, boundaries between two colours. Each of these is a place where an artefact hides, and each becomes tractable once you solve for the right quantity.",
+			"members": ["seamless-loop", "match-cut", "kinetic-type", "granular-texture"]
+		}
+	],
+
+	"sections": [
+		{
+			"slug": "field-guide-intro",
+			"title": "Field guide",
+			"description": "Opening note shown above the catalogue wall",
+			"keywords": ["intro", "home"],
+			"source": "theme",
+			"content": [
+				{
+					"_type": "block",
+					"style": "normal",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Option space, compressed. Each plate is one distinct possibility; drill in for the technique, the build notes and the rights."
+						}
+					]
+				}
+			]
+		}
+	],
+
+	"pages": [
+		{
+			"id": "about",
+			"slug": "about",
+			"title": "What this is",
+			"summary": "A catalogue of distinct creative and technical possibilities, with representative examples and their provenance.",
+			"body": [
+				{ "_type": "block", "style": "h2", "children": [{ "_type": "span", "text": "Possibilities, not files" }] },
+				{
+					"_type": "block",
+					"style": "normal",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Five thousand logo files are not five thousand useful things to look at. They might demonstrate forty materially different treatments. This catalogue is built around the forty."
+						}
+					]
+				},
+				{
+					"_type": "block",
+					"style": "normal",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Every entry is a possibility — a specific idea, technique, pattern or mechanic that can be recreated. Each one carries representative examples, and every example states where it came from and what its rights actually are."
+						}
+					]
+				},
+				{ "_type": "block", "style": "h2", "children": [{ "_type": "span", "text": "Three things worth knowing" }] },
+				{ "_type": "block", "style": "h3", "children": [{ "_type": "span", "text": "Possibility is not permission" }] },
+				{
+					"_type": "block",
+					"style": "normal",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Learning that a treatment exists says nothing about whether you may copy the asset that demonstrated it. Rights are tracked per example, never per possibility, and reference-only material is never presented as cleared."
+						}
+					]
+				},
+				{ "_type": "block", "style": "h3", "children": [{ "_type": "span", "text": "Examples state their origin" }] },
+				{
+					"_type": "block",
+					"style": "normal",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Upstream means shown directly from discovered material. Derived means a safe preview produced from it. Generated means newly made to demonstrate a known possibility. The three are never mixed in a row."
+						}
+					]
+				},
+				{ "_type": "block", "style": "h3", "children": [{ "_type": "span", "text": "Machine evidence and editorial judgement stay apart" }] },
+				{
+					"_type": "block",
+					"style": "normal",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Coverage, novelty and support counts are observations. Editorial curation is a human decision. They can influence ranking and they never overwrite each other."
+						}
+					]
+				},
+				{ "_type": "block", "style": "h2", "children": [{ "_type": "span", "text": "What is here now" }] },
+				{
+					"_type": "block",
+					"style": "normal",
+					"children": [
+						{
+							"_type": "span",
+							"text": "The catalogue is seeded with generated plates and their reference material. Upstream examples arrive through the discovery engine, which crawls permitted sources and publishes through a documented contract. Where a count is not yet machine-verified it reads zero rather than being estimated."
+						}
+					]
+				}
+			]
+		},
+		{
+			"id": "licensing",
+			"slug": "licensing",
+			"title": "Licensing and rights",
+			"summary": "How rights are classified, what each status means, and what this catalogue will never claim for you.",
+			"body": [
+				{ "_type": "block", "style": "h2", "children": [{ "_type": "span", "text": "The statuses" }] },
+				{ "_type": "block", "style": "h3", "children": [{ "_type": "span", "text": "Cleared" }] },
+				{
+					"_type": "block",
+					"style": "normal",
+					"children": [
+						{
+							"_type": "span",
+							"text": "A licence was read from the source itself and recorded, and that licence permits the use being made of it. Cleared applies to a specific example, never to a possibility in the abstract."
+						}
+					]
+				},
+				{ "_type": "block", "style": "h3", "children": [{ "_type": "span", "text": "Attribution required" }] },
+				{
+					"_type": "block",
+					"style": "normal",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Use is permitted provided the recorded attribution is reproduced. The attribution text is stored with the example so it travels with the asset."
+						}
+					]
+				},
+				{ "_type": "block", "style": "h3", "children": [{ "_type": "span", "text": "Review required" }] },
+				{
+					"_type": "block",
+					"style": "normal",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Something was detected but not understood well enough to rely on: a licence file that contradicts the repository, a licence that changed at a tag, a non-commercial or share-alike restriction whose scope is unclear."
+						}
+					]
+				},
+				{ "_type": "block", "style": "h3", "children": [{ "_type": "span", "text": "Reference only" }] },
+				{
+					"_type": "block",
+					"style": "normal",
+					"children": [
+						{
+							"_type": "span",
+							"text": "No licence was found, or the material is explicitly not licensed for reuse. The example is preserved because it demonstrates a real possibility. That is the entire extent of its permission."
+						}
+					]
+				},
+				{ "_type": "block", "style": "h2", "children": [{ "_type": "span", "text": "What this will not do" }] },
+				{
+					"_type": "block",
+					"style": "normal",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Repository licence metadata is treated as a hint, never as the sole authority. Unknown material is never described as cleared. Transforming an asset with an AI tool does not clear it. Possibility discovery does not grant rights to the source asset, and none of the plates here are a substitute for reading a licence."
+						}
+					]
+				},
+				{ "_type": "block", "style": "h2", "children": [{ "_type": "span", "text": "If something here is wrong" }] },
+				{
+					"_type": "block",
+					"style": "normal",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Corrections are auditable and take effect on the record rather than on the asset. Content addressing means a licence can be corrected without touching the bytes, and the previous classification is kept rather than overwritten."
+						}
+					]
+				}
+			]
+		}
+	]
+}

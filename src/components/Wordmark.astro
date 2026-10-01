@@ -1,0 +1,27 @@
+---
+/**
+ * Asset Hunter wordmark. An aperture ring with a single marker — a hunting
+ * sight rather than a literal target, so it reads as "locating" and not
+ * "bullseye". Drawn in `currentColor` so it inherits ink on every surface.
+ */
+interface Props {
+	size?: number;
+	title?: string;
+}
+const { size = 22, title = "Asset Hunter" } = Astro.props;
+---
+
+<svg
+	class="mark"
+	width={size}
+	height={size}
+	viewBox="0 0 24 24"
+	fill="none"
+	role="img"
+	aria-label={title}
+>
+	<circle cx="12" cy="12" r="9.25" stroke="currentColor" stroke-width="1.5" opacity=".42"></circle>
+	<circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="1.5"></circle>
+	<path d="M12 2.75v3.4M12 17.85v3.4M2.75 12h3.4M17.85 12h3.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".42"></path>
+	<path d="M12 9.4 13.5 12 12 14.6 10.5 12Z" fill="currentColor"></path>
+</svg>

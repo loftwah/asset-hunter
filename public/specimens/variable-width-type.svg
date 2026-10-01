@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Variable width axis plate: one typeface re-fit to measure rather than broken into weights">
+	<defs>
+		<linearGradient id="typebg" x1="0" y1="0" x2="0" y2="1">
+			<stop offset="0%" stop-color="#12151a"/>
+			<stop offset="100%" stop-color="#08090a"/>
+		</linearGradient>
+	</defs>
+	<rect width="800" height="1000" fill="url(#typebg)"/>
+
+	<!-- The argument, set as an argument: one line, re-fit four ways. -->
+	<g font-family="Bricolage, Helvetica, Arial, sans-serif" fill="#f4f2ee" text-anchor="middle">
+		<!-- width 62 — display -->
+		<text x="400" y="196" font-size="130" font-weight="700" textLength="672" lengthAdjust="spacingAndGlyphs" opacity=".96">OPTIONS</text>
+		<!-- width 100 — text setting, same phrase -->
+		<text x="400" y="322" font-size="112" font-weight="600" textLength="700" lengthAdjust="spacingAndGlyphs" opacity=".78">OPTIONS</text>
+	</g>
+
+	<!-- the axis, literal: a measurement ruler under the set line -->
+	<g>
+		<path d="M72 380 H728" stroke="#2c3238"/>
+		<g stroke="#4d565f">
+			<path d="M72 374 V386 M136 376 V384 M200 374 V386 M264 376 V384 M328 374 V386 M392 376 V384 M456 374 V386 M520 376 V384 M584 374 V386 M648 376 V384 M712 374 V386"/>
+		</g>
+		<text x="400" y="410" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#6a7178" text-anchor="middle">wdth 62 → 100 · one file · one optical size</text>
+	</g>
+
+	<!-- counter-form: the axis can run the other way too -->
+	<g font-family="Bricolage, Helvetica, Arial, sans-serif" fill="#ff5a1f" text-anchor="middle">
+		<text x="400" y="600" font-size="128" font-weight="800" textLength="656" lengthAdjust="spacingAndGlyphs">42</text>
+	</g>
+	<g font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#6a7178" text-anchor="middle">
+		<text x="400" y="640">condensed · tabular · no second cut required</text>
+	</g>
+
+	<!-- the legibility constraint: width at text size, not display size -->
+	<g>
+		<path d="M72 700 H728" stroke="#1c2126"/>
+		<g font-family="Bricolage, Helvetica, Arial, sans-serif" fill="#b6bcc3">
+			<text x="72" y="748" font-size="30" font-weight="500" textLength="640" lengthAdjust="spacingAndGlyphs">Portrait 43 — perfectly balanced at 30px</text>
+		</g>
+		<g font-family="Bricolage, Helvetica, Arial, sans-serif" fill="#8b929a">
+			<text x="72" y="792" font-size="30" font-weight="500" textLength="690" lengthAdjust="spacingAndGlyphs">Portrait 43 — perfectly balanced at 30px</text>
+		</g>
+		<g font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#6a7178">
+			<text x="72" y="830" fill="#ff8a4c">↑ 690 units overruns the 672 measure</text>
+		</g>
+		<path d="M72 840 H728" stroke="#ff8a4c" stroke-width="1" stroke-dasharray="4 6" opacity=".6"/>
+	</g>
+
+	<!-- why not just four font files -->
+	<g font-family="ui-monospace,Menlo,monospace">
+		<text x="72" y="890" font-size="16" fill="#6a7178">four cuts · 4 × baseline drift · 4 × hinting · 4 × licence seat</text>
+		<text x="72" y="922" font-size="16" fill="#4fce8a">one axis · hinting preserved · one licence</text>
+		<text x="728" y="922" font-size="16" fill="#4d565f" text-anchor="end">fit to measure, not to catalogue</text>
+	</g>
+</svg>

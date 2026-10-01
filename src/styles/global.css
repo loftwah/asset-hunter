@@ -1,0 +1,349 @@
+/* ==========================================================================
+   Asset Hunter — design tokens & base layer
+   Design authority: DESIGN.md. Change tokens here, not ad-hoc values in
+   components.
+   ========================================================================== */
+
+@font-face {
+	font-family: "Bricolage";
+	src: url("/fonts/bricolage.woff2") format("woff2-variations");
+	font-weight: 200 800;
+	font-display: swap;
+	font-style: normal;
+}
+
+@font-face {
+	font-family: "Hunter Mono";
+	src: url("/fonts/jetbrains-mono.woff2") format("woff2-variations");
+	font-weight: 100 800;
+	font-display: swap;
+	font-style: normal;
+}
+
+:root {
+	/* --- Canvas & surfaces ------------------------------------------------ */
+	--canvas: #08090a;
+	--surface: #101214;
+	--surface-2: #16191c;
+	--surface-3: #1d2126;
+	--line: #23272c;
+	--line-strong: #343b42;
+	--line-loud: #4d565f;
+
+	/* --- Ink ------------------------------------------------------------- */
+	--ink: #f4f2ee;
+	--ink-2: #b6bcc3;
+	--ink-3: #8b929a;
+	--ink-4: #6a7178;
+
+	/* --- Accent ---------------------------------------------------------- */
+	--ember: #ff5a1f;
+	--ember-dim: #c23f13;
+	--ember-wash: rgb(255 90 31 / 0.12);
+	--ember-line: rgb(255 90 31 / 0.38);
+
+	/* --- Origin coding (example provenance) ------------------------------- */
+	--origin-upstream: #4cc2f0;
+	--origin-derived: #a68bfb;
+	--origin-generated: #f2a33c;
+
+	/* --- Rights coding ---------------------------------------------------- */
+	--rights-reference: #f2a33c;
+	--rights-attribution: #4cc2f0;
+	--rights-review: #ff8a4c;
+	--rights-cleared: #4fce8a;
+
+	/* --- Type ------------------------------------------------------------- */
+	--font-display: "Bricolage", "Helvetica Neue", Arial, sans-serif;
+	--font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	--font-mono: "Hunter Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+	--step--2: clamp(0.688rem, 0.67rem + 0.09vw, 0.75rem);
+	--step--1: clamp(0.8rem, 0.77rem + 0.14vw, 0.875rem);
+	--step-0: clamp(0.938rem, 0.91rem + 0.14vw, 1rem);
+	--step-1: clamp(1.125rem, 1.06rem + 0.32vw, 1.313rem);
+	--step-2: clamp(1.375rem, 1.25rem + 0.62vw, 1.75rem);
+	--step-3: clamp(1.75rem, 1.5rem + 1.25vw, 2.5rem);
+	--step-4: clamp(2.25rem, 1.75rem + 2.5vw, 3.75rem);
+	--step-5: clamp(2.75rem, 1.9rem + 4.25vw, 5.5rem);
+
+	/* --- Space ------------------------------------------------------------ */
+	--sp-1: 0.25rem;
+	--sp-2: 0.5rem;
+	--sp-3: 0.75rem;
+	--sp-4: 1rem;
+	--sp-5: 1.5rem;
+	--sp-6: 2rem;
+	--sp-7: 3rem;
+	--sp-8: 4rem;
+	--sp-9: 6rem;
+
+	/* --- Geometry --------------------------------------------------------- */
+	--gutter: clamp(1rem, 0.55rem + 2.2vw, 2.75rem);
+	--maxw: 1560px;
+	--measure: 68ch;
+	--radius: 3px;
+	--radius-lg: 5px;
+
+	/* --- Motion ----------------------------------------------------------- */
+	--ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+	--ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+	--dur-fast: 120ms;
+	--dur: 220ms;
+	--dur-slow: 420ms;
+
+	/* --- Elevation (restrained; this is a dark archive, not a card app) --- */
+	--shadow-plate: 0 1px 0 rgb(255 255 255 / 0.03) inset;
+	--shadow-lift: 0 18px 40px -24px rgb(0 0 0 / 0.9);
+}
+
+/* --- Reset -------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+* {
+	margin: 0;
+}
+
+html {
+	-webkit-text-size-adjust: 100%;
+	scroll-behavior: smooth;
+	color-scheme: dark;
+}
+
+body {
+	min-height: 100svh;
+	background: var(--canvas);
+	color: var(--ink);
+	font-family: var(--font-ui);
+	font-size: var(--step-0);
+	line-height: 1.55;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	text-rendering: optimizeLegibility;
+	overflow-wrap: break-word;
+}
+
+img,
+svg,
+video,
+canvas {
+	display: block;
+	max-width: 100%;
+	height: auto;
+}
+
+button,
+input,
+select,
+textarea {
+	font: inherit;
+	color: inherit;
+}
+
+a {
+	color: inherit;
+	text-decoration: none;
+}
+
+/* --- Focus -------------------------------------------------------------- */
+
+:focus-visible {
+	outline: 2px solid var(--ember);
+	outline-offset: 3px;
+	border-radius: 2px;
+}
+
+:focus:not(:focus-visible) {
+	outline: none;
+}
+
+/* --- Selection ---------------------------------------------------------- */
+
+::selection {
+	background: var(--ember);
+	color: var(--canvas);
+}
+
+/* --- Shared primitives -------------------------------------------------- */
+
+.shell {
+	width: 100%;
+	max-width: var(--maxw);
+	margin-inline: auto;
+	padding-inline: var(--gutter);
+}
+
+/* Mono label: the museum-tag voice used throughout the catalogue. */
+.tag {
+	font-family: var(--font-mono);
+	font-size: var(--step--2);
+	font-weight: 500;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--ink-3);
+	line-height: 1.3;
+}
+
+.tag--ember {
+	color: var(--ember);
+}
+
+.tag-rule {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-3);
+	color: var(--ink-3);
+}
+
+.tag-rule::after {
+	content: "";
+	flex: 1;
+	height: 1px;
+	background: var(--line);
+}
+
+.display {
+	font-family: var(--font-display);
+	font-weight: 600;
+	letter-spacing: -0.025em;
+	line-height: 1.03;
+	text-wrap: balance;
+}
+
+.lede {
+	font-size: var(--step-1);
+	line-height: 1.5;
+	color: var(--ink-2);
+	max-width: var(--measure);
+	text-wrap: pretty;
+}
+
+.prose {
+	max-width: var(--measure);
+	color: var(--ink-2);
+}
+
+.prose > * + * {
+	margin-top: var(--sp-4);
+}
+
+.prose a {
+	color: var(--ink);
+	text-decoration: underline;
+	text-decoration-color: var(--ember-line);
+	text-underline-offset: 3px;
+}
+
+.prose h2,
+.prose h3 {
+	font-family: var(--font-display);
+	font-weight: 600;
+	letter-spacing: -0.02em;
+	color: var(--ink);
+	line-height: 1.15;
+	margin-top: var(--sp-6);
+}
+
+.prose h2 {
+	font-size: var(--step-2);
+}
+
+.prose h3 {
+	font-size: var(--step-1);
+}
+
+.prose ul,
+.prose ol {
+	padding-left: 1.15rem;
+}
+
+.prose li + li {
+	margin-top: var(--sp-2);
+}
+
+.prose code {
+	font-family: var(--font-mono);
+	font-size: 0.9em;
+	background: var(--surface-2);
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	padding: 0.1em 0.35em;
+	color: var(--ink);
+}
+
+.prose pre {
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-left: 2px solid var(--ember-line);
+	border-radius: var(--radius);
+	padding: var(--sp-4);
+	overflow-x: auto;
+	font-family: var(--font-mono);
+	font-size: var(--step--1);
+	line-height: 1.6;
+}
+
+.prose pre code {
+	background: none;
+	border: 0;
+	padding: 0;
+}
+
+.visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+	border: 0;
+}
+
+/* Skip link */
+.skip-link {
+	position: absolute;
+	top: var(--sp-3);
+	left: var(--sp-3);
+	z-index: 100;
+	padding: var(--sp-3) var(--sp-4);
+	background: var(--ember);
+	color: var(--canvas);
+	font-family: var(--font-mono);
+	font-size: var(--step--1);
+	font-weight: 600;
+	border-radius: var(--radius);
+	transform: translateY(-200%);
+	transition: transform var(--dur) var(--ease-out);
+}
+
+.skip-link:focus-visible {
+	transform: translateY(0);
+}
+
+/* --- Focus ring for the whole document (keyboard users) ---------------- */
+body:has(:focus-visible) {
+	scroll-padding-block-start: var(--sp-8);
+}
+
+/* --- Reduced motion ----------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+	html {
+		scroll-behavior: auto;
+	}
+
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}

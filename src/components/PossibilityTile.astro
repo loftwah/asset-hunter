@@ -1,0 +1,158 @@
+---
+/**
+ * A single tile on the catalogue wall.
+ *
+ * Design intent: the specimen is the content and the type is a label, not a
+ * summary. The whole tile is one link so the hit area is the media, which is
+ * both a larger target and a more honest affordance than a small text link.
+ */
+import ProvenanceMarkers from "./ProvenanceMarkers.astro";
+import { VERTICAL_LABEL, MEDIA_LABEL } from "../lib/vocabulary";
+import { mediaSrc, type Possibility } from "../lib/catalogue";
+
+interface Props {
+	possibility: Possibility;
+	/** Above this index, show the specimen larger — the density ramp. */
+	featured?: boolean;
+	/** Dominant vertical across the current view; hidden on that tile. */
+	hideVertical?: boolean;
+	eager?: boolean;
+	/**
+	 * Heading level for the tile title. Must match the page hierarchy: an
+	 * `h3` under an `h1` with no intervening `h2` is a skipped level, which
+	 * breaks screen-reader navigation.
+	 */
+	headingLevel?: "h2" | "h3";
+}
+
+const {
+	possibility: p,
+	featured = false,
+	hideVertical = false,
+	eager = false,
+	headingLevel = "h3",
+} = Astro.props;
+const Heading = headingLevel;
+// Exposed so the wall's client-side filter can hide non-matching tiles without
+// a second request, and so the DOM order still reflects the server ordering.
+const verticalAttr = p.vertical ?? "";
+const src = mediaSrc(p);
+const vertical = p.vertical ? (VERTICAL_LABEL[p.vertical] ?? p.vertical) : null;
+---
+
+<article class:list={["tile", { "tile--featured": featured }]} data-vertical={verticalAttr}>
+	<a class="tile__link" href={`/possibilities/${p.slug}`}>
+		<div class="tile__plate">
+			<img
+				src={src}
+				alt={p.tagline ? `${p.title} — ${p.tagline}` : p.title}
+				width="800"
+				height="1000"
+				loading={eager ? "eager" : "lazy"}
+				decoding="async"
+				fetchpriority={eager ? "high" : "auto"}
+			/>
+		</div>
+		<div class="tile__label">
+			<Heading class="tile__title">{p.title}</Heading>
+			{
+				!hideVertical && vertical && (
+					<p class="tile__meta">
+						<span class="tag">{vertical}</span>
+						{p.mediaKind && <span class="tag">{MEDIA_LABEL[p.mediaKind] ?? p.mediaKind}</span>}
+					</p>
+				)
+			}
+			<ProvenanceMarkers rights={p.rightsStatus} origin={p.representativeOrigin} size="sm" />
+		</div>
+	</a>
+</article>
+
+<style>
+	.tile {
+		position: relative;
+	}
+
+	.tile__link {
+		display: grid;
+		gap: var(--sp-3);
+		/* Whole tile is the target: a bigger, more honest hit area. */
+		min-height: 44px;
+	}
+
+	.tile__plate {
+		position: relative;
+		overflow: hidden;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		background: var(--surface);
+		box-shadow: var(--shadow-plate);
+		aspect-ratio: 4 / 5;
+		transition: border-color var(--dur) var(--ease-out),
+			transform var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+	}
+
+	.tile__plate img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		transition: transform var(--dur-slow) var(--ease-out),
+			opacity var(--dur) var(--ease-out);
+	}
+
+	/* Hover/focus: lift the plate and warm the border. No drop-shadow soup. */
+	.tile__link:hover .tile__plate,
+	.tile__link:focus-visible .tile__plate {
+		border-color: var(--ember-line);
+		transform: translateY(-2px);
+		box-shadow: var(--shadow-lift);
+	}
+
+	.tile__link:hover .tile__plate img {
+		transform: scale(1.028);
+	}
+
+	.tile__link:focus-visible {
+		outline: 2px solid var(--ember);
+		outline-offset: 4px;
+		border-radius: var(--radius);
+	}
+
+	.tile__label {
+		display: grid;
+		gap: var(--sp-2);
+		align-content: start;
+	}
+
+	.tile__title {
+		font-family: var(--font-display);
+		font-weight: 600;
+		font-size: var(--step-0);
+		line-height: 1.2;
+		letter-spacing: -0.015em;
+		color: var(--ink);
+		text-wrap: balance;
+		transition: color var(--dur-fast) var(--ease-out);
+	}
+
+	.tile__link:hover .tile__title {
+		color: var(--ember);
+	}
+
+	.tile__meta {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-2) var(--sp-3);
+	}
+
+	/* The featured tile earns its size from content, not from a class alone. */
+	@media (width >= 900px) {
+		.tile--featured .tile__plate {
+			aspect-ratio: 16 / 10;
+		}
+
+		.tile--featured .tile__title {
+			font-size: var(--step-2);
+		}
+	}
+</style>

@@ -72,3 +72,27 @@ Before declaring the autonomous run exhausted:
 - continue any independent executable work instead of stopping on one blocked lane.
 
 Stop only on owner instruction, a real runtime/provider limit, a global inability to make useful progress, or verified exhaustion of executable work.
+
+## EmDash skills (vendored)
+
+Official EmDash agent guidance is vendored under `.agents/skills/`, pinned to a
+known upstream revision:
+
+| Skill                   | Use for                                                  |
+| ----------------------- | -------------------------------------------------------- |
+| `building-emdash-site`  | Schema, seeds, queries, rendering, deployment config     |
+| `emdash-cli`            | Inspecting and managing content, schema, media, search   |
+| `creating-plugins`      | Plugin hooks, routes, storage, admin UI, blocks         |
+
+Each directory carries an `UPSTREAM_REVISION` file. To refresh:
+
+```bash
+npm run skills:sync     # re-fetches from emdash-cms/emdash and records the revision
+```
+
+**If a task touches the public catalogue, CMS schema or content, admin, media,
+auth, ratings/curation, site navigation, or EmDash deployment, load the relevant
+skill from `.agents/skills/` before editing code.** Installing the package is not
+the same as using it correctly — `npm run doctor` distinguishes installed from
+integrated, and `npm run smoke` proves the public read path is actually served by
+EmDash.

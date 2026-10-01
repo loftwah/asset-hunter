@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Physics sheet plate: a dismiss gesture driven by a real spring rather than a timed transition">
+	<rect width="800" height="1000" fill="#08090a"/>
+
+	<g font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">
+		<text x="72" y="72" fill="#ff5a1f" letter-spacing="2">VELOCITY CARRIES THE INTENT</text>
+		<text x="728" y="72" text-anchor="end">a timed transition cannot know how fast you meant it</text>
+	</g>
+
+	<!-- the sheet, mid-flight, following the finger -->
+	<g>
+		<rect x="0" y="0" width="800" height="1000" fill="#08090a"/>
+		<!-- content behind, dimmed -->
+		<g opacity=".22" fill="#2b323a">
+			<rect x="72" y="120" width="180" height="14" rx="2"/>
+			<rect x="72" y="152" width="120" height="14" rx="2"/>
+			<rect x="72" y="220" width="656" height="120" rx="4"/>
+			<rect x="72" y="364" width="656" height="120" rx="4"/>
+			<rect x="72" y="508" width="656" height="120" rx="4"/>
+		</g>
+		<rect x="0" y="0" width="800" height="1000" fill="#08090a" opacity=".5"/>
+
+		<!-- the sheet: rotated by the drag, scaled by velocity -->
+		<g transform="rotate(-7 400 620)">
+			<rect x="72" y="336" width="656" height="600" rx="14" fill="#121518"/>
+			<rect x="72" y="336" width="656" height="600" rx="14" fill="none" stroke="#2c3238"/>
+			<rect x="72" y="336" width="656" height="3" fill="#343b42"/>
+			<g fill="#3a4148">
+				<rect x="368" y="366" width="64" height="5" rx="2.5"/>
+			</g>
+			<g font-family="ui-monospace,Menlo,monospace">
+				<text x="112" y="428" font-size="19" fill="#6a7178">MOVEMENT SETTINGS</text>
+				<text x="112" y="478" font-size="30" fill="#f4f2ee">Spring response</text>
+				<text x="112" y="540" font-size="17" fill="#8b929a">stiffness</text>
+				<rect x="200" y="530" width="360" height="6" fill="#23272c"/>
+				<rect x="200" y="530" width="252" height="6" fill="#ff5a1f"/>
+				<text x="700" y="540" font-size="17" fill="#b6bcc3" text-anchor="end">210</text>
+
+				<text x="112" y="608" font-size="17" fill="#8b929a">damping</text>
+				<rect x="200" y="598" width="360" height="6" fill="#23272c"/>
+				<rect x="200" y="598" width="286" height="6" fill="#ff5a1f"/>
+				<text x="700" y="608" font-size="17" fill="#b6bcc3" text-anchor="end">0.82</text>
+
+				<text x="112" y="676" font-size="17" fill="#8b929a">velocity handoff</text>
+				<rect x="200" y="666" width="360" height="6" fill="#23272c"/>
+				<rect x="200" y="666" width="326" height="6" fill="#4cc2f0"/>
+				<text x="700" y="676" font-size="17" fill="#b6bcc3" text-anchor="end">on</text>
+			</g>
+			<rect x="112" y="720" width="576" height="1" fill="#23272c"/>
+			<g font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">
+				<text x="112" y="766">reduce motion</text>
+				<text x="112" y="806">respect system setting</text>
+				<text x="112" y="846">interrupt on re-grab</text>
+			</g>
+		</g>
+	</g>
+
+	<!-- the drag trail: positions the gesture actually passed through -->
+	<g>
+		<path d="M96 700 Q300 560 470 470 T700 300" fill="none" stroke="#ff5a1f" stroke-width="2" opacity=".5" stroke-dasharray="3 6"/>
+		<g fill="#ff5a1f">
+			<circle cx="96" cy="700" r="4" opacity=".3"/>
+			<circle cx="250" cy="576" r="4" opacity=".4"/>
+			<circle cx="400" cy="494" r="4" opacity=".55"/>
+			<circle cx="540" cy="404" r="4" opacity=".7"/>
+			<circle cx="700" cy="300" r="5" opacity=".9"/>
+		</g>
+		<text x="712" y="292" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#ff5a1f">release</text>
+	</g>
+
+	<!-- the curve: what the spring does after the finger is gone -->
+	<g>
+		<rect x="72" y="880" width="656" height="1" fill="#1c2126"/>
+		<text x="72" y="912" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">position over time</text>
+		<g transform="translate(0,-8)">
+			<path d="M72 968 L120 966 L168 958 L216 936 L264 892 L312 840 L360 812 L408 822 L456 848 L504 862 L552 856 L600 842 L648 838 L696 840 L728 842"
+				fill="none" stroke="#4cc2f0" stroke-width="2"/>
+			<circle cx="264" cy="892" r="4" fill="#ff5a1f"/>
+			<text x="276" y="890" font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#ff5a1f">release</text>
+			<path d="M72 940 H728" stroke="#f2a33c" stroke-opacity=".5" stroke-dasharray="4 6"/>
+			<text x="728" y="934" font-family="ui-monospace,Menlo,monospace" font-size="13" fill="#f2a33c" text-anchor="end">threshold crossed — committed</text>
+		</g>
+	</g>
+
+	<g font-family="ui-monospace,Menlo,monospace" font-size="16">
+		<text x="452" y="912" fill="#6a7178">cross the threshold and momentum decides the rest</text>
+	</g>
+</svg>

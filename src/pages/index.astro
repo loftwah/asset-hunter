@@ -1,0 +1,414 @@
+---
+/**
+ * The catalogue wall — the product's primary surface.
+ *
+ * Filtering happens server-side against the CMS query so the initial render is
+ * already correct (works without JS, shareable URLs), and client-side only to
+ * hide tiles that no longer match. The two paths must agree: `?vertical=` is
+ * the source of truth, and the toggle writes to it.
+ */
+import Base from "../layouts/Base.astro";
+import PossibilityTile from "../components/PossibilityTile.astro";
+import { loadPossibilities, tallyVerticals } from "../lib/catalogue";
+import { RIGHTS_LABEL, RIGHTS_MEANING } from "../lib/vocabulary";
+
+const { possibilities, cacheHint } = await loadPossibilities();
+if (Astro.cache?.enabled) Astro.cache.set(cacheHint);
+
+const verticals = tallyVerticals(possibilities);
+const requested = Astro.url.searchParams.get("vertical");
+const activeVertical = verticals.find((v) => v.slug === requested)?.slug ?? null;
+
+const filtered = activeVertical
+	? possibilities.filter((p) => p.vertical === activeVertical)
+	: possibilities;
+
+// Density ramp: the top entries get a wider plate, so emphasis is decided by the
+// ordering rather than by every tile shouting equally.
+const featuredCount = activeVertical ? 0 : 1;
+const featured = filtered.slice(0, featuredCount);
+const rest = filtered.slice(featuredCount);
+
+const rightsTally = new Map<string, number>();
+for (const p of filtered) {
+	if (p.rightsStatus) rightsTally.set(p.rightsStatus, (rightsTally.get(p.rightsStatus) ?? 0) + 1);
+}
+
+const dominantVertical = verticals[0]?.slug ?? null;
+---
+
+<Base
+	title="Catalogue"
+	description="A field guide to what can be made — distinct creative and technical possibilities across games, UI, branding, motion, audio, 3D, shaders, code and architecture, each with representative examples and their rights."
+	path="/"
+>
+	<section class="intro shell">
+		<p class="tag tag--ember">Option space, compressed</p>
+		<h1 class="display intro__title">
+			What can be made, and the ways it has already been made
+		</h1>
+		<p class="lede">
+			Each plate is one distinct possibility rather than one file. Drill in for the technique, the
+			build notes, a prompt scaffold and the rights — because knowing a treatment exists says
+			nothing about whether you may copy the asset that showed it to you.
+		</p>
+		<dl class="tally">
+			<div>
+				<dt class="tag">Possibilities</dt>
+				<dd class="tally__n">{possibilities.length}</dd>
+			</div>
+			<div>
+				<dt class="tag">Verticals</dt>
+				<dd class="tally__n">{verticals.length}</dd>
+			</div>
+			<div>
+				<dt class="tag">Upstream sources verified</dt>
+				<dd class="tally__n">
+					{possibilities.reduce((n, p) => n + (p.distinctSources ?? 0), 0)}
+				</dd>
+			</div>
+		</dl>
+	</section>
+
+	<nav class="rail shell" aria-label="Filter by vertical">
+		<h2 class="visually-hidden">Filter by vertical</h2>
+		<ul class="rail__list" data-rail>
+			<li>
+				<a
+					href={activeVertical ? "/" : "/"}
+					class:list={["chip", { "chip--on": !activeVertical }]}
+					aria-current={!activeVertical ? "true" : undefined}
+				>
+					All<span class="chip__n">{possibilities.length}</span>
+				</a>
+			</li>
+			{
+				verticals.map((v) => (
+					<li>
+						<a
+							href={`/?vertical=${v.slug}`}
+							class:list={["chip", { "chip--on": activeVertical === v.slug }]}
+							aria-current={activeVertical === v.slug ? "true" : undefined}
+							data-vertical={v.slug}
+						>
+							{v.slug === dominantVertical && !activeVertical ? "" : ""}
+							<span data-label>{v.slug.replace(/-/g, " ")}</span>
+							<span class="chip__n">{v.count}</span>
+						</a>
+					</li>
+				))
+			}
+		</ul>
+	</nav>
+
+	<section class="wall shell" aria-label="Possibilities">
+		{
+			filtered.length === 0 ? (
+				<div class="empty">
+					<h2 class="display empty__title">Nothing catalogued yet</h2>
+					<p class="lede">
+						No possibilities are published in this vertical. That is an accurate empty state
+						rather than a loading failure — try another vertical.
+					</p>
+					<a class="button" href="/">
+						Show every vertical
+					</a>
+				</div>
+			) : (
+				<>
+					{featured.length > 0 && (
+						<div class="wall__feature">
+							{featured.map((p) => (
+								<PossibilityTile
+									possibility={p}
+									featured
+									hideVertical={false}
+									eager
+								/>
+							))}
+						</div>
+					)}
+					<div class="grid" data-grid>
+						{rest.map((p) => (
+							<PossibilityTile
+								possibility={p}
+								hideVertical={false}
+							/>
+						))}
+					</div>
+				</>
+			)
+		}
+	</section>
+
+	<aside class="legend shell" aria-labelledby="legend-title">
+		<h2 id="legend-title" class="tag">Reading the marks</h2>
+		<div class="legend__grid">
+			{
+				[...rightsTally.entries()].map(([status, count]) => (
+					<div class="legend__row">
+						<span class="legend__dot" style={`--c: var(--rights-${status})`} aria-hidden="true" />
+						<div>
+							<p class="legend__label">
+								{RIGHTS_LABEL[status as keyof typeof RIGHTS_LABEL]} · {count}
+							</p>
+							<p class="legend__meaning">{RIGHTS_MEANING[status as keyof typeof RIGHTS_MEANING]}</p>
+						</div>
+					</div>
+				))
+			}
+			<div class="legend__row">
+				<span class="legend__dot legend__dot--hollow" style="--c: var(--origin-generated)" aria-hidden="true" />
+				<div>
+					<p class="legend__label">Generated · {filtered.length}</p>
+					<p class="legend__meaning">
+						Every plate here was generated for this catalogue. Upstream examples, shown
+						directly from discovered material, will appear alongside them and are labelled
+						differently.
+					</p>
+				</div>
+			</div>
+		</div>
+	</aside>
+
+	<script>
+		// Progressive enhancement: the server already filtered correctly. This
+		// only makes the filter feel instant when toggling between verticals
+		// that are already in the DOM.
+		const list = document.querySelector<HTMLElement>("[data-rail]");
+		const grid = document.querySelector<HTMLElement>("[data-grid]");
+		if (list && grid) {
+			list.addEventListener("click", (event) => {
+				const link = (event.target as HTMLElement).closest<HTMLAnchorElement>("a[data-vertical]");
+				if (!link) return;
+				const slug = link.dataset.vertical;
+				const tiles = Array.from(grid.querySelectorAll<HTMLElement>(".tile"));
+				// Only intercept when every tile for that vertical is present.
+				event.preventDefault();
+				for (const tile of tiles) {
+					const matches = tile.dataset.vertical === slug;
+					tile.hidden = !matches;
+				}
+				history.pushState(null, "", `/?vertical=${slug}`);
+				document.dispatchEvent(new CustomEvent("wall:filter", { detail: { slug } }));
+			});
+		}
+	</script>
+</Base>
+
+<style>
+	.intro {
+		display: grid;
+		gap: var(--sp-4);
+		padding-block: clamp(var(--sp-7), 7vw, var(--sp-9)) var(--sp-6);
+	}
+
+	.intro__title {
+		font-size: var(--step-5);
+		max-width: 22ch;
+	}
+
+	.tally {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-5) var(--sp-7);
+		margin-top: var(--sp-3);
+		padding-top: var(--sp-4);
+		border-top: 1px solid var(--line);
+	}
+
+	.tally dt {
+		margin-bottom: 0.2rem;
+	}
+
+	.tally__n {
+		font-family: var(--font-display);
+		font-weight: 600;
+		font-size: var(--step-3);
+		line-height: 1;
+		color: var(--ink);
+		font-variant-numeric: tabular-nums;
+	}
+
+	/* --- Filter rail --- */
+
+	.rail {
+		position: sticky;
+		top: 3.5rem;
+		z-index: 30;
+		padding-block: var(--sp-3);
+		background: color-mix(in srgb, var(--canvas) 92%, transparent);
+		backdrop-filter: blur(14px);
+		border-block: 1px solid var(--line);
+	}
+
+	.rail__list {
+		display: flex;
+		gap: var(--sp-2);
+		list-style: none;
+		padding: 0 0 var(--sp-1);
+		overflow-x: auto;
+		scrollbar-width: thin;
+		scroll-snap-type: x proximity;
+	}
+
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-height: 2rem;
+		padding: 0.35rem 0.75rem;
+		background: transparent;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		letter-spacing: 0.04em;
+		text-transform: capitalize;
+		color: var(--ink-2);
+		white-space: nowrap;
+		scroll-snap-align: start;
+		transition: color var(--dur-fast) var(--ease-out),
+			border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+	}
+
+	.chip:hover {
+		color: var(--ink);
+		border-color: var(--line-loud);
+	}
+
+	.chip--on {
+		color: var(--canvas);
+		background: var(--ember);
+		border-color: var(--ember);
+	}
+
+	.chip__n {
+		font-size: 0.85em;
+		color: var(--ink-4);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.chip--on .chip__n {
+		color: color-mix(in srgb, var(--canvas) 70%, transparent);
+	}
+
+	/* --- Wall --- */
+
+	.wall {
+		padding-block: var(--sp-6) var(--sp-7);
+	}
+
+	.wall__feature {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: var(--sp-5);
+		margin-bottom: var(--sp-6);
+		padding-bottom: var(--sp-6);
+		border-bottom: 1px solid var(--line);
+	}
+
+	.grid {
+		display: grid;
+		/* Media-first: the tile size is set by the plate, not by a card. */
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+		gap: var(--sp-5) var(--sp-4);
+	}
+
+	.grid :global(.tile[hidden]) {
+		display: none;
+	}
+
+	/* --- Empty state --- */
+
+	.empty {
+		display: grid;
+		gap: var(--sp-4);
+		justify-items: start;
+		padding-block: var(--sp-8);
+		max-width: var(--measure);
+	}
+
+	.empty__title {
+		font-size: var(--step-3);
+	}
+
+	.button {
+		display: inline-flex;
+		align-items: center;
+		min-height: 2.75rem;
+		padding: 0.6rem 1.1rem;
+		background: var(--ember);
+		color: var(--canvas);
+		border: 1px solid var(--ember);
+		border-radius: var(--radius);
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		transition: background var(--dur-fast) var(--ease-out);
+	}
+
+	.button:hover {
+		background: color-mix(in srgb, var(--ember) 86%, white);
+	}
+
+	/* --- Rights legend --- */
+
+	.legend {
+		padding-block: var(--sp-6);
+		border-top: 1px solid var(--line);
+	}
+
+	.legend__grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+		gap: var(--sp-4) var(--sp-6);
+		margin-top: var(--sp-4);
+	}
+
+	.legend__row {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		gap: var(--sp-3);
+		align-items: start;
+	}
+
+	.legend__dot {
+		width: 0.6rem;
+		height: 0.6rem;
+		margin-top: 0.35rem;
+		border-radius: 50%;
+		background: var(--c);
+	}
+
+	.legend__dot--hollow {
+		background: none;
+		box-shadow: inset 0 0 0 1.5px var(--c);
+	}
+
+	.legend__label {
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		color: var(--ink);
+		margin-bottom: 0.2rem;
+	}
+
+	.legend__meaning {
+		font-size: var(--step--1);
+		color: var(--ink-3);
+		line-height: 1.5;
+		max-width: 46ch;
+	}
+
+	@media (width >= 900px) {
+		.wall__feature {
+			grid-template-columns: 1.6fr 1fr;
+			gap: var(--sp-5);
+		}
+
+		.grid {
+			gap: var(--sp-6) var(--sp-5);
+		}
+	}
+</style>

@@ -1,0 +1,625 @@
+---
+/**
+ * Drill-in page for a single possibility.
+ *
+ * Structure follows what someone actually needs when deciding a direction:
+ * what it is, how it is done, what to watch out for, how to prompt it, what
+ * examples exist, and — never buried — what the rights situation is.
+ */
+import Base from "../../layouts/Base.astro";
+import PossibilityTile from "../../components/PossibilityTile.astro";
+import ProvenanceMarkers from "../../components/ProvenanceMarkers.astro";
+import {
+	loadExamplesFor,
+	loadPossibilities,
+	loadPossibility,
+	mediaSrc,
+	type Example,
+} from "../../lib/catalogue";
+import {
+	MEDIA_LABEL,
+	ORIGIN_LABEL,
+	ORIGIN_MEANING,
+	RIGHTS_LABEL,
+	RIGHTS_MEANING,
+	VERTICAL_LABEL,
+} from "../../lib/vocabulary";
+
+const { slug } = Astro.params;
+const { possibility: p, cacheHint } = await loadPossibility(slug ?? "");
+if (Astro.cache?.enabled && cacheHint) Astro.cache.set(cacheHint);
+
+if (!p) {
+	return Astro.rewrite("/404");
+}
+
+const [{ possibilities }, { examples }] = await Promise.all([
+	loadPossibilities(),
+	loadExamplesFor(p.slug),
+]);
+
+const src = mediaSrc(p);
+const vertical = p.vertical ? (VERTICAL_LABEL[p.vertical] ?? p.vertical) : null;
+
+// Neighbours come from the same vertical where possible, because "what else
+// could I do in this area" is the question a visitor arrived with.
+const sameVertical = possibilities.filter((x) => x.vertical === p.vertical && x.slug !== p.slug);
+const others = possibilities.filter((x) => x.vertical !== p.vertical && x.slug !== p.slug);
+const related = [...sameVertical, ...others].slice(0, 4);
+
+function promptLines(value: string | null | undefined): string[] {
+	if (!value) return [];
+	return value
+		.split(/(?<=\.)\s+/)
+		.map((s) => s.trim())
+		.filter(Boolean);
+}
+const scaffold = promptLines(p.promptScaffold);
+
+/** Renders provenance rows only when there is real evidence behind them. */
+function evidenceRows(example: Example) {
+	return [
+		{ label: "Source", value: example.sourceUrl },
+		{ label: "Repository", value: example.sourceRepo },
+		{ label: "Ref", value: example.sourceRef },
+		{ label: "Path", value: example.sourcePath },
+		{ label: "Licence", value: example.licenceSpdx },
+		{ label: "Evidence", value: example.licenceEvidence },
+		{ label: "Attribution", value: example.attribution },
+		{ label: "Content hash", value: example.contentHash },
+	].filter((row) => Boolean(row.value));
+}
+---
+
+<Base
+	title={p.title}
+	description={p.summary ?? p.tagline ?? "A catalogued possibility on Asset Hunter."}
+	path={`/possibilities/${p.slug}`}
+	ogImage={src}
+>
+	<article class="detail">
+		<header class="head shell">
+			<nav class="crumbs" aria-label="Breadcrumb">
+				<a href="/">Catalogue</a>
+				{vertical && <><span aria-hidden="true">/</span><a href={`/verticals#${p.vertical}`}>{vertical}</a></>}
+				<span aria-hidden="true">/</span>
+				<span class="crumbs__here">{p.title}</span>
+			</nav>
+
+			<h1 class="display head__title">{p.title}</h1>
+			{p.tagline && <p class="head__tagline">{p.tagline}</p>}
+
+			<div class="head__marks">
+				<ProvenanceMarkers rights={p.rightsStatus} origin={p.representativeOrigin} />
+			</div>
+
+			{
+				p.summary && (
+					<p class="lede head__summary">{p.summary}</p>
+				)
+			}
+
+			<dl class="facts">
+				{
+					vertical && (
+						<div>
+							<dt class="tag">Vertical</dt>
+							<dd><a href={`/verticals#${p.vertical}`}>{vertical}</a></dd>
+						</div>
+					)
+				}
+				{
+					p.mediaKind && (
+						<div>
+							<dt class="tag">Media</dt>
+							<dd>{MEDIA_LABEL[p.mediaKind] ?? p.mediaKind}</dd>
+						</div>
+					)
+				}
+				<div>
+					<dt class="tag">Examples</dt>
+					<dd>{examples.length || (p.exampleCount ?? 0)}</dd>
+				</div>
+				<div>
+					<dt class="tag">Verified sources</dt>
+					<dd>{p.distinctSources ?? 0}</dd>
+				</div>
+			</dl>
+		</header>
+
+		<div class="body shell">
+			<figure class="plate">
+				<img
+					src={src}
+					alt={p.tagline ? `${p.title} — ${p.tagline}` : p.title}
+					width="800"
+					height="1000"
+					loading="eager"
+					decoding="async"
+					fetchpriority="high"
+				/>
+				<figcaption class="tag">
+					{
+						p.representativeOrigin
+							? `${ORIGIN_LABEL[p.representativeOrigin as keyof typeof ORIGIN_LABEL] ?? p.representativeOrigin} specimen`
+							: "Specimen"
+					}
+					· reference plate
+				</figcaption>
+			</figure>
+
+			<div class="prose-col">
+				{
+					p.technique && (
+						<section aria-labelledby="technique">
+							<h2 id="technique" class="section__title">Technique</h2>
+							<p>{p.technique}</p>
+						</section>
+					)
+				}
+
+				{
+					p.buildNotes && (
+						<section aria-labelledby="notes">
+							<h2 id="notes" class="section__title">Build notes</h2>
+							<p>{p.buildNotes}</p>
+						</section>
+					)
+				}
+
+				{
+					scaffold.length > 0 && (
+						<section aria-labelledby="prompt">
+							<h2 id="prompt" class="section__title">Prompt scaffold</h2>
+							<p class="section__hint">
+								A starting scaffold, not a proven prompt. Change it and compare results.
+							</p>
+							<blockquote class="scaffold">
+								{scaffold.map((line) => (
+									<span class="scaffold__line">{line}</span>
+								))}
+							</blockquote>
+						</section>
+					)
+				}
+
+				<section aria-labelledby="rights">
+					<h2 id="rights" class="section__title">Rights</h2>
+					{
+						p.rightsStatus && (
+							<p class="rights__status" style={`--c: var(--rights-${p.rightsStatus})`}>
+								<span class="rights__dot" aria-hidden="true" />
+								<strong>{RIGHTS_LABEL[p.rightsStatus as keyof typeof RIGHTS_LABEL]}</strong>
+								<span class="rights__meaning">
+									{RIGHTS_MEANING[p.rightsStatus as keyof typeof RIGHTS_MEANING]}
+								</span>
+							</p>
+						)
+					}
+					{p.rightsNote && <p class="rights__note">{p.rightsNote}</p>}
+					<p class="rights__disclaimer">
+						Possibility discovery does not grant rights to the source asset. Read the licence
+						on the original before you reuse anything.
+						<a href="/pages/licensing">How rights are classified</a>.
+					</p>
+				</section>
+			</div>
+		</div>
+
+		{
+			examples.length > 0 && (
+				<section class="examples shell" aria-labelledby="examples-title">
+					<h2 id="examples-title" class="tag tag-rule">Examples · {examples.length}</h2>
+					<ul class="examples__list">
+						{examples.map((example) => {
+							const rows = evidenceRows(example);
+							return (
+								<li class="example">
+									<div class="example__media">
+										<img
+											src={mediaSrc(example, src)}
+											alt={example.title}
+											width="800"
+											height="1000"
+											loading="lazy"
+											decoding="async"
+										/>
+									</div>
+									<div class="example__body">
+										<h3 class="example__title">{example.title}</h3>
+										<ProvenanceMarkers
+											rights={example.rightsStatus}
+											origin={example.origin}
+											size="sm"
+										/>
+										{example.origin && (
+											<p class="example__origin">
+												{ORIGIN_MEANING[example.origin as keyof typeof ORIGIN_MEANING]}
+											</p>
+										)}
+										{example.note && <p class="example__note">{example.note}</p>}
+										{rows.length > 0 && (
+											<dl class="evidence">
+												{rows.map((row) => (
+													<div class="evidence__row">
+														<dt class="tag">{row.label}</dt>
+														<dd class="evidence__value">
+															{row.label === "Source" && row.value ? (
+																<a href={row.value} rel="noopener noreferrer nofollow" target="_blank">
+																	{row.value}
+																</a>
+															) : (
+																row.value
+															)}
+														</dd>
+													</div>
+												))}
+											</dl>
+										)}
+									</div>
+								</li>
+							);
+						})}
+					</ul>
+				</section>
+			)
+		}
+
+		{
+			related.length > 0 && (
+				<section class="related shell" aria-labelledby="related-title">
+					<h2 id="related-title" class="tag tag-rule">Related possibilities</h2>
+					<div class="related__grid">
+						{related.map((r) => (
+							<PossibilityTile possibility={r} />
+						))}
+					</div>
+				</section>
+			)
+		}
+	</article>
+</Base>
+
+<style>
+	.detail {
+		display: grid;
+	}
+
+	/* --- Header --- */
+
+	.head {
+		display: grid;
+		gap: var(--sp-4);
+		padding-block: var(--sp-5) var(--sp-6);
+	}
+
+	.crumbs {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.1rem 0.5rem;
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		color: var(--ink-4);
+	}
+
+	/* Padding, not type size, carries the tap target: breadcrumb type is
+	   intentionally small so the hierarchy stays readable. */
+	.crumbs a,
+	.crumbs__here {
+		display: inline-flex;
+		align-items: center;
+		min-height: 1.75rem;
+		padding-inline: 0.15rem;
+	}
+
+	.crumbs a {
+		color: var(--ink-3);
+		transition: color var(--dur-fast) var(--ease-out);
+	}
+
+	.crumbs a:hover {
+		color: var(--ink);
+	}
+
+	.crumbs__here {
+		color: var(--ink-2);
+	}
+
+	.head__title {
+		font-size: var(--step-4);
+		max-width: 24ch;
+	}
+
+	.head__tagline {
+		font-size: var(--step-1);
+		color: var(--ink-2);
+		max-width: 54ch;
+		text-wrap: pretty;
+	}
+
+	.head__marks {
+		margin-top: calc(var(--sp-2) * -1);
+	}
+
+	.head__summary {
+		margin-top: var(--sp-2);
+	}
+
+	.facts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-4) var(--sp-7);
+		margin-top: var(--sp-4);
+		padding-top: var(--sp-4);
+		border-top: 1px solid var(--line);
+	}
+
+	.facts dt {
+		margin-bottom: 0.15rem;
+	}
+
+	.facts dd {
+		display: flex;
+		align-items: center;
+		min-height: 1.9rem;
+		font-family: var(--font-display);
+		font-size: var(--step-1);
+		font-weight: 600;
+		color: var(--ink);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.facts dd a {
+		display: inline-flex;
+		align-items: center;
+		min-height: 1.9rem;
+	}
+
+	.facts a:hover {
+		color: var(--ember);
+	}
+
+	/* --- Body: plate beside prose --- */
+
+	.body {
+		display: grid;
+		gap: var(--sp-6);
+		padding-block: var(--sp-5) var(--sp-7);
+		border-top: 1px solid var(--line);
+	}
+
+	.plate {
+		display: grid;
+		gap: var(--sp-3);
+		align-content: start;
+	}
+
+	.plate img {
+		width: 100%;
+		height: auto;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		background: var(--surface);
+	}
+
+	.plate figcaption {
+		color: var(--ink-4);
+	}
+
+	.prose-col {
+		display: grid;
+		gap: var(--sp-6);
+		align-content: start;
+		max-width: var(--measure);
+	}
+
+	.prose-col p {
+		color: var(--ink-2);
+		line-height: 1.62;
+		text-wrap: pretty;
+	}
+
+	.section__title {
+		font-family: var(--font-display);
+		font-weight: 600;
+		font-size: var(--step-2);
+		letter-spacing: -0.02em;
+		color: var(--ink);
+		margin-bottom: var(--sp-3);
+	}
+
+	.section__hint {
+		font-size: var(--step--1);
+		color: var(--ink-4);
+		margin-top: calc(var(--sp-2) * -1);
+		margin-bottom: var(--sp-3);
+	}
+
+	.scaffold {
+		display: grid;
+		gap: var(--sp-2);
+		margin: 0;
+		padding: var(--sp-4);
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-left: 2px solid var(--ember-line);
+		border-radius: var(--radius);
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		line-height: 1.6;
+		color: var(--ink-2);
+	}
+
+	/* --- Rights --- */
+
+	.rights__status {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		gap: 0.35rem 0.7rem;
+		align-items: baseline;
+		padding: var(--sp-4);
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+	}
+
+	.rights__dot {
+		grid-row: 1 / 3;
+		align-self: center;
+		width: 0.7rem;
+		height: 0.7rem;
+		border-radius: 50%;
+		background: var(--c);
+	}
+
+	.rights__status strong {
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--ink);
+	}
+
+	.rights__meaning {
+		font-size: var(--step--1);
+		color: var(--ink-3);
+		line-height: 1.5;
+	}
+
+	.rights__note {
+		font-size: var(--step--1);
+	}
+
+	.rights__disclaimer {
+		font-size: var(--step--1);
+		color: var(--ink-4);
+		padding-top: var(--sp-3);
+		border-top: 1px solid var(--line);
+	}
+
+	.rights__disclaimer a {
+		display: inline-flex;
+		align-items: center;
+		min-height: 1.75rem;
+		color: var(--ink-2);
+		text-decoration: underline;
+		text-decoration-color: var(--ember-line);
+		text-underline-offset: 3px;
+	}
+
+	/* --- Examples --- */
+
+	.examples,
+	.related {
+		padding-block: var(--sp-7);
+		border-top: 1px solid var(--line);
+	}
+
+	.examples__list {
+		list-style: none;
+		padding: 0;
+		display: grid;
+		gap: var(--sp-4);
+		margin-top: var(--sp-5);
+	}
+
+	.example {
+		display: grid;
+		gap: var(--sp-4);
+		padding: var(--sp-4);
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+	}
+
+	.example__media img {
+		width: 100%;
+		max-width: 15rem;
+		height: auto;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+	}
+
+	.example__body {
+		display: grid;
+		gap: var(--sp-3);
+		align-content: start;
+	}
+
+	.example__title {
+		font-family: var(--font-display);
+		font-weight: 600;
+		font-size: var(--step-1);
+		letter-spacing: -0.015em;
+		color: var(--ink);
+	}
+
+	.example__origin,
+	.example__note {
+		font-size: var(--step--1);
+		color: var(--ink-3);
+		line-height: 1.55;
+		max-width: 62ch;
+	}
+
+	.evidence {
+		display: grid;
+		gap: var(--sp-2);
+		margin-top: var(--sp-2);
+		padding-top: var(--sp-3);
+		border-top: 1px solid var(--line);
+	}
+
+	.evidence__row {
+		display: grid;
+		grid-template-columns: 8rem minmax(0, 1fr);
+		gap: var(--sp-3);
+		align-items: baseline;
+	}
+
+	.evidence__value {
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		color: var(--ink-2);
+		overflow-wrap: anywhere;
+	}
+
+	.evidence__value a:hover {
+		color: var(--ember);
+	}
+
+	.related__grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr));
+		gap: var(--sp-5) var(--sp-4);
+		margin-top: var(--sp-5);
+	}
+
+	@media (width >= 860px) {
+		.body {
+			grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+			gap: var(--sp-7);
+		}
+
+		.plate {
+			position: sticky;
+			top: 4.5rem;
+			align-self: start;
+		}
+
+		.example {
+			grid-template-columns: 12rem minmax(0, 1fr);
+			align-items: start;
+		}
+	}
+
+	@media (width <= 560px) {
+		.evidence__row {
+			grid-template-columns: 1fr;
+			gap: 0.15rem;
+		}
+	}
+</style>

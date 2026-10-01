@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Capability negotiation plate: a plugin boundary where features are declared rather than assumed">
+	<defs>
+		<marker id="negok" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+			<path d="M0 0 L6 3 L0 6 Z" fill="#4fce8a"/>
+		</marker>
+		<marker id="negno" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+			<path d="M0 0 L6 3 L0 6 Z" fill="#ff8a4c"/>
+		</marker>
+	</defs>
+	<rect width="800" height="1000" fill="#08090a"/>
+
+	<g font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">
+		<text x="72" y="72" fill="#ff5a1f" letter-spacing="2">DECLARE, DO NOT ASSUME</text>
+		<text x="728" y="72" text-anchor="end">a missing capability is a value, not an exception</text>
+	</g>
+
+	<!-- host -->
+	<g>
+		<rect x="72" y="112" width="656" height="120" rx="4" fill="#0f1316" stroke="#2c3238"/>
+		<text x="96" y="152" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#4cc2f0" letter-spacing="1">HOST</text>
+		<g font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#b6bcc3">
+			<text x="96" y="190">storage.r2</text>
+			<text x="256" y="190">database.d1</text>
+			<text x="428" y="190">auth.passkey</text>
+			<text x="600" y="190">admin.ui</text>
+		</g>
+		<g fill="#4fce8a">
+			<circle cx="82" cy="184" r="3.5"/>
+			<circle cx="242" cy="184" r="3.5"/>
+			<circle cx="414" cy="184" r="3.5"/>
+			<circle cx="586" cy="184" r="3.5"/>
+		</g>
+	</g>
+
+	<!-- two hosts, two different answers: the same plugin, honestly adapted -->
+	<g>
+		<rect x="72" y="300" width="316" height="204" rx="4" fill="#0c0f12" stroke="#23272c"/>
+		<rect x="412" y="300" width="316" height="204" rx="4" fill="#0c0f12" stroke="#23272c"/>
+		<g font-family="ui-monospace,Menlo,monospace" font-size="16">
+			<text x="96" y="336" fill="#f4f2ee">target: cloudflare</text>
+			<text x="436" y="336" fill="#f4f2ee">target: local sqlite</text>
+		</g>
+		<g font-family="ui-monospace,Menlo,monospace" font-size="16">
+			<g fill="#4fce8a">
+				<text x="96" y="378">✓ storage.r2</text>
+				<text x="96" y="412">✓ database.d1</text>
+				<text x="96" y="446">✓ auth.passkey</text>
+				<text x="96" y="480">✓ admin.ui</text>
+			</g>
+			<g>
+				<text x="436" y="378" fill="#4fce8a">✓ storage.local</text>
+				<text x="436" y="412" fill="#4fce8a">✓ database.sqlite</text>
+				<text x="436" y="446" fill="#4fce8a">✓ auth.dev-bypass</text>
+				<text x="436" y="480" fill="#f2a33c">△ admin.ui</text>
+			</g>
+		</g>
+		<text x="436" y="480" font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#6a7178">  reduced</text>
+		<path d="M232 232 V296" stroke="#4fce8a" stroke-width="1.5" fill="none" marker-end="url(#negok)"/>
+		<path d="M572 232 V296" stroke="#f2a33c" stroke-width="1.5" fill="none" marker-end="url(#negno)"/>
+	</g>
+
+	<!-- the negotiation itself, as data -->
+	<g>
+		<rect x="72" y="556" width="656" height="238" rx="4" fill="#0a0d10" stroke="#1e2429"/>
+		<g font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#8b929a">
+			<text x="96" y="596">// what the plugin asks for, and what it does without each</text>
+			<text x="96" y="634" fill="#4cc2f0">requires</text>
+			<text x="200" y="634" fill="#d8dee4">storage.append, storage.read</text>
+			<text x="96" y="664" fill="#a68bfb">optional</text>
+			<text x="200" y="664" fill="#d8dee4">admin.panel</text>
+			<text x="368" y="664" fill="#6a7178">→ falls back to a settings link</text>
+			<text x="96" y="694" fill="#a68bfb">optional</text>
+			<text x="200" y="694" fill="#d8dee4">storage.versioning</text>
+			<text x="368" y="694" fill="#6a7178">→ content-hash paths instead</text>
+			<text x="96" y="724" fill="#ff8a4c">declines</text>
+			<text x="200" y="724" fill="#d8dee4">admin.rbac.readAll</text>
+			<text x="368" y="724" fill="#6a7178">→ authorises through the host</text>
+		</g>
+		<path d="M96 754 H704" stroke="#1c2126"/>
+		<g font-family="ui-monospace,Menlo,monospace" font-size="16">
+			<text x="96" y="782" fill="#4fce8a">feature never appears, so it can never be half-broken</text>
+		</g>
+	</g>
+
+	<g font-family="ui-monospace,Menlo,monospace" font-size="16">
+		<text x="72" y="856" fill="#f4f2ee">Installed is not the same as supported.</text>
+		<text x="72" y="890" fill="#6a7178">A capability the host cannot honour is removed from the surface,</text>
+		<text x="72" y="918" fill="#6a7178">not rendered and then allowed to fail at runtime.</text>
+	</g>
+</svg>

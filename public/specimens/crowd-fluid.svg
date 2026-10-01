@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Screen-space fluid plate: a crowd resolved as a velocity field rather than agents">
+	<defs>
+		<radialGradient id="crowdbg" cx="50%" cy="42%" r="70%">
+			<stop offset="0%" stop-color="#1b2b33"/>
+			<stop offset="60%" stop-color="#0e1418"/>
+			<stop offset="100%" stop-color="#08090a"/>
+		</radialGradient>
+		<linearGradient id="trailA" x1="0" y1="0" x2="1" y2="1">
+			<stop offset="0%" stop-color="#4cc2f0" stop-opacity="0"/>
+			<stop offset="60%" stop-color="#4cc2f0" stop-opacity=".55"/>
+			<stop offset="100%" stop-color="#ff5a1f" stop-opacity=".85"/>
+		</linearGradient>
+		<linearGradient id="trailB" x1="1" y1="0" x2="0" y2="1">
+			<stop offset="0%" stop-color="#a68bfb" stop-opacity="0"/>
+			<stop offset="70%" stop-color="#a68bfb" stop-opacity=".45"/>
+			<stop offset="100%" stop-color="#4cc2f0" stop-opacity=".7"/>
+		</linearGradient>
+		<filter id="crowdsoft" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur stdDeviation="3.2"/></filter>
+	</defs>
+	<rect width="800" height="1000" fill="url(#crowdbg)"/>
+
+	<!-- density field: the scalar the simulation actually solves -->
+	<g filter="url(#crowdsoft)" opacity=".55">
+		<ellipse cx="300" cy="380" rx="210" ry="150" fill="#4cc2f0" opacity=".2"/>
+		<ellipse cx="520" cy="600" rx="180" ry="130" fill="#a68bfb" opacity=".2"/>
+		<ellipse cx="410" cy="820" rx="240" ry="90" fill="#ff5a1f" opacity=".14"/>
+	</g>
+
+	<!-- velocity streaklines, integrated through the field -->
+	<g fill="none" stroke-linecap="round">
+		<g stroke="url(#trailA)" stroke-width="2.4" opacity=".9">
+			<path d="M120 250 C 250 300, 300 380, 372 470 S 520 610, 660 640"/>
+			<path d="M96 330 C 230 372, 288 452, 356 540 S 496 668, 648 700"/>
+			<path d="M140 180 C 268 236, 322 320, 392 412 S 540 552, 690 578"/>
+			<path d="M170 420 C 260 456, 316 528, 388 606 S 528 726, 660 758"/>
+			<path d="M104 470 C 214 500, 282 570, 356 646 S 496 762, 620 790"/>
+		</g>
+		<g stroke="url(#trailB)" stroke-width="1.8" opacity=".8">
+			<path d="M690 250 C 580 306, 520 386, 448 476 S 300 616, 152 650"/>
+			<path d="M716 340 C 596 388, 536 468, 462 556 S 318 692, 168 726"/>
+			<path d="M664 176 C 556 240, 496 322, 420 414 S 272 556, 128 588"/>
+			<path d="M700 452 C 588 490, 524 556, 450 632 S 306 748, 176 776"/>
+		</g>
+	</g>
+
+	<!-- particles sampled from the field -->
+	<g>
+		<g fill="#dff3fb">
+			<circle cx="212" cy="296" r="3"/><circle cx="286" cy="352" r="2.2"/><circle cx="352" cy="452" r="3.4"/>
+			<circle cx="430" cy="528" r="2.4"/><circle cx="516" cy="598" r="3"/><circle cx="604" cy="636" r="2"/>
+			<circle cx="168" cy="366" r="2.6"/><circle cx="246" cy="430" r="3.2"/><circle cx="322" cy="508" r="2"/>
+			<circle cx="408" cy="580" r="2.8"/><circle cx="486" cy="656" r="3"/><circle cx="570" cy="700" r="2.2"/>
+			<circle cx="596" cy="300" r="2.6"/><circle cx="524" cy="374" r="3"/><circle cx="452" cy="462" r="2.2"/>
+			<circle cx="372" cy="540" r="3.2"/><circle cx="292" cy="626" r="2.4"/><circle cx="206" cy="684" r="3"/>
+		</g>
+		<g fill="#c8b6ff" opacity=".8">
+			<circle cx="640" cy="288" r="2.2"/><circle cx="560" cy="356" r="2.8"/><circle cx="482" cy="440" r="2"/>
+			<circle cx="400" cy="520" r="2.6"/><circle cx="322" cy="604" r="3"/><circle cx="238" cy="664" r="2"/>
+			<circle cx="668" cy="392" r="2.4"/><circle cx="588" cy="452" r="2"/><circle cx="506" cy="534" r="2.8"/>
+			<circle cx="426" cy="616" r="2"/><circle cx="342" cy="686" r="2.6"/>
+		</g>
+	</g>
+
+	<!-- measurement rail: density sampled on a line, like a probe -->
+	<g font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">
+		<path d="M88 150 V880" stroke="#343b42"/>
+		<text x="72" y="156" text-anchor="end">ρ</text>
+		<g stroke="#ff5a1f" stroke-width="2">
+			<path d="M84 470 H92"/>
+		</g>
+		<text x="72" y="474" text-anchor="end">peak</text>
+	</g>
+	<!-- axis ticks -->
+	<g stroke="#23272c">
+		<path d="M110 880 H740"/>
+		<path d="M110 872 V880 M220 876 V880 M330 872 V880 M440 876 V880 M550 872 V880 M660 876 V880 M740 872 V880"/>
+	</g>
+	<text x="740" y="906" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#4d565f" text-anchor="end">t</text>
+</svg>
