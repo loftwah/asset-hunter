@@ -100,30 +100,54 @@ change in the seed needs a fresh database or a migration.
 ## Verifying
 
 ```bash
-npm run verify         # typecheck + seed checks + specimen checks + tests
-npm run check:visual   # screenshot matrix + layout/a11y assertions (needs dev server)
-npm run smoke          # proves the public catalogue is served by EmDash
-npm run doctor         # environment report
+npm run verify            # typecheck + seed + plates + tests (no server needed)
+npm run verify:full       # verify + smoke + admin-edit + visual (needs dev server)
+npm run smoke             # proves the public catalogue is served by EmDash
+npm run check:admin-edit  # writes through the CMS, publishes, reads the public page
+npm run check:visual      # screenshot matrix + layout/a11y assertions
+npm run doctor            # environment report
 ```
 
-`npm run check:visual` captures every public route at five viewports plus an
-iPhone profile into `screenshots/`, and asserts on horizontal overflow, tap
-target size, body-text contrast, resolved images, heading order, `lang`, first-Tab
-focus and console errors. Run it with `npm run dev` up.
+`npm run verify:full` is the full gate. It needs `npm run dev` running and the
+local database seeded (`curl "http://localhost:4321/_emdash/api/setup/dev-bypass"`).
+
+| Check                    | What it proves                                                     |
+| ------------------------ | ------------------------------------------------------------------ |
+| `verify`                 | Types, seed validity, every plate renders, unit + route tests        |
+| `smoke`                  | The public catalogue reads EmDash, not a shadow data source          |
+| `check:admin-edit`       | An EmDash edit reaches the public site, then is restored             |
+| `check:visual`           | Layout, contrast, tap targets, images, headings, focus, console      |
+| `check:specimens`        | Plates are well-formed XML with usable viewBox and alt text          |
+| `check:plates`           | Plates render without text collisions or cropped marks                |
+| `doctor`                 | What is installed versus what is integrated and used                 |
+
+`check:visual` captures every public route at five viewports plus an iPhone
+profile into `screenshots/`, and asserts in the rendered page rather than on the
+source — so it catches what a stylesheet review cannot.
+
+`check:plates` renders each specimen plate in a browser and measures real glyph
+boxes. Overlapping labels in a plate look fine in source and become gibberish at
+wall size, which is exactly why they are measured rather than reviewed.
 
 ## Commands
 
-| Command                | Purpose                                              |
-| ---------------------- | ---------------------------------------------------- |
-| `npm run dev`          | Dev server on :4321                                  |
-| `npm run build`        | Production build                                     |
-| `npm run deploy`       | Build and deploy the Worker                           |
-| `npm run preview`      | Build and serve locally through wrangler              |
-| `npm run typecheck`    | `astro check`                                        |
-| `npm run test`         | Unit and contract tests                              |
-| `npm run emdash …`     | EmDash CLI (`types`, `seed`, `export-seed`, …)        |
-| `npm run check:specimens` | Validate every specimen plate                     |
-| `npm run check:visual` | Visual QA matrix and assertions                      |
+| Command                   | Purpose                                          |
+| ------------------------- | ------------------------------------------------ |
+| `npm run dev`             | Dev server on :4321                              |
+| `npm run build`           | Production build                                 |
+| `npm run deploy`          | Build and deploy the Worker                     |
+| `npm run preview`         | Build and serve locally through wrangler        |
+| `npm run typecheck`       | `astro check`                                    |
+| `npm run test`            | Unit, seed-contract and route tests             |
+| `npm run test:unit`       | Only the tests that need no server              |
+| `npm run emdash …`        | EmDash CLI (`types`, `seed`, `export-seed`, …)   |
+| `npm run seed:build`      | `seed/atlas.json` → `seed/seed.json`             |
+| `npm run seed:check`      | Fail if `seed.json` is stale                     |
+| `npm run check:specimens` | Validate plate structure                         |
+| `npm run check:plates`    | Render plates and measure them                   |
+| `npm run check:visual`    | Visual QA matrix and assertions                  |
+| `npm run generate:og`     | Regenerate social images from the running product |
+| `npm run skills:sync`     | Refresh vendored EmDash agent skills             |
 
 ## Design
 

@@ -30,9 +30,11 @@
 		"check:specimens": "node scripts/check-specimens.mjs",
 		"check:visual": "node scripts/visual-qa.mjs",
 		"verify": "npm run typecheck && npm run seed:check && npm run seed:validate && npm run check:specimens && npm run check:plates && npm run test",
-		"verify:full": "npm run verify && npm run smoke && npm run check:visual",
+		"verify:full": "npm run verify && npm run smoke && npm run check:admin-edit && npm run check:visual",
 		"skills:sync": "node scripts/sync-emdash-skills.mjs",
-		"check:plates": "node scripts/check-plates.mjs"
+		"check:plates": "node scripts/check-plates.mjs",
+		"check:admin-edit": "node scripts/admin-edit-check.mjs",
+		"generate:og": "node scripts/generate-og.mjs"
 	},
 	"dependencies": {
 		"@astrojs/cloudflare": "14.3.3",

@@ -216,6 +216,25 @@ if (serverUp) {
 		existsSync(`${root}scripts/emdash-smoke.mjs`),
 		"Run: npm run smoke",
 	);
+
+	check(
+		"admin edit path verified",
+		existsSync(`${root}scripts/admin-edit-check.mjs`),
+		"Run: npm run check:admin-edit — proves an admin edit reaches the public site",
+	);
+
+	check(
+		"agent guidance vendored",
+		existsSync(`${root}.agents/skills/building-emdash-site/SKILL.md`) &&
+			existsSync(`${root}.agents/skills/emdash-cli/SKILL.md`),
+		"See .agents/skills/README.md",
+	);
+
+	check(
+		"design authority present",
+		existsSync(`${root}DESIGN.md`),
+		"DESIGN.md is the visual authority",
+	);
 }
 
 // --- Report ----------------------------------------------------------------
