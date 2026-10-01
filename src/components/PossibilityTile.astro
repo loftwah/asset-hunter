@@ -44,6 +44,14 @@ interface Props {
 	forceFocus?: boolean;
 	/** `href` override, so a lab fixture does not link to a real page. */
 	href?: string | null;
+	/**
+	 * The board to save into. Absent means "no save control" — the lab does not
+	 * want one, because a fixture that saved itself would be a fixture that
+	 * writes to the reader's cookie.
+	 */
+	board?: string | null;
+	/** Whether this possibility is already on that board. */
+	savedToBoard?: boolean;
 }
 
 const {
@@ -60,6 +68,8 @@ const {
 	forceHover = false,
 	forceFocus = false,
 	href,
+	board = null,
+	savedToBoard = false,
 } = Astro.props;
 const Heading = headingLevel;
 // Exposed so the wall's client-side filter can hide non-matching tiles without
@@ -146,6 +156,27 @@ const status = brokenPreview ? "broken" : loading ? "loading" : null;
 			}
 		</div>
 	</a>
+
+	{
+		board && (
+			<form class="save" method="post" action="/api/board">
+				<input type="hidden" name="action" value={savedToBoard ? "unsave" : "save"} />
+				<input type="hidden" name="slug" value={p.slug} />
+				<input type="hidden" name="board" value={board} />
+				<input type="hidden" name="back" value={Astro.url.pathname + Astro.url.search} />
+				<button
+					type="submit"
+					class:list={["save__button", { "save__button--on": savedToBoard }]}
+					aria-pressed={savedToBoard ? "true" : "false"}
+				>
+					<span class="save__glyph" aria-hidden="true">{savedToBoard ? "✓" : "+"}</span>
+					<span class="visually-hidden">
+						{savedToBoard ? `Remove ${p.title} from ${board}` : `Save ${p.title} to ${board}`}
+					</span>
+				</button>
+			</form>
+		)
+	}
 </article>
 
 <style>
@@ -295,6 +326,65 @@ const status = brokenPreview ? "broken" : loading ? "loading" : null;
 		color: var(--ink-3);
 		border-left: 2px solid var(--ember-line);
 		padding-left: var(--sp-3);
+	}
+
+	/* --- Save control ----------------------------------------------------- */
+
+	/* Positioned over the plate rather than inside the link: a form inside an
+	   anchor is invalid, and a button inside a link is unusable with a pointer
+	   and unreachable with a keyboard. It is a sibling, so both stay honest. */
+	.save {
+		position: absolute;
+		top: var(--sp-2);
+		right: var(--sp-2);
+		z-index: 2;
+	}
+
+	.save__button {
+		display: grid;
+		place-items: center;
+		width: 2rem;
+		height: 2rem;
+		background: color-mix(in srgb, var(--canvas) 82%, transparent);
+		border: 1px solid var(--line-loud);
+		border-radius: 999px;
+		color: var(--ink-2);
+		cursor: pointer;
+		transition: color var(--dur-fast) var(--ease-out),
+			border-color var(--dur-fast) var(--ease-out),
+			background var(--dur-fast) var(--ease-out);
+	}
+
+	/* Kept visible on touch, where there is no hover to reveal it, and dimmed
+	   rather than hidden on a pointer so the wall does not gain a row of
+	   buttons. */
+	@media (hover: hover) and (pointer: fine) {
+		.save__button {
+			opacity: 0;
+		}
+
+		.tile:hover .save__button,
+		.save__button:focus-visible,
+		.save__button--on {
+			opacity: 1;
+		}
+	}
+
+	.save__button:hover {
+		color: var(--ink);
+		border-color: var(--ember-line);
+	}
+
+	.save__button--on {
+		color: var(--canvas);
+		background: var(--ember);
+		border-color: var(--ember);
+	}
+
+	.save__glyph {
+		font-family: var(--font-mono);
+		font-size: 0.9rem;
+		line-height: 1;
 	}
 
 	/* --- Label ------------------------------------------------------------ */

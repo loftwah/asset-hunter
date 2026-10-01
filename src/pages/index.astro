@@ -10,6 +10,7 @@
 import Base from "../layouts/Base.astro";
 import PossibilityTile from "../components/PossibilityTile.astro";
 import { loadPossibilities, tallyVerticals } from "../lib/catalogue";
+import { COOKIE_NAME, boardTotals, parseBoards } from "../lib/board";
 import { RIGHTS_LABEL, RIGHTS_MEANING, verticalLabel } from "../lib/vocabulary";
 
 const { possibilities, cacheHint } = await loadPossibilities();
@@ -27,6 +28,13 @@ const filtered = activeVertical
 // spans two columns and two rows of the same grid. A filtered view is already
 // narrow, so the ramp does not apply there — one big tile among three would
 // read as a mistake rather than as emphasis.
+
+// The board lives in a cookie, so the server already knows what is saved and the
+// tile can render its real state on the first paint rather than after hydration.
+const boards = parseBoards(Astro.cookies.get(COOKIE_NAME)?.value);
+const board = Object.keys(boards).find((name) => boards[name].length) ?? "default";
+const savedHere = new Set(boards[board] ?? []);
+const totals = boardTotals(boards);
 
 const rightsTally = new Map<string, number>();
 for (const p of filtered) {
@@ -125,12 +133,28 @@ for (const p of filtered) {
 							featured={i === 0 && !activeVertical}
 							hideVertical={false}
 							eager={i < 4}
+							board={board}
+							savedToBoard={savedHere.has(p.slug)}
 						/>
 					))}
 				</div>
 			)
 		}
 	</section>
+
+	{
+		totals.items > 0 && (
+			<nav class="boardbar shell" aria-label="Shortlist">
+				<p class="boardbar__count" role="status">
+					{totals.items} {totals.items === 1 ? "possibility" : "possibilities"} saved
+					{totals.boards > 1 ? ` across ${totals.boards} boards` : ""}
+				</p>
+				<a class="button" href="/board">
+					Open the board
+				</a>
+			</nav>
+		)
+	}
 
 	<aside class="legend shell" aria-labelledby="legend-title">
 		<h2 id="legend-title" class="tag">Reading the marks</h2>
@@ -369,6 +393,24 @@ for (const p of filtered) {
 
 	.button:hover {
 		background: color-mix(in srgb, var(--ember) 86%, white);
+	}
+
+	/* --- Shortlist bar ---------------------------------------------------- */
+
+	.boardbar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--sp-3);
+		padding-block: var(--sp-3);
+		border-top: 1px solid var(--ember-line);
+	}
+
+	.boardbar__count {
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		color: var(--ink-2);
 	}
 
 	/* --- Rights legend --- */

@@ -1,0 +1,513 @@
+---
+/**
+ * The shortlist board and the compare view (#36).
+ *
+ * Discovery ends with a choice, so this is where the choice happens. Two rules
+ * shape it:
+ *
+ * 1. **Comparison is media-first.** The plates sit side by side at the same size
+ *    with the same representative treatment, because a comparison where one entry
+ *    is larger than the others has already told you the answer. Everything
+ *    numeric goes behind a disclosure, opened per entry.
+ * 2. **Nothing here needs JavaScript.** Every action is a form POST, so a board
+ *    works with the same input a keyboard and a finger produce.
+ *
+ * The board is stored in a cookie. See `src/lib/board.ts` for what that does and
+ * does not buy.
+ */
+import Base from "../../layouts/Base.astro";
+import PossibilityTile from "../../components/PossibilityTile.astro";
+import { loadPossibilities } from "../../lib/catalogue";
+import { MEDIA_LABEL, RIGHTS_MEANING, verticalLabel } from "../../lib/vocabulary";
+import {
+	COOKIE_NAME,
+	DEFAULT_BOARD,
+	MAX_PER_BOARD,
+	boardTotals,
+	normaliseBoardName,
+	parseBoards,
+} from "../../lib/board";
+
+const boards = parseBoards(Astro.cookies.get(COOKIE_NAME)?.value);
+const requested = normaliseBoardName(Astro.url.searchParams.get("board"));
+const active = boards[requested] ? requested : DEFAULT_BOARD;
+const slugs = boards[active] ?? [];
+const totals = boardTotals(boards);
+const back = "/board";
+
+const { possibilities } = await loadPossibilities();
+const bySlug = new Map(possibilities.map((p) => [p.slug, p]));
+// Only what is in the catalogue survives: a cookie naming something else is
+// dropped here rather than rendered.
+const items = slugs.map((slug) => bySlug.get(slug)).filter((p): p is NonNullable<typeof p> => Boolean(p));
+const dropped = slugs.length - items.length;
+
+const saved = Astro.url.searchParams.get("saved");
+const justSaved = saved && items.some((p) => p.slug === saved) ? bySlug.get(saved) : null;
+---
+
+<Base
+	title="Shortlist"
+	description="Compare the possibilities you are considering, side by side, with their sources and rights on demand."
+	path="/board"
+	noindex
+>
+	<header class="head shell">
+		<p class="tag tag--ember">Shortlist</p>
+		<h1 class="display head__title">
+			{items.length > 0 ? `${items.length} to choose between` : "Nothing saved yet"}
+		</h1>
+		<p class="lede">
+			{
+				items.length > 0
+					? "Plates side by side at the same size. Source, licence and technique are behind each one, because a comparison that starts with metadata is a comparison you have already lost."
+					: "Hover a plate on the wall and press the + to keep it here. The list lives in this browser, so nothing is uploaded and nothing follows you to another machine."
+			}
+		</p>
+
+		{
+			totals.boards > 1 && (
+				<nav class="boards" aria-label="Boards">
+					<ul>
+						{Object.entries(boards)
+							.filter(([, list]) => list.length > 0)
+							.map(([name, list]) => (
+								<li>
+									<a
+										href={`/board?board=${encodeURIComponent(name)}`}
+										class:list={["chip", { "chip--on": name === active }]}
+										aria-current={name === active ? "page" : undefined}
+									>
+										{name === DEFAULT_BOARD ? "Shortlist" : name}
+										<span class="chip__n">{list.length}</span>
+									</a>
+								</li>
+							))}
+					</ul>
+				</nav>
+			)
+		}
+
+		<form class="newboard shell" method="post" action="/api/board">
+			<input type="hidden" name="action" value="rename" />
+			<input type="hidden" name="board" value={active} />
+			<input type="hidden" name="back" value={back} />
+			<label class="visually-hidden" for="to">New board name</label>
+			<input
+				id="to"
+				type="text"
+				name="to"
+				placeholder="Copy this board to a new name"
+				maxlength="40"
+				autocomplete="off"
+			/>
+			<button type="submit">Copy board</button>
+		</form>
+	</header>
+
+	<div class="results shell">
+		{
+			justSaved && (
+				<p class="flash" role="status">
+					Saved <strong>{justSaved.title}</strong>.
+					<a href={`/possibilities/${justSaved.slug}`}>Open it</a>
+				</p>
+			)
+		}
+		{
+			dropped > 0 && (
+				<p class="flash flash--warn" role="status">
+					{dropped} saved {dropped === 1 ? "entry names" : "entries name"} something the
+					catalogue does not have, so {dropped === 1 ? "it was" : "they were"} dropped rather
+					than shown.
+				</p>
+			)
+		}
+
+		{
+			items.length === 0 ? (
+				<div class="empty">
+					<h2 class="display empty__title">This board is empty</h2>
+					<p class="lede">
+						Which is a real state with a real answer, not a failure: nothing has been saved to
+						it yet. The wall is one click away, and so is every vertical.
+					</p>
+					<div class="empty__links">
+						<a class="button" href="/">Open the wall</a>
+						<a class="button button--ghost" href="/verticals">Browse verticals</a>
+					</div>
+				</div>
+			) : (
+				<>
+					<div class="compare">
+						{items.map((p) => (
+							<article class="entry">
+								<PossibilityTile possibility={p} headingLevel="h2" />
+								<p class="entry__summary">{p.summary}</p>
+								<p class="entry__meta">
+									<span class="tag">{verticalLabel(p.vertical)}</span>
+									{p.mediaKind && (
+										<span class="tag">{MEDIA_LABEL[p.mediaKind] ?? p.mediaKind}</span>
+									)}
+									<span class="tag">
+										{p.exampleCount ?? 0} example{p.exampleCount === 1 ? "" : "s"}
+									</span>
+									<span class="tag">
+										{p.distinctSources ?? 0} verified source
+										{(p.distinctSources ?? 0) === 1 ? "" : "s"}
+									</span>
+								</p>
+								<details class="entry__more">
+									<summary class="tag">Source, licence and technique</summary>
+									<dl class="facts">
+										<div>
+											<dt class="tag">Rights</dt>
+											<dd>
+												<strong>{p.rightsStatus ?? "unstated"}</strong>
+												{p.rightsNote && <span class="facts__note">{p.rightsNote}</span>}
+												{p.rightsStatus && (
+													<span class="facts__meaning">
+														{RIGHTS_MEANING[p.rightsStatus as keyof typeof RIGHTS_MEANING]}
+													</span>
+												)}
+											</dd>
+										</div>
+										{p.technique && (
+											<div>
+												<dt class="tag">Technique</dt>
+												<dd>{p.technique}</dd>
+											</div>
+										)}
+										{p.buildNotes && (
+											<div>
+												<dt class="tag">Build notes</dt>
+												<dd>{p.buildNotes}</dd>
+											</div>
+										)}
+										{p.promptScaffold && (
+											<div>
+												<dt class="tag">Prompt scaffold</dt>
+												<dd class="facts__mono">{p.promptScaffold}</dd>
+											</div>
+										)}
+									</dl>
+									<form method="post" action="/api/board" class="entry__actions">
+										<input type="hidden" name="action" value="remove" />
+										<input type="hidden" name="slug" value={p.slug} />
+										<input type="hidden" name="board" value={active} />
+										<input type="hidden" name="back" value={back} />
+										<button type="submit" class="linkish">Remove from every board</button>
+									</form>
+								</details>
+							</article>
+						))}
+					</div>
+
+					<form method="post" action="/api/board" class="clear">
+						<input type="hidden" name="action" value="clear" />
+						<input type="hidden" name="board" value={active} />
+						<input type="hidden" name="back" value={back} />
+						<button type="submit" class="linkish">Clear this board</button>
+					</form>
+
+					<details class="export">
+						<summary class="tag">Export this board</summary>
+						<p class="export__note">
+							JSON with the stable slugs, so a board keeps working when a better representative
+							example is found later. Reimporting it into a fresh browser is a paste.
+						</p>
+						<textarea
+							readonly
+							rows="6"
+							aria-label="Board export">{JSON.stringify(
+								{ board: active, slugs: items.map((p) => p.slug) },
+								null,
+								"\t",
+							)}</textarea
+						>
+					</details>
+				</>
+			)
+		}
+	</div>
+</Base>
+
+<style>
+	.head {
+		display: grid;
+		gap: var(--sp-4);
+		justify-items: start;
+		padding-block: var(--sp-6) var(--sp-4);
+	}
+
+	.head__title {
+		font-size: var(--step-3);
+		max-width: 24ch;
+	}
+
+	.boards ul {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-2);
+		list-style: none;
+		padding: 0;
+	}
+
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-height: 2.75rem;
+		padding: 0.3rem 0.9rem;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		color: var(--ink-2);
+	}
+
+	.chip:hover {
+		color: var(--ink);
+		border-color: var(--ember-line);
+	}
+
+	.chip--on {
+		color: var(--canvas);
+		background: var(--ember);
+		border-color: var(--ember);
+	}
+
+	.chip__n {
+		font-variant-numeric: tabular-nums;
+		opacity: 0.8;
+	}
+
+	.newboard {
+		display: flex;
+		gap: var(--sp-2);
+		width: 100%;
+		max-width: 34rem;
+	}
+
+	.newboard input {
+		flex: 1 1 12rem;
+		min-height: 2.75rem;
+		padding: 0.5rem 0.8rem;
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		color: var(--ink);
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+	}
+
+	.newboard button {
+		min-height: 2.75rem;
+		padding: 0.5rem 1rem;
+		background: var(--surface-2);
+		border: 1px solid var(--line-loud);
+		border-radius: var(--radius);
+		color: var(--ink-2);
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		cursor: pointer;
+	}
+
+	.newboard button:hover {
+		color: var(--ink);
+		border-color: var(--ember-line);
+	}
+
+	.results {
+		padding-block: var(--sp-5) var(--sp-7);
+	}
+
+	.flash {
+		margin-bottom: var(--sp-4);
+		padding: var(--sp-3) var(--sp-4);
+		border-left: 2px solid var(--ember-line);
+		background: var(--surface);
+		font-size: var(--step--1);
+		color: var(--ink-2);
+	}
+
+	.flash a {
+		color: var(--ember);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+
+	.flash--warn {
+		border-left-color: var(--rights-review);
+	}
+
+	/* Same columns for every entry, so the plates are directly comparable and
+	   one entry cannot win on size. */
+	.compare {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+		gap: var(--sp-6) var(--sp-5);
+	}
+
+	.entry {
+		display: grid;
+		gap: var(--sp-3);
+		align-content: start;
+		min-width: 0;
+	}
+
+	.entry__summary {
+		font-size: var(--step--1);
+		line-height: 1.5;
+		color: var(--ink-2);
+	}
+
+	.entry__meta {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-2) var(--sp-3);
+	}
+
+	.entry__more {
+		border-top: 1px solid var(--line);
+		padding-top: var(--sp-2);
+	}
+
+	.entry__more summary {
+		cursor: pointer;
+		min-height: 2rem;
+		padding-block: var(--sp-2);
+		list-style: revert;
+	}
+
+	.facts {
+		display: grid;
+		gap: var(--sp-3);
+		padding-top: var(--sp-2);
+		font-size: var(--step--1);
+		color: var(--ink-2);
+	}
+
+	.facts dt {
+		margin-bottom: 0.2rem;
+	}
+
+	.facts dd {
+		line-height: 1.5;
+	}
+
+	.facts__note,
+	.facts__meaning {
+		display: block;
+		color: var(--ink-3);
+	}
+
+	.facts__meaning {
+		margin-top: 0.25rem;
+		font-size: var(--step--2);
+	}
+
+	.facts__mono {
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		line-height: 1.55;
+		color: var(--ink-3);
+	}
+
+	.linkish {
+		margin-top: var(--sp-3);
+		padding: var(--sp-2) 0;
+		min-height: 2rem;
+		background: none;
+		border: 0;
+		color: var(--ink-3);
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+		cursor: pointer;
+	}
+
+	.linkish:hover {
+		color: var(--ember);
+	}
+
+	.clear {
+		margin-top: var(--sp-6);
+		padding-top: var(--sp-4);
+		border-top: 1px solid var(--line);
+	}
+
+	.export {
+		margin-top: var(--sp-4);
+	}
+
+	.export summary {
+		cursor: pointer;
+		padding-block: var(--sp-2);
+		list-style: revert;
+	}
+
+	.export__note {
+		margin-top: var(--sp-2);
+		max-width: var(--measure);
+		font-size: var(--step--1);
+		color: var(--ink-3);
+	}
+
+	.export textarea {
+		width: 100%;
+		max-width: 40rem;
+		margin-top: var(--sp-3);
+		padding: var(--sp-3);
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		color: var(--ink-2);
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		line-height: 1.5;
+	}
+
+	.empty {
+		display: grid;
+		gap: var(--sp-4);
+		justify-items: start;
+		padding-block: var(--sp-7);
+		max-width: var(--measure);
+	}
+
+	.empty__title {
+		font-size: var(--step-2);
+	}
+
+	.empty__links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-3);
+	}
+
+	.button {
+		display: inline-flex;
+		align-items: center;
+		min-height: 2.75rem;
+		padding: 0.6rem 1.1rem;
+		background: var(--ember);
+		color: var(--canvas);
+		border: 1px solid var(--ember);
+		border-radius: var(--radius);
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		font-weight: 600;
+	}
+
+	.button--ghost {
+		background: transparent;
+		color: var(--ink-2);
+		border-color: var(--line-loud);
+	}
+
+	.button--ghost:hover {
+		color: var(--ink);
+	}
+</style>

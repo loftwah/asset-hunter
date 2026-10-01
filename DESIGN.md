@@ -285,6 +285,28 @@ The public catalogue owns all visual presentation: masthead, wall, drill-in,
 search, 404, RSS, OG images. If a change touches either side, it belongs to
 exactly one.
 
+## 9.5 Shortlist and compare
+
+The wall is for browsing; the board is for deciding. Two rules keep the second
+from becoming a project-management app:
+
+- **Comparison is media-first.** Every entry on `/board` renders through the same
+  `PossibilityTile` in the same grid column, so the plates are the same size and
+  one entry cannot win by being bigger. Source, licence and technique sit behind a
+  per-entry disclosure, because a comparison that opens with metadata is a
+  comparison you have already lost.
+- **Saving is a form POST.** No JavaScript. A `+/` control sits over the plate as a
+  *sibling* of the tile link — a form inside an anchor is invalid HTML and a button
+  inside a link is unreachable by keyboard. It is dimmed rather than hidden on a
+  fine pointer and always visible on touch, because hover does not exist there.
+
+A board is a cookie. That is a deliberate trade and the reasoning is in
+`src/lib/board.ts`: no account, no server state, no new collection in the CMS, and
+clearing cookies clears it. It is per browser and not shareable; a shareable board
+needs an identity and a server record, which is a different feature at a different
+cost. It is unsigned, and every slug is validated against the catalogue before it
+renders, so an edited cookie can at worst produce an empty board.
+
 ## 10. Metadata and social
 
 - `<title>`: `Page — Asset Hunter`, except on `/` where it is the brand line.

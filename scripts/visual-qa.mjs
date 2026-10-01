@@ -59,6 +59,7 @@ const ROUTES = [
 	// The lab (#45) is development-only but audited like a real route: a state
 	// that exists only in a screenshot is a state nobody has checked.
 	{ path: "/lab", name: "lab", expect: { ".case": 30, "#vocabulary": 1 } },
+	{ path: "/board", name: "board", expect: { ".empty__title": 1 } },
 	{ path: "/search?q=seam", name: "search", expect: { ".count": 1 } },
 	{ path: "/nope-does-not-exist", name: "404", expect: {}, allow404: true },
 	// Non-HTML: checked for content type and well-formedness, not pixels.

@@ -215,6 +215,56 @@ describe("search", () => {
 	});
 });
 
+describe("shortlist board", () => {
+	live("an empty board says so and offers the way back in", async () => {
+		// An empty board is a real state, not an error page, so the status and
+		// the copy both have to be right.
+		const res = await fetch(`${baseUrl}/board`);
+		assert.equal(res.status, 200);
+		const html = await res.text();
+		assert.match(html, /This board is empty/);
+		assert.match(html, /Open the wall/);
+	});
+
+	live("saving from the wall is a form POST that works without JavaScript", async () => {
+		const wall = await (await fetch(`${baseUrl}/`)).text();
+		assert.ok((wall.match(/action="\/api\/board"/g) ?? []).length > 0, "no save control on the wall");
+		// A GET on the endpoint is not a route: it must not quietly succeed.
+		const get = await fetch(`${baseUrl}/api/board`);
+		assert.ok([404, 405].includes(get.status), `GET /api/board returned ${get.status}`);
+	});
+
+	live("a board holding a slug the catalogue does not have drops it", async () => {
+		const cookie = `ah_board=${encodeURIComponent(JSON.stringify({ default: ["nope-not-real", "density-gradient"] }))}`;
+		const html = await (await fetch(`${baseUrl}/board`, { headers: { cookie } })).text();
+		assert.match(html, /does not have/, "the drop is announced, not hidden");
+		assert.equal((html.match(/class="entry"/g) ?? []).length, 1, "only the real entry is shown");
+	});
+
+	live("the board is marked noindex", async () => {
+		const html = await (await fetch(`${baseUrl}/board`)).text();
+		assert.match(html, /noindex/);
+	});
+
+	live("the endpoint refuses an open redirect", async () => {
+		const body = new URLSearchParams({
+			action: "save",
+			slug: "density-gradient",
+			board: "default",
+			back: "https://example.com/evil",
+		});
+		const res = await fetch(`${baseUrl}/api/board`, {
+			method: "POST",
+			redirect: "manual",
+			headers: { "content-type": "application/x-www-form-urlencoded" },
+			body,
+		});
+		assert.equal(res.status, 303);
+		const location = res.headers.get("location") ?? "";
+		assert.ok(!location.startsWith("https://"), `redirected off-site: ${location}`);
+	});
+});
+
 describe("collections", () => {
 	live("lists every seeded collection", async () => {
 		const html = await (await fetch(`${baseUrl}/collections`)).text();
