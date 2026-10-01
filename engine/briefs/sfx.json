@@ -1,0 +1,18 @@
+{
+	"intent": "Sound effects and audio families that demonstrate distinct, recreatable treatments rather than a pile of near-identical files.",
+	"verticals": ["audio-music"],
+	"queries": [
+		"procedural sound effects",
+		"game audio synthesis",
+		"granular sound texture",
+		"sound effect generator",
+		"wavetable synthesis"
+	],
+	"constraints": {
+		"minStars": 3,
+		"rightsFloor": "any",
+		"maxCandidates": 18,
+		"excludeTopics": ["awesome-list", "tutorial-only"]
+	},
+	"notes": "First acceptance hunt for the engine. The point is not the audio. It is that every entry carries a licence that was actually read, or says plainly that none was found."
+}

@@ -136,6 +136,31 @@
 					"slug": "featured",
 					"label": "Featured",
 					"type": "boolean"
+				},
+				{
+					"slug": "source_hunt",
+					"label": "Source hunt",
+					"type": "string"
+				},
+				{
+					"slug": "source_ids",
+					"label": "Source candidate ids",
+					"type": "string"
+				},
+				{
+					"slug": "source_revision",
+					"label": "Source revision",
+					"type": "string"
+				},
+				{
+					"slug": "machine_synced_at",
+					"label": "Machine synced at",
+					"type": "string"
+				},
+				{
+					"slug": "visibility",
+					"label": "Visibility",
+					"type": "string"
 				}
 			]
 		},
@@ -260,6 +285,31 @@
 					"slug": "featured",
 					"label": "Featured",
 					"type": "boolean"
+				},
+				{
+					"slug": "source_id",
+					"label": "Source candidate id",
+					"type": "string"
+				},
+				{
+					"slug": "source_revision",
+					"label": "Source revision",
+					"type": "string"
+				},
+				{
+					"slug": "source_hash",
+					"label": "Source content hash",
+					"type": "string"
+				},
+				{
+					"slug": "machine_synced_at",
+					"label": "Machine synced at",
+					"type": "string"
+				},
+				{
+					"slug": "visibility",
+					"label": "Visibility",
+					"type": "string"
 				}
 			]
 		},
@@ -503,7 +553,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.82,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -526,7 +577,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.9,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -549,7 +601,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.74,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -572,7 +625,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.86,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -595,7 +649,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.78,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -618,7 +673,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.88,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -641,7 +697,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.8,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -664,7 +721,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.75,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -687,7 +745,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.84,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -710,7 +769,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.71,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -733,7 +793,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.77,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -756,7 +817,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.83,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -779,7 +841,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.79,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -802,7 +865,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.72,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -825,7 +889,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.76,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -848,7 +913,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.8,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -871,7 +937,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.73,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -894,7 +961,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.69,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -917,7 +985,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.81,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -940,7 +1009,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.87,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -963,7 +1033,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.85,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -986,7 +1057,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.78,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1009,7 +1081,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.8,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1032,7 +1105,8 @@
 					"example_count": 1,
 					"distinct_sources": 0,
 					"editorial_rank": 0.83,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			}
 		],
@@ -1052,7 +1126,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1070,7 +1145,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1088,7 +1164,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1106,7 +1183,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1124,7 +1202,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1142,7 +1221,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1160,7 +1240,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1178,7 +1259,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1196,7 +1278,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1214,7 +1297,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1232,7 +1316,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1250,7 +1335,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1268,7 +1354,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1286,7 +1373,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1304,7 +1392,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1322,7 +1411,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1340,7 +1430,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1358,7 +1449,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1376,7 +1468,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1394,7 +1487,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1412,7 +1506,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1430,7 +1525,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1448,7 +1544,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			},
 			{
@@ -1466,7 +1563,8 @@
 					"note": "Plate generated for this catalogue to demonstrate the possibility. It is an original of this project and is not a reproduction of any source asset.",
 					"content_hash": null,
 					"downloadable": false,
-					"featured": false
+					"featured": false,
+					"visibility": "published"
 				}
 			}
 		],

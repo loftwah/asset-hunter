@@ -42,9 +42,22 @@ The public catalogue is an EmDash application, not an adjacent one. Every read
 goes through `getEmDashCollection` / `getEmDashEntry`, media goes through the
 EmDash/R2 path, and `scripts/emdash-smoke.mjs` fails if that stops being true.
 
-Hunt-engine internals (crawl state, provenance evidence, fingerprints) stay
-outside this app and publish in through a documented contract — see
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Hunt-engine internals (crawl state, provenance evidence, fingerprints) live in
+[`engine/`](engine/README.md), outside this app, and publish in through the
+contract in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The engine talks to
+EmDash over the same authenticated HTTP API the admin uses; it never touches the
+CMS database and never imports app code.
+
+```bash
+export GITHUB_TOKEN=$(gh auth token)   # 10 search requests/minute without it
+npm run hunt -- sfx.json               # crawl, read licences, group into possibilities
+npm run hunt:sync                      # reconcile into the catalogue (idempotent)
+npm run hunt:verify                    # prove the catalogue matches the payload
+```
+
+Machine entries arrive as **drafts** at `editorial_rank: 0`. A crawl never
+decides what the public catalogue shows; `npm run doctor` fails if a draft has
+leaked onto the wall.
 
 ## Getting started
 
@@ -84,7 +97,10 @@ npm run seed:check      # fail if seed.json is stale
 npm run seed:validate   # EmDash's own structural validation
 ```
 
-Four collections:
+Four collections. `possibilities` and `examples` also carry the sync
+bookkeeping fields `source_hunt`, `source_ids`, `source_revision`,
+`machine_synced_at` and `visibility` that make a machine refresh traceable and
+idempotent.
 
 | Collection     | Holds                                                        |
 | -------------- | ------------------------------------------------------------ |
@@ -129,6 +145,11 @@ source — so it catches what a stylesheet review cannot.
 boxes. Overlapping labels in a plate look fine in source and become gibberish at
 wall size, which is exactly why they are measured rather than reviewed.
 
+`check:visual` also fails if the first plate starts below three quarters of the
+fold, if a tile renders at a shape other than the plate's own 4:5 (which crops
+annotations off a diagram), or if an element has lost the shell gutter. Those
+three were each a real bug found by reading captures rather than source.
+
 ## Commands
 
 | Command                   | Purpose                                          |
@@ -146,6 +167,9 @@ wall size, which is exactly why they are measured rather than reviewed.
 | `npm run check:specimens` | Validate plate structure                         |
 | `npm run check:plates`    | Render plates and measure them                   |
 | `npm run check:visual`    | Visual QA matrix and assertions                  |
+| `npm run hunt -- <brief>` | Run a hunt: crawl, read licences, build the payload   |
+| `npm run hunt:sync`      | Reconcile the payload into the catalogue            |
+| `npm run hunt:verify`    | Prove the catalogue matches the payload             |
 | `npm run generate:og`     | Regenerate social images from the running product |
 | `npm run skills:sync`     | Refresh vendored EmDash agent skills             |
 

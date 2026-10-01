@@ -83,6 +83,9 @@ const possibilities = POSSIBILITIES.map((p) => {
 			// Editorial judgement, stored separately from the machine scores above.
 			editorial_rank: p.editorialRank,
 			featured: false,
+			// Hand-authored, so it is public and it came from a person, not a
+			// hunt. The engine fills these in for its own entries.
+			visibility: "published",
 		},
 	};
 });
@@ -108,6 +111,7 @@ const examples = POSSIBILITIES.map((p) => {
 			content_hash: null,
 			downloadable: false,
 			featured: false,
+			visibility: "published",
 		},
 	};
 });
@@ -182,6 +186,18 @@ const seed = {
 				{ slug: "coverage", label: "Coverage", type: "number" },
 				{ slug: "editorial_rank", label: "Editorial rank", type: "number" },
 				{ slug: "featured", label: "Featured", type: "boolean" },
+				// --- Sync bookkeeping (#40) --------------------------------------
+				// These are the fields that let a machine refresh be idempotent and
+				// auditable: which hunt produced this, at which source revision,
+				// when it was last written by the engine, and whether anyone has
+				// decided it should be public. `visibility` is deliberately not
+				// machine-set to "published" — a crawl does not get to decide what
+				// the public catalogue shows.
+				{ slug: "source_hunt", label: "Source hunt", type: "string" },
+				{ slug: "source_ids", label: "Source candidate ids", type: "string" },
+				{ slug: "source_revision", label: "Source revision", type: "string" },
+				{ slug: "machine_synced_at", label: "Machine synced at", type: "string" },
+				{ slug: "visibility", label: "Visibility", type: "string" },
 			],
 		},
 		{
@@ -216,6 +232,12 @@ const seed = {
 				{ slug: "technical", label: "Technical data", type: "json" },
 				{ slug: "downloadable", label: "Downloadable", type: "boolean" },
 				{ slug: "featured", label: "Featured", type: "boolean" },
+				// --- Sync bookkeeping (#40) --------------------------------------
+				{ slug: "source_id", label: "Source candidate id", type: "string" },
+				{ slug: "source_revision", label: "Source revision", type: "string" },
+				{ slug: "source_hash", label: "Source content hash", type: "string" },
+				{ slug: "machine_synced_at", label: "Machine synced at", type: "string" },
+				{ slug: "visibility", label: "Visibility", type: "string" },
 			],
 		},
 		{

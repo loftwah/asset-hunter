@@ -186,7 +186,7 @@ describe("search", () => {
 
 		// Possibility rows and collection rows differ only in their link target
 		// and their mark, so they are counted by which of those each carries.
-		const rows = html.match(/<li class="found__row"[\s\S]*?<\/li>/g) ?? [];
+		const rows: string[] = html.match(/<li class="found__row"[\s\S]*?<\/li>/g) ?? [];
 		const listedPossibilities = rows.filter((r) =>
 			r.includes('href="/possibilities/'),
 		).length;

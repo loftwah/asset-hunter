@@ -22,3 +22,4 @@ screenshots/
 .DS_Store
 *.log
 *.swp
+engine/state/

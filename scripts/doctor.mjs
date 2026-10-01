@@ -237,6 +237,62 @@ if (serverUp) {
 	);
 }
 
+// --- Hunt engine -----------------------------------------------------------
+
+section("Hunt engine");
+
+const engineExists = existsSync(`${root}engine/src/cli.ts`);
+check("engine present", engineExists, engineExists ? "engine/src/cli.ts" : "engine/src missing");
+
+check(
+	"GitHub credentials available",
+	Boolean(process.env.GITHUB_TOKEN || process.env.GH_TOKEN),
+	process.env.GITHUB_TOKEN || process.env.GH_TOKEN
+		? "GITHUB_TOKEN is set"
+		: "unauthenticated — 10 search requests a minute, which is not enough for a real hunt",
+	"export GITHUB_TOKEN=$(gh auth token)",
+);
+
+if (engineExists) {
+	// The state directory is a cache, not a record of record. Its presence says
+	// a hunt has run here; its absence is not a problem, so neither is a failure.
+	const statePath = `${root}engine/state`;
+	const hasPayload = existsSync(`${statePath}/payload.json`);
+	let payloadDetail = "no payload — run: npm run hunt -- sfx.json";
+	if (hasPayload) {
+		try {
+			const payload = JSON.parse(readFileSync(`${statePath}/payload.json`, "utf8"));
+			const examples = payload.possibilities.reduce((n, p) => n + p.examples.length, 0);
+			payloadDetail = `${payload.fingerprint} — ${payload.possibilities.length} possibilities, ${examples} examples`;
+		} catch {
+			payloadDetail = "payload.json is unreadable — delete engine/state and re-run the hunt";
+		}
+	}
+	check("hunt payload present", hasPayload, payloadDetail, "Run: npm run hunt -- sfx.json");
+
+	check(
+		"publish boundary documented",
+		existsSync(`${root}docs/ARCHITECTURE.md`),
+		"docs/ARCHITECTURE.md is the contract the engine and the app share",
+	);
+
+	if (serverUp && hasPayload) {
+		// A draft that leaked onto the public wall would be the worst possible
+		// failure of this boundary, so it is checked directly rather than assumed.
+		const wall = await (await fetch("http://localhost:4321/")).text();
+		const payload = JSON.parse(readFileSync(`${statePath}/payload.json`, "utf8"));
+		const leaked = payload.possibilities.filter((p) => wall.includes(`/possibilities/${p.slug}`));
+		check(
+			"machine entries are not public",
+			leaked.length === 0,
+			leaked.length
+				? `${leaked.length} draft(s) on the wall: ${leaked.map((p) => p.slug).join(", ")}`
+				: `${payload.possibilities.length} machine entries held as drafts`,
+			"Set visibility to draft in the admin, or check the merge policy",
+		);
+	}
+}
+
 // --- Report ----------------------------------------------------------------
 
 const groups = [...new Set(checks.map((c) => c.group))];

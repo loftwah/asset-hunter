@@ -45,6 +45,11 @@ export interface Example {
   technical?: unknown;
   downloadable?: boolean;
   featured?: boolean;
+  source_id?: string;
+  source_revision?: string;
+  source_hash?: string;
+  machine_synced_at?: string;
+  visibility?: string;
   createdAt: Date;
   updatedAt: Date;
   publishedAt: Date | null;
@@ -91,6 +96,11 @@ export interface Possibility {
   coverage?: number;
   editorial_rank?: number;
   featured?: boolean;
+  source_hunt?: string;
+  source_ids?: string;
+  source_revision?: string;
+  machine_synced_at?: string;
+  visibility?: string;
   createdAt: Date;
   updatedAt: Date;
   publishedAt: Date | null;
