@@ -173,6 +173,17 @@ three were each a real bug found by reading captures rather than source.
 | `npm run generate:og`     | Regenerate social images from the running product |
 | `npm run skills:sync`     | Refresh vendored EmDash agent skills             |
 
+## Vocabulary and roadmap
+
+[`docs/VOCABULARY.md`](docs/VOCABULARY.md) is the terminology authority: one
+concept, one word, across the wall, search, the admin, the engine and these
+docs. A surface that re-derives a label from a slug is how "UI / Web" becomes
+"Ui Web" on one page and "ui-web" on another.
+
+[`docs/ROADMAP.md`](docs/ROADMAP.md) records the delivery bands, including the
+P0 local hunt loop and the P3 possibility engine that the product is heading
+towards.
+
 ## Design
 
 `DESIGN.md` is the visual authority: tokens, type scale, the specimen-plate

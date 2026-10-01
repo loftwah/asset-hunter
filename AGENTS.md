@@ -8,6 +8,13 @@ When activated, follow [docs/AGENT_POLICY.md](docs/AGENT_POLICY.md) and work the
 
 GitHub issues and PRs are the live backlog. Re-check them during the run so new/reopened work joins the active set.
 
+## Vocabulary
+
+[`docs/VOCABULARY.md`](docs/VOCABULARY.md) is the terminology authority: one
+concept, one word. Look terms up in `src/lib/vocabulary.ts` rather than
+re-deriving them from slugs — that is how the same concept ends up spelled three
+different ways across the wall, search and the drill-in.
+
 ## Product mission
 
 Asset Hunter discovers useful assets/resources and the distinct **possibilities** they demonstrate, preserves provenance/licensing, classifies and previews them, compresses duplicate inventory into representative option-space coverage, and exposes the result through a media-first catalogue.
