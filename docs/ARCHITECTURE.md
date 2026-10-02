@@ -255,13 +255,44 @@ Astro server-rendered on Cloudflare Workers.
 
 ### The agent interface
 
+Two endpoints, two questions, one set of records.
+
 `GET /api/catalogue.json` serves the published catalogue as a versioned JSON
 contract, built by `src/lib/catalogue-json.ts` from the same loaders the pages
 use, so it cannot drift from what the site shows. Drafts are excluded by the
 query rather than by a filter afterwards, which is why the doctor check for
 leaked machine drafts and this endpoint agree.
 
-### Asset use and handoff
+`GET /api/handoff.json` (#51) serves the other question — *what did you decide,
+and what may you do with it* — as `asset-hunter.handoff/1`, with a Markdown
+rendering of the same fields behind `?format=md`. It reads the same loaders and
+derives every use state through `useDecision`, and it is built by
+`src/lib/handoff.ts` as a pure function of already-loaded records so the honesty
+rules are testable with no database. Three things distinguish it from the
+catalogue payload and are worth stating because each is a refusal:
+
+- it is **selective**. No community rating, no machine observations, no editorial
+  rank, no collection membership. Those answer "how does the catalogue rank
+  things", which does not help anybody build the thing.
+- it carries **per-example rights**, because a handoff that let an agent start
+  work without knowing what is reference-only would be worse than no handoff.
+  `examplesUseState` is computed from the examples rather than read off the stored
+  entry status, so a stale entry claim cannot make a board look cleared.
+- it names what it does **not** know. A goal, a platform or an acceptance
+  criterion the reader never supplied is `null` and is listed as unrecorded; an
+  unchosen set says so rather than promoting one.
+
+A handoff derived from a reader's cookie board is served `private` with
+`Vary: Cookie`. A handoff derived from slugs in the address is the same for
+everybody and is served `public`. That is the difference between caching a
+document and leaking one person's board.
+
+### Asset use
+
+Retitled from "Asset use and handoff" when #51 took the word for the
+implementation handoff: one concept, one word, per `docs/VOCABULARY.md`. What is
+described here is the *asset* handover — what may be taken away, and what is owed
+for it — which is a different thing from the document a decided board becomes.
 
 Two data routes complete the asset half of the catalogue. They are read-only,
 they read the same EmDash records the pages read, and they are the only paths
@@ -372,3 +403,10 @@ response, which is a documented HTTP contract rather than a shared module.
   trusted, so a hunt interrupted between searching and inspecting finishes on the
   next run instead of reporting that it had nothing to do. A source that 404s is
   recorded with the commit it was last read at, never dropped.
+- #51 implementation handoffs — `src/lib/handoff.ts` builds the document,
+  `src/pages/api/handoff.json.ts` serves both renderings, and
+  `scripts/catalogue.mjs handoff` writes the Markdown a person pastes somewhere.
+  It adds no data path: the same loaders, the same `useDecision`, the same
+  published-only queries. It records what the operator never supplied in
+  `objective.unrecorded` rather than inventing a plausible value, and a field
+  the brief cannot answer is a better failure than a confident wrong one.

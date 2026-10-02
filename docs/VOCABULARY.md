@@ -24,6 +24,8 @@ once and this file exists so it cannot happen twice.
 | Grouping by area | **vertical** | category, genre, tag, topic                           | A vertical answers "what area is this". |
 | Overlapping grouping by purpose | **collection** | playlist, board (except the reader's own), set        | Collections overlap by design; a partition would collapse the second axis into the first. |
 | A reader's saved list | **board** / **shortlist** | collection (used for an editor-made one)          | The reader's board is theirs and local; an editorial collection belongs to the catalogue. |
+| What a decided board becomes, for somebody else to act on | **handoff** | brief, implementation brief, task, ticket, work order | "Brief" is already the engine's word for the operator's intent *before* a crawl (`engine/src/brief.ts`). A handoff is the output *after* a choice, and the two opposite ends of one process cannot share a word. |
+| What the reader said they are building | **objective** | requirements, spec, scope, ticket body | The catalogue knows what a possibility demonstrates. It does not know what you are building, and an objective is never inferred from it. |
 | Grouping candidates into possibilities | **grouping** | deduplication, merging, dedupe                      | It is a judgement about a technique, not a string match. `group` is honest about its own uncertainty. |
 | Licence text that was read | **licence evidence** | licence metadata, licence check                   | Metadata is a hint. Evidence is the bytes, the hash and the quote. |
 | A statement about the source | **provenance** | source, origin, where it came from                  | "Source" is the URL. Provenance includes the commit and the hash. |
@@ -52,6 +54,13 @@ shows the rights, and the rights are stated in a sentence rather than a colour.
 A green dot on a tile says `Cleared` in words next to it, and the detail page
 says what "cleared" means for *this* example.
 
+**The distinction has to survive being handed on.** The handoff an agent
+receives states the use state per example, the obligation that state imposes, the
+weakest example computed across the entry, and what the deployment can actually
+hand over. `doNotCopy` is derived from those same decisions rather than written
+beside them, so the section and the reference list cannot tell an agent two
+different stories about the same file.
+
 ## Information architecture
 
 The catalogue is primary. There is no marketing funnel in front of it — the
@@ -67,6 +76,7 @@ homepage is the wall, and the wall is the product.
 | see what a possibility is       | `/possibilities/<slug>`                    | A page, never a modal: linkable, shareable, in history   |
 | understand the rights           | the drill-in, or `/pages/licensing`         | Rights are never behind a hover                           |
 | see what may be reused          | `/use/<slug>`, from any drill-in            | The selection, with the obligations and the honest zero    |
+| hand the choice to an agent      | `/api/handoff.json`, linked from `/board`    | What to achieve, the recipe, and every example's rights    |
 | see the state of the catalogue  | `/verticals`                               | Coverage map, deliberately labelled partial               |
 | change the catalogue            | `/_emdash/admin`                           | EmDash's own interface, deliberately not themed like the public site |
 
@@ -110,6 +120,9 @@ missing and what to do next.
 | Empty collection       | "This collection is empty" — and the wall, because the collection existing but being empty is different from it not existing. |
 | Zero-result search     | "No match for …", then *search for the problem rather than the solution*, plus verticals. The absence of a result is more likely a gap than an error, and the copy says so. |
 | Empty board            | "This board is empty", plus the wall and the verticals.                                         |
+| Handoff with nothing on it | The 400 names the two addresses that work, and says a board has to come from the browser that has it. |
+| Handoff with no choice recorded | "Not yet chosen: N candidates and no decision recorded." — the brief does not promote one for you. |
+| Handoff with no goal recorded | "No goal was recorded." The document then describes only what each possibility demonstrates, and names `goal` under **Not recorded**. |
 | Unsupported reference  | "Preview failed to load. The entry and its rights are unaffected."                             |
 | No reusable asset, but a useful reference exists | The entry stands at **reference only**, with the extent of that permission stated: that *is* the permission. |
 | Nothing is downloadable yet   | "0 retained originals to download", and the reason — the licence evidence and the provenance are kept, the files are not. There is no greyed-out Download button to imply otherwise. |
@@ -142,7 +155,8 @@ Ranking may use all three. The raw values stay inspectable.
 | Place                                       | Role                                              |
 | ------------------------------------------- | ------------------------------------------------- |
 | `src/lib/vocabulary.ts`                     | The implementation. Components look terms up here. |
-| `src/lib/asset-use.ts`                      | The rights status → use state decision, the credit, and the handoff gate. |
+| `src/lib/asset-use.ts`                      | The rights status → use state decision, the credit, and the gate on handing an asset over. |
+| `src/lib/handoff.ts`                         | The implementation handoff, as a versioned document and a Markdown rendering of it. |
 | `seed/atlas.json`                           | The content that uses them.                        |
 | `/pages/licensing`                          | The four statuses in full sentences, for readers. |
 | `DESIGN.md`                                 | How the terms are presented.                       |
