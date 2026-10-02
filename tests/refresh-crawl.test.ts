@@ -764,6 +764,7 @@ describe("an entry that is not there is not an error", () => {
 									detail: `HTTP ${status}`,
 								}),
 							),
+				list: () => Effect.succeed([]),
 				write: () => Effect.void,
 			}),
 		) as Layer.Layer<EmDashApi>;

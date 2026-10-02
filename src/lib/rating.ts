@@ -37,6 +37,16 @@ export type ReportReason =
 	| "licence-changed"
 	| "dead-source"
 	| "misleading-metadata"
+	// --- Rights matters (#54) ---------------------------------------------
+	// Four reasons that are not quality signals. Each says something is wrong
+	// about a *record*, or that somebody is asking not to be surfaced, and
+	// none of them belongs in a queue ordered by how much they matter. They are
+	// added to the same set rather than to a second one, because a reporter
+	// should not have to work out which form to fill in.
+	| "attribution-wrong"
+	| "not-downloadable"
+	| "rights-infringement"
+	| "opt-out-request"
 	| "other";
 
 /**
@@ -46,6 +56,17 @@ export type ReportReason =
  * not ratings: somebody noticed that a "cleared" example is no longer cleared,
  * and that is a correction, not a bad opinion. Averaging it into a star would
  * make the catalogue quietly wrong and unfixable.
+ *
+ * #54 adds four more in the same direction, and the reason they sit in this
+ * record rather than in a rights-only form is that the person filing the report
+ * does not know — and should not have to know — whether what they are describing
+ * is a licence problem, an attribution problem, an infringement claim or an
+ * opt-out. The wording is theirs: "this is my work and I want it taken down"
+ * is a request any of them can make, and the catalogue's job is to classify it.
+ *
+ * The copy never uses the internal vocabulary. A reporter is offered "the
+ * attribution is wrong", not "the `attribution` field disagrees with
+ * `licence_evidence`"; the classification is ours to make, not theirs.
  */
 export const REPORTS: Record<
 	ReportReason,
@@ -83,6 +104,34 @@ export const REPORTS: Record<
 		means: "A count, a claim or a summary overstates what was measured.",
 		action: "An editor reviews the field and lowers it to what the evidence supports.",
 	},
+	"attribution-wrong": {
+		label: "The creator or attribution is wrong",
+		means:
+			"The work is credited to the wrong person, or to nobody, or to this project's plates. The asset may be properly licensed and still be miscredited.",
+		action:
+			"An editor re-reads the provenance and corrects the attribution. Until they do, the download is withheld: a credit that cannot be reproduced is not a credit.",
+	},
+	"not-downloadable": {
+		label: "This asset should not be handed over directly",
+		means:
+			"Using it as a reference is fine, but the file itself should not be served from here.",
+		action:
+			"An editor looks for the condition that makes it non-redistributable. Until they do, the download is withheld and the record stays.",
+	},
+	"rights-infringement": {
+		label: "This use is not permitted and I am the one being harmed",
+		means:
+			"An allegation that the material is being used without the permission its rights require. This is not a quality opinion and it is read as a safety matter, not a preference.",
+		action:
+			"Read before anything else. The direct-use path is withdrawn the moment this is filed, the entry stops being served if it is about a whole entry, and every change is recorded in the audit trail with its reason.",
+	},
+	"opt-out-request": {
+		label: "I made this and I do not want it here",
+		means:
+			"A creator or source owner asking for their material not to be surfaced, with or without a licence. No account or proof of authorship is needed for the request to be honoured immediately.",
+		action:
+			"Honoured on filing: the entry stops being served, the source is marked excluded from future ingestion so it cannot come back on the next run, and the record and its evidence are kept rather than deleted.",
+	},
 	other: {
 		label: "Something else",
 		means: "Anything the reasons above do not cover.",
@@ -91,6 +140,48 @@ export const REPORTS: Record<
 };
 
 export const REPORT_REASONS = Object.keys(REPORTS) as ReportReason[];
+
+/**
+ * The order the queue is read in, worst first.
+ *
+ * Stated here rather than in the cockpit because the *reason* is what has a
+ * priority, and a priority that lives in a view is a priority the next view will
+ * re-decide. Rights matters come first as a class, then the ordinary
+ * corrections, then the taste calls — a "broken preview" outranks a "duplicate"
+ * because one is a hole in the catalogue and the other is a curation tidiness
+ * problem.
+ *
+ * Anything not listed sorts last, so a reason added to `REPORTS` without a
+ * decision here is visible at the bottom rather than silently promoted.
+ */
+export const REPORT_PRIORITY: readonly ReportReason[] = [
+	// Rights and safety. A takedown outranks a typo because the cost of being
+	// wrong is asymmetric in one direction only.
+	"rights-infringement",
+	"opt-out-request",
+	"licence-changed",
+	"attribution-wrong",
+	"not-downloadable",
+	// Corrections to the record itself.
+	"dead-source",
+	"broken-preview",
+	"wrong-classification",
+	"misleading-metadata",
+	"duplicate",
+	"other",
+];
+
+/**
+ * Where a reason sits in the queue, worst first.
+ *
+ * A number rather than an index, because an index is meaningless past the end of
+ * the array: a reason nobody has placed must sort *after* every placed reason,
+ * not at `-1`, which would float it to the top.
+ */
+export function reportRank(reason: ReportReason): number {
+	const index = REPORT_PRIORITY.indexOf(reason);
+	return index === -1 ? REPORT_PRIORITY.length : index;
+}
 
 export const STARS_MIN = 1;
 export const STARS_MAX = 5;

@@ -26,6 +26,8 @@ import {
 	useActions,
 	useDecision,
 } from "../lib/asset-use";
+import { withholdsAsset } from "../lib/disputes";
+import { REPORTS } from "../lib/rating";
 import { USE_STATE_COLOR } from "../lib/vocabulary";
 import type { Example } from "../lib/catalogue";
 
@@ -38,9 +40,19 @@ interface Props {
 	full?: boolean;
 	/** The media shown beside this block, named so the two are never confused. */
 	plateCaption?: string;
+	/**
+	 * Where a rights problem with *this example* is filed (#54).
+	 *
+	 * A link rather than a second form, on purpose. The report form on the drill-in
+	 * is one form a reader can be shown, and duplicating it per example on the use
+	 * page would put five near-identical forms on one page for a question a creator
+	 * asks about one thing. What matters is that the route is reachable from the
+	 * surface somebody is looking at when they notice.
+	 */
+	reportHref?: string;
 }
 
-const { example, full = false, plateCaption } = Astro.props;
+const { example, full = false, plateCaption, reportHref } = Astro.props;
 const decision = useDecision(example);
 const actions = useActions(example);
 const credit = creditText(example);
@@ -49,6 +61,19 @@ const evidence = example.licenceEvidence?.trim() ?? "";
 const stateColor = USE_STATE_COLOR[decision.state];
 const copyId = creditBlockId(example.slug);
 const byId = (id: string) => actions.find((action) => action.id === id);
+
+/*
+ * Whether a rights dispute is live on this record (#54).
+ *
+ * Only the state and the reason are ever shown. The reporter's note is stored and is
+ * readable in the cockpit, but never rendered publicly: it is one person's account
+ * of their own work, and printing it on a public page would publish the allegation
+ * as well as the withdrawal — which is not what withholding is for.
+ */
+const disputed = decision.dispute ? withholdsAsset(decision.dispute.state) : false;
+const disputeReason = decision.dispute?.reason
+	? REPORTS[decision.dispute.reason].label
+	: null;
 
 /*
  * A disclosure is its own control: the `<summary>` below is the action, so the
@@ -91,6 +116,37 @@ const revisionAction = byId("revision");
 	}
 
 	<p class="use__handoff">{decision.handoff.statement}</p>
+
+	{
+		/*
+		 * The live-dispute notice (#54).
+		 *
+		 * It sits directly under the handoff statement because that is where the
+		 * reason for the withholding is, and repeating the sentence would be noise.
+		 * What it adds is the *state* — a reader can tell "the licence says no" from
+		 * "somebody has objected and nobody has looked yet", and those are different
+		 * situations with different remedies.
+		 */
+		disputed && (
+			<p class="use__dispute" data-dispute={decision.dispute?.state ?? "unknown"}>
+				<span class="tag">Rights review</span>
+				{disputeReason
+					? `A rights concern is open on this example: ${disputeReason}.`
+					: "A rights concern is open on this example."}{" "}
+				The record below is the evidence, and it stays whatever is decided.
+			</p>
+		)
+	}
+
+	{
+		reportHref && !disputed && (
+			<p class="use__report">
+				<a class="use__report-link" href={reportHref}>
+					Report a rights problem with this example
+				</a>
+			</p>
+		)
+	}
 
 	{
 		full && plateCaption && (
@@ -312,6 +368,45 @@ const revisionAction = byId("revision");
 	.use__handoff,
 	.use__preview {
 		color: var(--ink-3);
+	}
+
+	/* A live rights dispute is the only thing on this block that is a *state* rather
+	   than a fact about the licence, so it gets the review colour and a rule rather
+	   than a dot: a green ring beside a withheld asset would be a lie about the
+	   asset, whatever the licence says. */
+	.use__dispute {
+		display: grid;
+		justify-items: start;
+		gap: 0.2rem;
+		padding: var(--sp-2) var(--sp-3);
+		border-left: 2px solid var(--rights-review);
+		font-size: var(--step--1);
+		line-height: 1.5;
+		color: var(--ink-2);
+		max-width: var(--measure);
+	}
+
+	.use__dispute .tag {
+		color: var(--rights-review);
+	}
+
+	.use__report {
+		font-size: var(--step--2);
+	}
+
+	/* Inline links here are still targets: the padding carries the size, not the
+	   type, which is the rule the whole catalogue follows. */
+	.use__report-link {
+		display: inline-block;
+		min-height: 1.5rem;
+		padding-block: 0.2rem;
+		color: var(--ink-3);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+
+	.use__report-link:hover {
+		color: var(--ember);
 	}
 
 	.use__actions {

@@ -1,0 +1,605 @@
+---
+/**
+ * One rights case, and the decisions it takes (#54).
+ *
+ * The cockpit's `/curate` page queues; this page decides. It is not a second admin
+ * surface: it is the same route family, on the same gate, reading the same EmDash
+ * content, and every write goes through the CMS content API so it lands in
+ * EmDash's revisions. What this page adds is the *why* — each action appends an
+ * audit row saying which field moved and why, which a CMS field cannot carry on its
+ * own.
+ *
+ * ## What is deliberately not here
+ *
+ * There is no control that rewrites `licence_evidence` or `attribution`. Those are
+ * corrections to recorded facts and they are made in EmDash, where the revision
+ * history belongs; the link below says so rather than reproducing the editor. This
+ * page moves *states* — withheld, withdrawn, excluded, resolved — and those are
+ * decisions, not facts.
+ *
+ * The gate is `role >= editor`, and the refusal is a 404 rather than a 403 for the
+ * same reason `/curate` uses one: a queue of unfinished rights cases is information
+ * about the catalogue, and a 403 confirms the queue exists.
+ */
+import Base from "../../../layouts/Base.astro";
+import OutcomeFlash from "../../../components/OutcomeFlash.astro";
+import { Effect } from "effect";
+import { actorFrom } from "../../../lib/signals.ts";
+import { loadAuditEvents, loadDisputes, loadExclusions, usableExamples } from "../../../lib/takedown.ts";
+import {
+	EXCLUSION_SCOPE_LABEL,
+	EXCLUSION_SCOPE_MEANING,
+	EXCLUSION_SCOPES,
+	recomputePossibility,
+	representable,
+	type ExampleFacts,
+} from "../../../lib/disputes.ts";
+import { REPORTS, REPORT_REASONS } from "../../../lib/rating.ts";
+import { loadExample, loadExampleGraph, loadPossibility } from "../../../lib/catalogue.ts";
+import { useDecision } from "../../../lib/asset-use";
+import { runApp } from "../../../lib/effect/root.ts";
+
+/** EmDash's roles, by level. Editor is the threshold, as on `/curate`. */
+const EDITOR = 40;
+
+const viewer = actorFrom(Astro.locals?.user);
+const level = Number((Astro.locals?.user as { role?: unknown } | undefined)?.role ?? 0);
+if (!viewer || level < EDITOR) {
+	return new Response("Not found", { status: 404 });
+}
+
+const disputeSlug = decodeURIComponent(String(Astro.params.slug ?? "")).slice(0, 80);
+
+// One program, one runner: the case, its audit trail, the standing exclusions and
+// the example graph the recompute is computed from.
+const [disputes, audit, exclusions, graph] = await runApp(
+	Effect.all([
+		loadDisputes(),
+		loadAuditEvents(),
+		loadExclusions(),
+		loadExampleGraph(),
+	]),
+	{ signal: Astro.request.signal },
+);
+
+const dispute = disputes.find((entry) => entry.id === disputeSlug) ?? null;
+if (!dispute) {
+	// A case that has been deleted is a 404, not an empty page: an editor following
+	// a stale link should be told the case is gone rather than shown a form that
+	// would create a second one.
+	return new Response("Not found", { status: 404 });
+}
+
+// The subject the case is about, and — for an example — the possibility it belongs
+// to. The parent is found from the example side because that is the only side the
+// dispute names; everything else in the catalogue reads the other way.
+const subjectExample = dispute.subjectType === "example" ? await runApp(loadExample(dispute.subjectSlug), { signal: Astro.request.signal }) : null;
+const parentSlug = subjectExample ? Object.keys(graph).find((key) => key !== "" && graph[key].some((e) => e.slug === subjectExample.slug)) ?? null : dispute.subjectSlug;
+const subjectPossibility = parentSlug
+	? await runApp(loadPossibility(parentSlug), { signal: Astro.request.signal })
+	: null;
+
+const siblings = parentSlug ? (graph[parentSlug] ?? []) : [];
+const subject = subjectExample;
+const decision = subject ? useDecision(subject) : null;
+
+/*
+ * The recompute, computed here so the editor can see the consequence before
+ * pressing the button.
+ *
+ * `before` is every example the entry had; `after` is every example that may still
+ * represent it — the withdrawn one included in the first list and absent from the
+ * second. That is exactly the difference `republishPossibility` is given, so the
+ * preview and the write cannot disagree about what will happen.
+ */
+const factsOf = (examples: readonly { slug: string }[]): ExampleFacts[] =>
+	examples.map((example) => {
+		const row = siblings.find((candidate) => candidate.slug === example.slug);
+		return {
+			slug: example.slug,
+			rightsStatus: row?.rightsStatus ?? null,
+			origin: row?.origin ?? null,
+			sourcePath: row?.sourcePath ?? null,
+			contentHash: row?.contentHash ?? null,
+			disputeState: row?.disputeState ?? null,
+		};
+	});
+
+const recompute = parentSlug ? recomputePossibility(factsOf(siblings), factsOf(usableExamples(siblings))) : null;
+const withdrawn = siblings.filter((example) => representable([example]).length === 0);
+
+const outcomeNote = Astro.url.searchParams.get("note");
+const outcome = outcomeNote
+	? {
+			tone: Astro.url.searchParams.get("problem") === "1" ? ("problem" as const) : ("ok" as const),
+			message: outcomeNote.slice(0, 400),
+		}
+	: null;
+
+const subjectHref =
+	dispute.subjectType === "possibility"
+		? `/possibilities/${dispute.subjectSlug}`
+		: `/possibilities/${parentSlug ?? ""}#examples`;
+---
+
+<Base
+	title={`Rights case: ${dispute.subjectSlug}`}
+	description="One rights dispute: what was reported, what is withheld, and what can be decided."
+	path={`/curate/disputes/${dispute.id}`}
+	noindex
+>
+	<article class="case shell">
+		<nav class="crumbs" aria-label="Breadcrumb">
+			<a href="/curate">Curation</a>
+			<span aria-hidden="true">/</span>
+			<span class="crumbs__here">Rights case</span>
+		</nav>
+
+		<header class="case__head">
+			<p class="tag tag--ember">Rights case</p>
+			<h1 class="display">{dispute.subjectSlug}</h1>
+			<p class="lede">
+				{REPORTS[dispute.reason].label} · filed {dispute.reportedAt.slice(0, 10)} ·{" "}
+				{dispute.state === "quarantined" ? "the download is withheld" : `state: ${dispute.rawState}`}.
+				{dispute.resolution ? ` Closed: ${dispute.resolution}` : ""}
+			</p>
+			{outcome && <OutcomeFlash tone={outcome.tone} message={outcome.message} />}
+			<p class="case__means">{REPORTS[dispute.reason].action}</p>
+			{
+				dispute.detail && (
+					<blockquote class="case__detail">“{dispute.detail}”</blockquote>
+				)
+			}
+			<p class="case__links">
+				<a href={subjectHref}>the entry it is about</a> ·{" "}
+				{subjectExample && (
+					<>
+						<a href={`/_emdash/admin/examples/${dispute.subjectSlug}`}>the example in the admin</a>{" "}·{" "}
+					</>
+				)}
+				<a href="/_emdash/admin/disputes">the case list</a>
+			</p>
+		</header>
+
+		{
+			subject && decision && (
+				<section class="block" aria-labelledby="s-state">
+					<h2 id="s-state" class="block__title">What is withheld, and what is kept</h2>
+					<dl class="rows">
+						<div>
+							<dt class="tag">Use state</dt>
+							<dd>{decision.label}</dd>
+						</div>
+						<div>
+							<dt class="tag">Handoff</dt>
+							<dd>{decision.handoff.statement}</dd>
+						</div>
+						<div>
+							<dt class="tag">Evidence kept</dt>
+							<dd>
+								Licence {subject.licenceSpdx ?? "unstated"} · commit {subject.sourceRef ?? "unrecorded"} ·
+								digest{" "}
+								{subject.contentHash ? `${subject.contentHash.slice(0, 16)}…` : "unrecorded"}. Nothing about
+								the record is deleted by a withdrawal.
+							</dd>
+						</div>
+					</dl>
+				</section>
+			)
+		}
+
+		<section class="block" aria-labelledby="s-actions">
+			<h2 id="s-actions" class="block__title">Decide</h2>
+			<div class="actions">
+				{
+					dispute.subjectType === "example" && (
+						<form method="post" action="/api/takedown" class="action">
+							<input type="hidden" name="intent" value="release" />
+							<input type="hidden" name="example" value={dispute.subjectSlug} />
+							<input type="hidden" name="back" value={`/curate/disputes/${dispute.id}`} />
+							<h3 class="action__title">Release the download</h3>
+							<p class="action__why">
+								For a quarantine that was applied in error. The case stays open — releasing is
+								not resolving, and the audit trail says which of the two happened.
+							</p>
+							<label class="visually-hidden" for="release-note">Why the withdrawal was wrong</label>
+							<input id="release-note" name="note" type="text" placeholder="Filed against the wrong record" />
+							<button type="submit">Release the download</button>
+						</form>
+					)
+				}
+
+				<form method="post" action="/api/takedown" class="action">
+					<input type="hidden" name="intent" value="resolve" />
+					<input type="hidden" name="dispute" value={dispute.id} />
+					<input type="hidden" name="subject" value={dispute.subjectSlug} />
+					<input type="hidden" name="subject_type" value={dispute.subjectType} />
+					<input type="hidden" name="back" value={`/curate/disputes/${dispute.id}`} />
+					<h3 class="action__title">Close the case</h3>
+					<p class="action__why">
+						“Corrected” is for a record that was changed — the licence evidence is fixed in
+						the admin first. “Did not hold” leaves it as it is. Both stop withholding and both
+						stay on the record.
+					</p>
+					<label class="visually-hidden" for="outcome">Outcome</label>
+					<select id="outcome" name="outcome">
+						<option value="corrected">Corrected</option>
+						<option value="dismissed">Did not hold</option>
+					</select>
+					<label class="visually-hidden" for="resolution">What was decided</label>
+					<textarea id="resolution" name="resolution" rows="2" placeholder="What was decided, in a line" />
+					<button type="submit">Close the case</button>
+				</form>
+
+				<form method="post" action="/api/takedown" class="action">
+					<input type="hidden" name="intent" value="exclude" />
+					<input type="hidden" name="dispute" value={dispute.id} />
+					<input type="hidden" name="back" value={`/curate/disputes/${dispute.id}`} />
+					<h3 class="action__title">Exclude it from future ingestion</h3>
+					<p class="action__why">
+						The durable half of a takedown. The crawl reads this before it ingests anything,
+						so the same material is skipped on the next run without anybody remembering.
+					</p>
+					<label class="visually-hidden" for="scope">What it covers</label>
+					<select id="scope" name="scope">
+						{EXCLUSION_SCOPES.map((scope) => (
+							<option value={scope} selected={scope === "repository"}>
+								{EXCLUSION_SCOPE_LABEL[scope]}
+							</option>
+						))}
+					</select>
+					<p class="action__note">{EXCLUSION_SCOPE_MEANING.repository}</p>
+					<label class="visually-hidden" for="match">What is excluded</label>
+					<input id="match" name="match" type="text" placeholder="owner/repository" />
+					<label class="visually-hidden" for="reason">Why</label>
+					<select id="reason" name="reason">
+						<option value="">No reason recorded</option>
+						{REPORT_REASONS.map((reason) => (
+							<option value={reason}>{REPORTS[reason].label}</option>
+						))}
+					</select>
+					<button type="submit">Record the exclusion</button>
+				</form>
+			</div>
+		</section>
+
+		{
+			recompute && subjectPossibility?.possibility && (
+				<section class="block" aria-labelledby="s-republish">
+					<h2 id="s-republish" class="block__title">
+						The possibility this example demonstrated
+					</h2>
+					<p class="block__why">
+						A possibility does not need deleting because one of its examples has to go. The
+						entry stays, its count falls to what is actually there, its status is re-floored
+						across the examples that remain, and another example is chosen to represent it.
+					</p>
+					<dl class="rows">
+						<div>
+							<dt class="tag">Entry</dt>
+							<dd>
+								<a href={`/possibilities/${parentSlug}`}>{subjectPossibility.possibility.title}</a>
+							</dd>
+						</div>
+						<div>
+							<dt class="tag">Examples now</dt>
+							<dd>
+								{siblings.length} → {recompute.exampleCount}
+								{withdrawn.length > 0 ? ` (${withdrawn.length} withheld)` : ""}
+							</dd>
+						</div>
+						<div>
+							<dt class="tag">Verified sources</dt>
+							<dd>{subjectPossibility.possibility.distinctSources ?? 0} → {recompute.distinctSources}</dd>
+						</div>
+						<div>
+							<dt class="tag">Entry rights status</dt>
+							<dd>
+								{subjectPossibility.possibility.rightsStatus ?? "unstated"} → {recompute.rightsStatus}
+							</dd>
+						</div>
+						<div>
+							<dt class="tag">Represented by</dt>
+							<dd>{recompute.representative ? recompute.representative.slug : "nothing left to represent it"}</dd>
+						</div>
+					</dl>
+					{recompute.notes.length > 0 && (
+						<ul class="notes">
+							{recompute.notes.map((note) => (
+								<li>{note}</li>
+							))}
+						</ul>
+					)}
+					<form method="post" action="/api/takedown" class="action action--inline">
+						<input type="hidden" name="intent" value="republish" />
+						<input type="hidden" name="possibility" value={parentSlug ?? ""} />
+						<input type="hidden" name="before" value={JSON.stringify(factsOf(siblings))} />
+						<input type="hidden" name="after" value={JSON.stringify(factsOf(usableExamples(siblings)))} />
+						<input type="hidden" name="back" value={`/curate/disputes/${dispute.id}`} />
+						<button type="submit">Recompute the entry from the examples that remain</button>
+						<span class="action__note">
+							Writes `example_count`, `distinct_sources` and `rights_status`, and records each
+							change. It does not delete the entry, and it does not touch the fields the crawl
+							owns.
+						</span>
+					</form>
+				</section>
+			)
+		}
+
+		<section class="block" aria-labelledby="s-audit">
+			<h2 id="s-audit" class="block__title">
+				Audit trail
+				<span class="tag">{audit.length} rows</span>
+			</h2>
+			<p class="block__why">
+				Append-only, and never published. What changed, what it was, and why.
+			</p>
+			{
+				audit.length === 0 ? (
+					<p class="empty-note">Nothing has been recorded against this case yet.</p>
+				) : (
+					<ol class="trail">
+						{audit.map((event) => (
+							<li class="trail__row">
+								<span class="tag">{event.label}</span>
+								<span class="trail__what">
+									{event.field ? `${event.field}: ${event.before ?? "unset"} → ${event.after ?? "unset"}` : event.detail}
+								</span>
+								<span class="trail__when">{event.occurredAt.slice(0, 19).replace("T", " ")}</span>
+							</li>
+						))}
+					</ol>
+				)
+			}
+		</section>
+
+		<section class="block" aria-labelledby="s-exclusions">
+			<h2 id="s-exclusions" class="block__title">
+				Standing exclusions
+				<span class="tag">{exclusions.filter((e) => e.active).length} active</span>
+			</h2>
+			{
+				exclusions.length === 0 ? (
+					<p class="empty-note">No source has been excluded from future ingestion.</p>
+				) : (
+					<ul class="trail">
+						{exclusions.map((exclusion) => (
+							<li class="trail__row">
+								<span class="tag">{EXCLUSION_SCOPE_LABEL[exclusion.scope]}</span>
+								<span class="trail__what">
+									{exclusion.match} — {exclusion.active ? "in force" : `lifted ${exclusion.liftedAt?.slice(0, 10) ?? ""}`}
+									{exclusion.liftReason ? `: ${exclusion.liftReason}` : ""}
+								</span>
+								<span class="trail__when">
+									{exclusion.active && (
+										<form method="post" action="/api/takedown" class="lift">
+											<input type="hidden" name="intent" value="lift" />
+											<input type="hidden" name="exclusion" value={exclusion.id} />
+											<input type="hidden" name="back" value={`/curate/disputes/${dispute.id}`} />
+											<input name="reason" type="text" placeholder="Why it is being lifted" required />
+											<button type="submit">Lift</button>
+										</form>
+									)}
+								</span>
+							</li>
+						))}
+					</ul>
+				)
+			}
+		</section>
+	</article>
+</Base>
+
+<style>
+	.case {
+		display: grid;
+		gap: var(--sp-6);
+		padding-block: var(--sp-6) var(--sp-7);
+	}
+
+	.case__head {
+		display: grid;
+		gap: var(--sp-3);
+		justify-items: start;
+	}
+
+	.case__means,
+	.block__why {
+		max-width: var(--measure);
+		font-size: var(--step--1);
+		line-height: 1.55;
+		color: var(--ink-3);
+	}
+
+	.case__detail {
+		max-width: var(--measure);
+		padding-left: var(--sp-3);
+		border-left: 2px solid var(--rights-review);
+		font-size: var(--step--1);
+		color: var(--ink-2);
+	}
+
+	.case__links {
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		color: var(--ink-4);
+	}
+
+	.case__links a {
+		display: inline-block;
+		min-height: 1.5rem;
+		padding-block: 0.2rem;
+		color: var(--ink-3);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+
+	.block {
+		display: grid;
+		gap: var(--sp-3);
+		padding-top: var(--sp-4);
+		border-top: 1px solid var(--line);
+	}
+
+	.block__title {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: var(--sp-2);
+		font-size: var(--step-1);
+	}
+
+	.rows {
+		display: grid;
+		gap: var(--sp-2);
+		margin: 0;
+	}
+
+	.rows > div {
+		display: grid;
+		gap: 0.2rem;
+		padding: var(--sp-2) 0;
+		border-bottom: 1px solid var(--line);
+	}
+
+	.rows dd {
+		margin: 0;
+		font-size: var(--step--1);
+		line-height: 1.5;
+		color: var(--ink-2);
+	}
+
+	.actions {
+		display: grid;
+		gap: var(--sp-3);
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+		align-items: start;
+	}
+
+	.action {
+		display: grid;
+		gap: var(--sp-2);
+		padding: var(--sp-3);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		background: var(--surface);
+	}
+
+	.action--inline {
+		justify-items: start;
+		max-width: 42rem;
+	}
+
+	.action__title {
+		font-size: var(--step-0);
+	}
+
+	.action__why,
+	.action__note {
+		font-size: var(--step--2);
+		line-height: 1.5;
+		color: var(--ink-3);
+	}
+
+	.action input,
+	.action select,
+	.action textarea {
+		width: 100%;
+		min-height: 2.75rem;
+		padding: 0.55rem 0.7rem;
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		color: var(--ink);
+		font-family: var(--font-ui);
+		font-size: var(--step--1);
+	}
+
+	.action button {
+		justify-self: start;
+		min-height: var(--tap);
+		padding: 0.55rem 1.1rem;
+		background: var(--surface-2);
+		border: 1px solid var(--line-loud);
+		border-radius: var(--radius);
+		color: var(--ink);
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		cursor: pointer;
+	}
+
+	.action button:hover {
+		border-color: var(--ember-line);
+	}
+
+	.notes {
+		display: grid;
+		gap: var(--sp-1);
+		margin: 0;
+		padding-left: var(--sp-4);
+		font-size: var(--step--1);
+		color: var(--ink-2);
+	}
+
+	.trail {
+		display: grid;
+		gap: var(--sp-2);
+		list-style: none;
+		padding: 0;
+		margin: 0;
+	}
+
+	.trail__row {
+		display: grid;
+		gap: var(--sp-2);
+		grid-template-columns: minmax(8rem, 12rem) 1fr auto;
+		align-items: baseline;
+		padding: var(--sp-2) 0;
+		border-bottom: 1px solid var(--line);
+		font-size: var(--step--2);
+		color: var(--ink-2);
+	}
+
+	.trail__when {
+		font-family: var(--font-mono);
+		color: var(--ink-4);
+		text-align: right;
+	}
+
+	.lift {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+		gap: var(--sp-2);
+	}
+
+	.lift input {
+		min-height: 2.25rem;
+		padding: 0.4rem 0.6rem;
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		color: var(--ink);
+		font-family: var(--font-ui);
+		font-size: var(--step--2);
+	}
+
+	.lift button {
+		min-height: 2.25rem;
+		padding: 0.4rem 0.8rem;
+		background: var(--surface-2);
+		border: 1px solid var(--line-loud);
+		border-radius: var(--radius);
+		color: var(--ink-2);
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		cursor: pointer;
+	}
+
+	.empty-note {
+		font-size: var(--step--1);
+		color: var(--ink-3);
+	}
+</style>

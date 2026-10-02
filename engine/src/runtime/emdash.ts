@@ -50,6 +50,22 @@ export class EmDashApi extends Context.Service<
 		/** Signs in the way the `emdash` CLI does. */
 		readonly session: Effect.Effect<EmDashSession, EmDashApiError>;
 		readonly read: (collection: string, slug: string) => Effect.Effect<EntryFields | null, EmDashApiError>;
+		/**
+		 * Lists a collection.
+		 *
+		 * Added for #54. A takedown is only durable if the engine can *read* it, and
+		 * the exclusions it needs to consult are a collection rather than a single
+		 * entry — so this is the read that makes "an exclusion survives a refresh" a
+		 * property of the run rather than a property of an operator's memory.
+		 *
+		 * `status` is not a parameter because the engine never wants drafts here: a
+		 * takedown that was never published is not a takedown anybody agreed to, and
+		 * acting on it would let an unfinished decision remove a source.
+		 */
+		readonly list: (
+			collection: string,
+			limit?: number,
+		) => Effect.Effect<ReadonlyArray<Record<string, unknown>>, EmDashApiError>;
 		readonly write: (
 			collection: string,
 			slug: string,
@@ -256,6 +272,36 @@ export class EmDashApi extends Context.Service<
 				} satisfies EntryFields;
 			});
 
+			const list = Effect.fn("EmDashApi.list")(function* (collection: string, limit = 200) {
+				const session = yield* signIn;
+				const operation = `list ${collection}`;
+				const path = `/_emdash/api/content/${encodeURIComponent(collection)}?limit=${limit}`;
+				const response = yield* call(operation, path, { method: "GET", headers: { ...session.headers } }, session);
+				const raw = yield* Effect.tryPromise({
+					async try() {
+						return (await response.json()) as unknown;
+					},
+					catch: (cause) =>
+						new EmDashApiError({
+							operation,
+							status: response.status,
+							detail: `body is not JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
+						}),
+				});
+				// EmDash nests the list under `data` on this route, so both shapes are
+				// accepted — a stricter schema here would fail a run over a field
+				// placement that is not what anybody is being asked to reason about.
+				const items = (body: unknown) => {
+					const envelope = body as { data?: { items?: unknown } | null; items?: unknown } | null;
+					const list = envelope?.data?.items ?? envelope?.items;
+					return Array.isArray(list) ? list : [];
+				};
+				return items(raw).filter(
+					(row): row is Record<string, unknown> =>
+						typeof row === "object" && row !== null && !Array.isArray(row),
+				);
+			});
+
 			const write = Effect.fn("EmDashApi.write")(function* (
 				collection: string,
 				slug: string,
@@ -289,7 +335,7 @@ export class EmDashApi extends Context.Service<
 				}
 			});
 
-			return EmDashApi.of({ session, read, write });
+			return EmDashApi.of({ session, read, list, write });
 		}),
 	);
 }

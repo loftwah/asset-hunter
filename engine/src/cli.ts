@@ -33,6 +33,7 @@ import { crawl, type CrawlMode } from "./crawl.ts";
 import { validatePayload, type PublishPayload } from "./publish.ts";
 import { EmDashApi, type EmDashApiError } from "./runtime/emdash.ts";
 import { mergeExample, mergePossibility, shouldPublish } from "./merge.ts";
+import { describeExclusion, parseExclusions, type Exclusion } from "./exclusions.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const engineRoot = resolve(here, "..");
@@ -69,6 +70,35 @@ function cmdCrawl(mode: CrawlMode, briefPath: string, force: boolean, env: Engin
 		Effect.gen(function* () {
 			const brief = loadBrief(briefPath);
 			const github = yield* GitHubApi;
+			/*
+			 * Standing takedowns, read before the crawl starts (#54).
+			 *
+			 * Read through `EmDashApi.list` like every other engine call, and a
+			 * failure here is logged rather than fatal — but it is also not
+			 * silently ignored, because a crawl that cannot reach the catalogue
+			 * cannot honour a takedown it cannot see, and quietly re-ingesting a
+			 * withdrawn repository is the exact failure the exclusion exists to
+			 * prevent. The run continues and says so in its own output.
+			 */
+			const emdash = yield* EmDashApi;
+			const exclusions = yield* emdash
+				.list("exclusions")
+				.pipe(
+					Effect.map((rows) => parseExclusions(rows as Record<string, unknown>[])),
+					Effect.catch((error) =>
+						Effect.sync(() => {
+							console.error(
+								`  ! could not read standing exclusions (${describeEmDashFailure(error)}); this hunt cannot honour a takedown it cannot see`,
+							);
+							return [] as Exclusion[];
+						}),
+					),
+				);
+			if (exclusions.some((entry) => entry.active)) {
+				console.log(
+					`  exclusions   ${exclusions.filter((entry) => entry.active).length} standing takedown(s) will be skipped`,
+				);
+			}
 			const outcome = yield* crawl({
 				mode,
 				root: engineRoot,
@@ -76,6 +106,7 @@ function cmdCrawl(mode: CrawlMode, briefPath: string, force: boolean, env: Engin
 				github,
 				force,
 				payloadExists: existsSync(payloadPath),
+				exclusions,
 			});
 
 			if (!outcome.writePayload) {
@@ -155,6 +186,18 @@ function cmdSync(dryRun: boolean, env: EngineEnv) {
 				process.exit(1);
 			}
 
+			/*
+			 * Exclusions are read before anything is written (#54). A `sync` that
+			 * cannot see them would happily re-create an entry the crawl correctly
+			 * skipped, which is how a takedown comes back one command later.
+			 */
+			const exclusions = parseExclusions((yield* api.list("exclusions")) as Record<string, unknown>[]);
+			const active = exclusions.filter((entry) => entry.active);
+			if (active.length) {
+				console.log(`\n  ${active.length} active exclusion(s) will be honoured`);
+				for (const exclusion of active.slice(0, 8)) console.log(`    ⊘ ${describeExclusion(exclusion)}`);
+			}
+
 			const report: SyncReport = {
 				created: [],
 				updated: [],
@@ -165,7 +208,7 @@ function cmdSync(dryRun: boolean, env: EngineEnv) {
 			};
 
 			for (const possibility of payload.possibilities) {
-				yield* reconcilePossibility(api, possibility, dryRun, report).pipe(
+				yield* reconcilePossibility(api, possibility, dryRun, report, exclusions).pipe(
 					Effect.catch((error) =>
 						Effect.sync(() => {
 							report.failed.push({
@@ -208,11 +251,12 @@ const reconcilePossibility = (
 	possibility: PublishPayload["possibilities"][number],
 	dryRun: boolean,
 	report: SyncReport,
+	exclusions: readonly Exclusion[] = [],
 ) =>
 	Effect.gen(function* () {
 		const existing = yield* api.read("possibilities", possibility.slug);
 		// The merge policy decides what to write. The CLI does not.
-		const merge = mergePossibility(existing?.data ?? null, possibility.data);
+		const merge = mergePossibility(existing?.data ?? null, possibility.data, { exclusions });
 		report.preserved.push(...merge.preserved.map((f) => `${possibility.slug}.${f}`));
 		report.notices.push(...merge.notes.map((n) => `${possibility.slug}: ${n}`));
 
@@ -239,7 +283,7 @@ const reconcilePossibility = (
 
 		for (const example of possibility.examples) {
 			const current = yield* api.read("examples", example.slug);
-			const exampleMerge = mergeExample(current?.data ?? null, example.data);
+			const exampleMerge = mergeExample(current?.data ?? null, example.data, { exclusions });
 			report.notices.push(...exampleMerge.notes.map((n) => `${example.slug}: ${n}`));
 			if (dryRun) continue;
 			if (!Object.keys(exampleMerge.write).length && current) continue;

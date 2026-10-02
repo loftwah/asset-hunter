@@ -338,18 +338,25 @@ const outcome = boardOutcome(
 											{example.note && <p class="pick__note">{example.note}</p>}
 										</div>
 									</div>
-									<ExampleUse
-										example={example}
-										full
-										plateCaption={
-											example.origin === "generated"
-												? "A plate generated for this catalogue to show the technique. It is not the source asset, and downloading it would not give you one."
-												: "The preview stored on this example. It is a preview: the original is a separate thing, and the use state below is about the original."
-										}
-									/>
-								</li>
-							);
-						})}
+								<ExampleUse
+									example={example}
+									full
+									/*
+									 * The report form lives on the drill-in — one per entry
+									 * rather than one per example — so the journey from
+									 * "the thing I just noticed" is a link to that form and
+									 * not a second copy of it on a page with several examples.
+									 */
+									reportHref={`/possibilities/${p.slug}#report`}
+									plateCaption={
+										example.origin === "generated"
+											? "A plate generated for this catalogue to show the technique. It is not the source asset, and downloading it would not give you one."
+											: "The preview stored on this example. It is a preview: the original is a separate thing, and the use state below is about the original."
+									}
+								/>
+							</li>
+						);
+					})}
 					</ul>
 				)
 			}

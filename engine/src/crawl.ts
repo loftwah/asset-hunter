@@ -86,6 +86,7 @@ import {
 	type Candidate,
 	type FileEvidence,
 } from "./candidates.ts";
+import { describeExclusion, exclusionFor, type Exclusion } from "./exclusions.ts";
 import { extractPossibilities, kindFor, type ExtractedPossibility } from "./possibility.ts";
 import { buildPayload, type PublishPayload } from "./publish.ts";
 import {
@@ -165,6 +166,18 @@ export interface CrawlOptions {
 	 * from a real change.
 	 */
 	readonly payloadExists?: boolean;
+	/**
+	 * Standing takedowns (#54).
+	 *
+	 * Applied inside the crawl rather than after it, and *before* the plan, because
+	 * a skipped repository must cost nothing — no metadata round trip, no tree
+	 * listing, no bytes. Filtering at the end would still have re-downloaded
+	 * everything on the way to discarding it.
+	 *
+	 * Optional, so a run with no catalogue in reach behaves exactly as it did
+	 * before exclusions existed rather than failing closed on a missing list.
+	 */
+	readonly exclusions?: readonly Exclusion[];
 	/**
 	 * The transcript sink.
 	 *
@@ -247,7 +260,34 @@ export function crawl(options: CrawlOptions): Effect.Effect<CrawlOutcome> {
 		// candidate superseded by a later commit is history, and planning against
 		// history would re-read a repository forever on the strength of a commit that
 		// was replaced weeks ago.
-		const recorded = activeCandidates(loadCandidates(root).values());
+		/*
+		 * Standing takedowns (#54), resolved to full names before anything is
+		 * fetched.
+		 *
+		 * `exclusionFor` takes the same target shape the engine already carries for a
+		 * repository, so a takedown can name a repository, a path inside one, or a
+		 * digest — and this is the point at which a repository-level exclusion drops
+		 * the source entirely, before the metadata round trip below spends a request
+		 * to learn something already decided.
+		 */
+		const exclusions = options.exclusions ?? [];
+		const withheld = new Map<string, Exclusion>();
+
+		const recordedAll = activeCandidates(loadCandidates(root).values());
+		// An excluded source is dropped from the record the planner reads, not from
+		// the store: the evidence of what was once read is kept, so lifting an
+		// exclusion restores the history instead of requiring a re-crawl.
+		const recorded = recordedAll.filter((c) => {
+			const exclusion = exclusionFor(exclusions, { fullName: c.fullName });
+			if (exclusion) withheld.set(c.fullName, exclusion);
+			return !exclusion;
+		});
+		if (withheld.size) {
+			say(`  exclusions   ${withheld.size} source(s) withheld by a standing takedown\n`);
+			for (const [fullName, exclusion] of [...withheld].slice(0, 8)) {
+				say(`    ⊘ ${fullName} — ${describeExclusion(exclusion)}`);
+			}
+		}
 		const known = latestByFullName(recorded);
 		const knownNames = new Set(known.keys());
 
@@ -268,8 +308,21 @@ export function crawl(options: CrawlOptions): Effect.Effect<CrawlOutcome> {
 			});
 		}
 
+		// Search hits a takedown names are dropped here, before they become targets.
+		// Discovery already cost the query; the repository costs nothing more.
+		for (const landed of queue) {
+			const exclusion = exclusionFor(exclusions, { fullName: landed.fullName });
+			if (exclusion) withheld.set(landed.fullName, exclusion);
+		}
+		if (withheld.size) {
+			say(`  exclusions   ${withheld.size} source(s) withheld by a standing takedown\n`);
+			for (const [fullName, exclusion] of [...withheld].slice(0, 8)) {
+				say(`    ⊘ ${fullName} — ${describeExclusion(exclusion)}`);
+			}
+		}
+
 		const laneByHit = new Map<string, Lane>();
-		for (const hit of queue) {
+		for (const hit of queue.filter((l) => !withheld.has(l.fullName))) {
 			// The first wave wins, so a repository two queries both found is attributed
 			// to the one that found it first — the order the operator wrote them in,
 			// which is the order that means something.
@@ -283,6 +336,7 @@ export function crawl(options: CrawlOptions): Effect.Effect<CrawlOutcome> {
 		// discover, and the wave attribution is carried on the candidate instead.
 		const targets = new Map<string, SearchHit>();
 		for (const landed of queue) {
+			if (withheld.has(landed.fullName)) continue;
 			// A hit the store already holds is rebuilt from the recorded evidence. The
 			// search is not re-run for it, so there is nothing else to build it from —
 			// and using the placeholder would throw away the description that explains

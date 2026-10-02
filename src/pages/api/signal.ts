@@ -43,6 +43,11 @@ import { Cause, Exit, Option } from "effect";
 import { parseReason, parseStars, parseSubjectType } from "../../lib/rating.ts";
 import { actorFrom, createReport, saveRating } from "../../lib/signals.ts";
 import {
+	filedNoteFromOutcomes,
+	openDispute,
+	shouldWithdrawOnFiling,
+} from "../../lib/takedown.ts";
+import {
 	describeDetail,
 	describeError,
 	type EmDashTransportError,
@@ -141,12 +146,49 @@ export const POST: APIRoute = async ({ request, redirect, locals, url }) => {
 			console.error("signal: report write failed", reportCause(filed.cause));
 			return finish(`Could not file the report: ${describeCause(filed.cause)}`, false);
 		}
-		return finish(
-			reason === "licence-changed"
-				? "Filed — a licence concern is read before anything else"
-				: "Filed for an editor",
-			true,
+
+		// A rights report is not a queue entry that waits to be read (#54). Somebody
+		// saying "this is my work, take it down" or "you have my licence wrong" has
+		// told us something material, and the honest response is to withdraw the
+		// direct-use path now and let a curator decide the rest.
+		//
+		// A *quality* report deliberately does not come through here. Treating every
+		// report as a takedown would make the ordinary ones meaningless and would hide
+		// the rights ones among them.
+		if (!shouldWithdrawOnFiling(reason)) {
+			return finish(
+				reason === "licence-changed"
+					? "Filed — a licence concern is read before anything else"
+					: "Filed for an editor",
+				true,
+			);
+		}
+
+		const dispute = await runAppExit(
+			openDispute(emdash, {
+				subjectType,
+				subjectSlug,
+				reason,
+				detail: safeDetail,
+				actor,
+			}),
+			{ signal: request.signal },
 		);
+		if (!Exit.isSuccess(dispute)) {
+			// The report is filed and the withdrawal is not. Saying "filed" alone
+			// would leave somebody believing their file is no longer being served when
+			// it is — so the note says what did not happen, and the log has why.
+			console.error("signal: withdrawal after rights report failed", reportCause(dispute.cause));
+			return finish(
+				filedNoteFromOutcomes(reason, subjectType, [], true),
+				false,
+			);
+		}
+		// The outcomes are logged rather than shown: a reader filing a takedown needs
+		// to know their work is no longer being served, not which CMS collections were
+		// written. The cockpit has the full text for anyone who is deciding.
+		console.info("signal: rights report withdrew the direct-use path", dispute.value.outcomes);
+		return finish(filedNoteFromOutcomes(reason, subjectType, dispute.value.outcomes, false), true);
 	}
 
 	return finish("Unknown request", false);
