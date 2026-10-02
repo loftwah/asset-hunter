@@ -958,6 +958,50 @@ describe("asset use", () => {
 		assert.match(text(html), /It is not the source asset/);
 	});
 
+	live("the plate on the use page is one plate, named as a preview", async () => {
+		// #64. The page used to render its only image at 104px as a thumbnail
+		// beside the example title, so the specimen was neither readable nor the
+		// page's subject. Two structural claims hold now, and both are about
+		// honesty rather than layout, which is what a route test can check:
+		//
+		// - the plate is a captioned `<figure>` (the drill-in's caption is a
+		//   "reference plate", this one's says it is a preview and not the asset),
+		//   so a reader can tell which file the decision below is about; and
+		// - the example whose preview *is* that plate is not shown the same file a
+		//   second time at a quarter of the size.
+		const html = await (await fetch(`${baseUrl}${use}`)).text();
+		// `[ "]` because the drill-in's plate carries the sticky modifier and
+		// Astro appends its own class hash after it; the base class is asserted.
+		assert.match(html, /<figure class="plate[ "]/);
+		assert.match(text(html), /preview, not the asset/);
+		const plates = html.match(/<figure class="plate[ "]/g) ?? [];
+		assert.equal(plates.length, 1, `the use page rendered ${plates.length} plates for one example`);
+		const images = html.match(/<img\b/g) ?? [];
+		assert.equal(images.length, 1, `the use page rendered ${images.length} images for one example`);
+		// The drill-in shares the component, so the two pages cannot drift apart.
+		const onDetail = await (await fetch(`${baseUrl}${detail}`)).text();
+		assert.match(onDetail, /<figure class="plate[ "]/);
+		assert.match(text(onDetail), /reference plate/);
+	});
+
+	live("the four use states are on the page with their counts", async () => {
+		// The census is the reason for the page, and it is four rows because there
+		// are four states — every one of them in words, with a count, whatever the
+		// count is. `asset-use.test.ts` proves the counts are computed; this proves
+		// they reach a reader.
+		const html = await (await fetch(`${baseUrl}${use}`)).text();
+		assert.equal((html.match(/class="states__row"/g) ?? []).length, 4);
+		assert.equal((html.match(/class="states__ring"/g) ?? []).length, 4);
+		for (const label of [
+			"Reference only",
+			"Review required",
+			"Reusable with attribution",
+			"Reusable",
+		]) {
+			assert.match(text(html), new RegExp(label, "i"));
+		}
+	});
+
 	live("the use page and the drill-in read the same records", async () => {
 		// One catalogue, not two: the example ids and the use state on the two
 		// pages have to be the same ones, or the asset half has become a

@@ -359,6 +359,191 @@ describe("the drill-in on a short landscape viewport", () => {
 	);
 });
 
+/**
+ * The selection page's plate (#64).
+ *
+ * `/use/<slug>` was the one surface on the site where the specimen was neither
+ * readable nor on screen: it rendered its only image at 104–128px — a plate
+ * authored at 800px with 13px annotations lands at 1.7px there — and started it
+ * at 124–149% of the fold. `DESIGN.md` §6 and §9.6 own the two numbers, and
+ * `scripts/visual-qa.mjs` gates them; these are the behavioural halves, which
+ * measure the same things in the browser and fail here rather than in a
+ * screenshot nobody diffs.
+ */
+describe("the selection page is media-first", () => {
+	const use = "/use/density-gradient";
+
+	view(
+		"the plate is the largest thing on the page, and big enough to read",
+		1280,
+		800,
+		async (page) => {
+			await page.goto(`${baseUrl}${use}`, { waitUntil: "networkidle" });
+			const read = await page.evaluate(() => {
+				const plate = document.querySelector<HTMLImageElement>(".plate img");
+				if (!plate) {
+					return {
+						missing: true,
+						width: 0,
+						height: 0,
+						intrinsic: 0,
+						top: 0,
+						viewport: window.innerHeight,
+						images: 0,
+						h1Height: 0,
+						ledeHeight: 0,
+						tallestType: 0,
+					};
+				}
+				const box = plate.getBoundingClientRect();
+				const h1 = document.querySelector<HTMLElement>("h1");
+				const lede = document.querySelector<HTMLElement>(".lede");
+				const textHeight = (el: HTMLElement | null) =>
+					el ? Math.round(el.getBoundingClientRect().height) : 0;
+				return {
+					missing: false,
+					width: Math.round(box.width),
+					height: Math.round(box.height),
+					intrinsic: plate.naturalWidth,
+					top: Math.round(box.top),
+					viewport: window.innerHeight,
+					images: document.images.length,
+					h1Height: textHeight(h1),
+					ledeHeight: textHeight(lede),
+					tallestType: Math.max(textHeight(h1), textHeight(lede)),
+				};
+			});
+			assert.equal(read.missing, false, "the use page rendered no plate at all");
+			// The floor `DESIGN.md` §9.6 states and `check:visual` gates: 0.7 of the
+			// authored 800px, so a 13px plate annotation lands at 9px or more.
+			assert.ok(
+				read.width >= 560,
+				`the plate rendered ${read.width}px wide, under the 560px floor — a 13px annotation lands at ${((read.width / 800) * 13).toFixed(1)}px`,
+			);
+			assert.equal(read.width / read.intrinsic >= 0.7, true, "the plate is under 0.7 of its authored width");
+			assert.equal(read.images, 1, `the page rendered ${read.images} images for one example`);
+			/*
+			 * "The visual focus", measured as geometry rather than as taste: the
+			 * specimen is taller than the page's own headline and lede, so the
+			 * biggest thing a reader lands on is the thing §1.1 calls the content.
+			 * Full-width section containers are not counted here — they are layout,
+			 * and the plate is beside them, never inside one.
+			 */
+			assert.ok(
+				read.height > read.tallestType,
+				`the plate is ${read.height}px tall and the tallest type block is ${read.tallestType}px (h1 ${read.h1Height}px, lede ${read.ledeHeight}px)`,
+			);
+			// And it is on screen, not below the header (`DESIGN.md` §5b).
+			assert.ok(
+				read.top <= read.viewport * 0.75,
+				`the plate starts ${read.top}px down in a ${read.viewport}px viewport`,
+			);
+		},
+	);
+
+	view(
+		"the plate is inside the first viewport on a phone",
+		390,
+		844,
+		async (page) => {
+			await page.goto(`${baseUrl}${use}`, { waitUntil: "networkidle" });
+			const read = await page.evaluate(() => {
+				const plate = document.querySelector<HTMLImageElement>(".plate img");
+				if (!plate) {
+					return { missing: true, top: 0, width: 0, viewport: window.innerHeight, images: 0 };
+				}
+				const box = plate.getBoundingClientRect();
+				return {
+					missing: false,
+					top: Math.round(box.top),
+					width: Math.round(box.width),
+					viewport: window.innerHeight,
+					images: document.images.length,
+				};
+			});
+			assert.equal(read.missing, false);
+			assert.ok(
+				read.top <= read.viewport * 0.75,
+				`the plate starts ${read.top}px down in a ${read.viewport}px viewport — the header is the page again`,
+			);
+			// The wall's tile is 160px wide at this viewport; anything near that is
+			// the defect #64 reports as a texture.
+			assert.ok(read.width >= 320, `the plate is ${read.width}px wide at 390px`);
+			// One file, one plate: this entry's example preview *is* the
+			// representative plate, so showing it again in the row would be the same
+			// image twice at two sizes.
+			assert.equal(read.images, 1, `the page rendered ${read.images} images for one example`);
+		},
+	);
+
+	view(
+		"the four use states are answered in words, with their counts",
+		1280,
+		800,
+		async (page) => {
+			await page.goto(`${baseUrl}${use}`, { waitUntil: "networkidle" });
+			const read = await page.evaluate(() => {
+				const rows = [...document.querySelectorAll<HTMLElement>(".states__row")];
+				return {
+					rows: rows.length,
+					states: rows.map((row) => ({
+						state: row.dataset.useState ?? "",
+						label: (row.querySelector("dt")?.textContent ?? "").trim(),
+						count: (row.querySelector("dd")?.textContent ?? "").trim(),
+						ring: row.querySelector(".states__ring") !== null,
+						// Every row states its colour, so the count is never the only
+						// thing a greyscale reader has.
+						ringColour: row.style.getPropertyValue("--c"),
+					})),
+					blocks: document.querySelectorAll(".use[data-use-state]").length,
+					labels: [...document.querySelectorAll(".use__label")].map((el) =>
+						(el.textContent ?? "").trim(),
+					),
+				};
+			});
+			// All four, worst first, each with a ring beside a real count.
+			assert.equal(read.rows, 4);
+			assert.deepEqual(
+				read.states.map((s) => s.state),
+				["reference-only", "review-required", "reusable-with-attribution", "reusable"],
+			);
+			for (const row of read.states) {
+				assert.ok(row.label.length > 0, `${row.state} has no label in words`);
+				assert.match(row.count, /^\d+$/, `${row.state} count reads ${JSON.stringify(row.count)}`);
+				assert.equal(row.ring, true, `${row.state} has no ring beside its label`);
+				assert.ok(row.ringColour.length > 0, `${row.state} has no colour token`);
+			}
+			// And the per-example decision still leads with the state in words.
+			assert.equal(read.blocks, read.labels.length);
+			assert.deepEqual(read.labels, ["Reference only"]);
+		},
+	);
+
+	view(
+		"nothing on the selection page is stuck and taller than the window",
+		1024,
+		768,
+		async (page) => {
+			// The one viewport where a full-width plate (827px) is taller than the
+			// window. A sticky plate there would park its top and hide its own bottom
+			// permanently — which is what `check:visual` reported while this page's
+			// plate was still marked sticky.
+			await page.goto(`${baseUrl}${use}`, { waitUntil: "networkidle" });
+			const stuck = await page.evaluate(() =>
+				[...document.querySelectorAll<HTMLElement>("body *")]
+					.filter((el) => getComputedStyle(el).position === "sticky")
+					.map((el) => ({
+						name: (el.className || "").toString().split(" ")[0] || el.tagName,
+						height: Math.round(el.getBoundingClientRect().height),
+						viewport: window.innerHeight,
+					}))
+					.filter((s) => s.height > s.viewport),
+			);
+			assert.deepEqual(stuck, [], JSON.stringify(stuck));
+		},
+	);
+});
+
 describe("enlarged text", () => {
 	view(
 		"200% of the default font size does not give the page a sideways scroll",

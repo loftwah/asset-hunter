@@ -70,6 +70,19 @@ const VIEWPORTS = [
 ];
 
 /**
+ * The shortest viewport the fold gate applies to, in CSS pixels.
+ *
+ * 46rem is not chosen here — it is the same threshold the sticky-plate rule uses,
+ * and it is the height below which a 4:5 specimen plate cannot be shown without
+ * being cut off: at 800px authored, the largest plate the stylesheet renders is
+ * 640×800. Below 46rem of height, "the media starts inside the first viewport"
+ * is a statement about the window, not about the composition, so those viewports
+ * are measured and printed instead. Two of the eleven are affected, and both are
+ * phones in landscape.
+ */
+const MIN_GATE_HEIGHT = 46 * 16;
+
+/**
  * Routes under audit. `expect` is the minimum number of elements that must be
  * present for the page to count as working — it is what distinguishes a real
  * render from an empty state or an error page. `fold` names the selector whose
@@ -90,18 +103,21 @@ const VIEWPORTS = [
  *   below the masthead, not under it" rule is measured rather than assumed.
  * - `measureFold` names a media-first element whose distance from the top is
  *   *recorded* rather than asserted. See `MEASURED_FOLDS` — there is a rule for
- *   the wall and none for the drill-in, and a script is not where a design
- *   authority gets invented.
+ *   the wall and for the use page and none for the drill-in, and a script is not
+ *   where a design authority gets invented.
  * - `capture: false` audits a route without writing a screenshot. It exists for
  *   documents too tall to photograph honestly: a `fullPage` capture of a 5,000-tile
  *   wall is 1.1 million pixels tall, and Chromium silently clamps it — which
  *   produces a file that looks like a capture and is not one. A matrix that
  *   accumulates confidently-wrong screenshots is worse than one with fewer of them.
+ * - `plateMin` asserts a plate's rendered **width**, not its position. The floor
+ *   is `DESIGN.md` §9.6's number, so this script reports it rather than choosing
+ *   it, and every viewport it does not cover is still printed.
  */
 const ROUTES = [
-	// `stickyFits` marks the two routes that hold sticky chrome — the wall's
-	// filter rail and the drill-in's plate — so both are checked at every size in
-	// the matrix rather than only where a screenshot happens to look right.
+	// `stickyFits` marks the routes that hold sticky chrome — the wall's filter
+	// rail and the drill-in's plate — so each is checked at every size in the
+	// matrix rather than only where a screenshot happens to look right.
 	{ path: "/", name: "wall", expect: { ".tile": 20 }, fold: ".tile__plate", plateAspect: ".tile--featured .tile__plate", media: true, scroll: 1400, stickyFits: true },
 	{ path: "/?vertical=games", name: "wall-filtered", expect: { ".tile": 2 }, fold: ".tile__plate", media: true },
 	{ path: "/possibilities/density-gradient", name: "detail", expect: { ".section__title": 3 }, media: true, scroll: 1200, stickyFits: true },
@@ -128,10 +144,28 @@ const ROUTES = [
 		expect: { ".rate__star": 5, ".rate button": 1, ".report__form select": 1, ".report__form button": 1 },
 		anchor: "#signals",
 	},
-	// The asset-use flow (#42). Audited like a real route because "no download
-	// appears unless the record permits one" is a visual property too: if a
-	// control ever renders, this capture is the evidence of what changed.
-	{ path: "/use/density-gradient", name: "asset-use", expect: { ".use": 1, ".summary__payload": 1 }, media: true },
+	// The asset-use flow (#42), recomposed to be media-first in #64. Two gates,
+	// because this is the one route whose whole subject is a plate:
+	//
+	// - `fold` — `DESIGN.md` §9.6 now states that the representative plate starts
+	//   inside the first viewport, so it is gated at the same 75% the wall uses
+	//   rather than measured. (It used to start at 124–149% of the fold, with the
+	//   page's only image at 104px.)
+	// - `plateMin` — the size rule itself. Under 0.7 of the 800px the plate is
+	//   authored at, its own 13px annotations land under 9px, which is the defect
+	//   #64 reports as "a texture rather than an illustration".
+	//
+	// No `stickyFits`: this page's plate does not stick, because the decision
+	// column beside it is shorter than the plate and a sticky element is bounded by
+	// its own grid area — there is nothing for it to travel alongside.
+	{
+		path: "/use/density-gradient",
+		name: "asset-use",
+		expect: { ".use": 1, ".summary__payload": 1, ".states__row": 4 },
+		media: true,
+		fold: ".plate img",
+		plateMin: { selector: ".plate img", px: 560, fromWidth: 1280 },
+	},
 	{ path: "/verticals", name: "verticals", expect: { ".row": 10 }, media: true },
 	// An in-page anchor. `/verticals#games` and `/pages/licensing#statuses` are
 	// linked from the masthead, the breadcrumbs and the footer, so a target that
@@ -207,6 +241,12 @@ const tapUnder44 = new Map();
 const tapExamples = new Map();
 /** Where each gated route's first plate starts. Printed; the gate is above. */
 const folds = [];
+/**
+ * How wide each plate rendered, and whether the size floor applied. The floor is
+ * a design-authority number for the use page (`plateMin`); this list exists so the
+ * viewports the floor does not cover are printed rather than absent.
+ */
+const plateSizes = [];
 /**
  * Folds that are **measured, not gated**.
  *
@@ -1343,8 +1383,17 @@ async function main() {
 				 * would be failing a rule the design authority never wrote. It is
 				 * still measured and printed — the number is what a later change to
 				 * the intro would be argued about with.
+				 *
+				 * The same reasoning covers a viewport too short to hold a 4:5 plate.
+				 * `landscape-844` and `landscape-932` are a phone on its side: 390px and
+				 * 430px of height, where the plate is 800px tall and the sticky rule
+				 * above 46rem deliberately does not apply. No arrangement of a header
+				 * puts a 640px plate inside a 390px window, so gating those two would be
+				 * gating a fact about the viewport rather than about the composition —
+				 * and the two numbers are printed, because "the first screen here is the
+				 * header" is worth seeing rather than hiding.
 				 */
-				if (viewport.textScale) {
+				if (viewport.textScale || viewportHeight < MIN_GATE_HEIGHT) {
 					if (plateTop === null) {
 						issues.push(`fold: ${route.fold} not found`);
 					} else {
@@ -1398,6 +1447,49 @@ async function main() {
 						`plate crop: ${route.plateAspect} renders at ${ratio.toFixed(2)}:1, not the plate's 0.80:1 — content is being cropped`,
 					);
 				}
+			}
+
+			/*
+			 * The plate size gate (#64).
+			 *
+			 * The crop check above is about a plate's *shape*; this is about its
+			 * *size*, and it exists because a 4:5 specimen plate has its content in
+			 * its own type. The plates are authored at 800×1000 with mono
+			 * annotations from 13px, so a plate rendered at `w` pixels puts those
+			 * annotations at `13 × w / 800`. `DESIGN.md` §6 states the annotations are
+			 * the plate's content — the real constraint values are written on the face
+			 * — and §9.6 says the use page's plate has to be big enough to read the
+			 * technique it shows. The threshold is the design authority's number
+			 * (560px, 0.7 of the authored width, 9.1px effective for a 13px
+			 * annotation), not this script's, which is the only reason it can be
+			 * asserted rather than merely reported.
+			 *
+			 * It applies from `fromWidth` upwards, because below that the plate is the
+			 * full width of the shell — at 390px there is no arrangement that reaches
+			 * 560px, and a gate that could never pass is not a gate. Every viewport is
+			 * still measured and printed so the numbers that *are* below the threshold
+			 * are visible next to the ones that are not.
+			 */
+			if (route.plateMin) {
+				const width = await page.evaluate((selector) => {
+					const el = document.querySelector(selector);
+					return el ? Math.round(el.getBoundingClientRect().width) : null;
+				}, route.plateMin.selector);
+				// Measured once, at every viewport; gated only where the floor applies.
+				const gated = viewport.width >= route.plateMin.fromWidth && !viewport.textScale;
+				if (width === null) {
+					issues.push(`plate size: ${route.plateMin.selector} not found`);
+				} else if (gated && width < route.plateMin.px) {
+					issues.push(
+						`plate size: ${route.plateMin.selector} renders ${width}px wide, under the ${route.plateMin.px}px floor — a 13px plate annotation lands at ${((width / 800) * 13).toFixed(1)}px, which is not readable`,
+					);
+				}
+				plateSizes.push({
+					route: route.name,
+					viewport: viewport.name,
+					width,
+					gated: gated && width !== null && width >= route.plateMin.px,
+				});
 			}
 
 			/*
@@ -1661,10 +1753,15 @@ async function main() {
 	 * - **Blank media** reports the lowest distinct-colour count any plate
 	 *   produced. A real specimen plate lands in the dozens; a flat frame is 1.
 	 * - **The fold** reports where the first plate or example starts on every
-	 *   route, including the drill-in. `DESIGN.md` §5b sets a rule for the wall
-	 *   (gated above at 75% of the fold) and states none for the drill-in, so
-	 *   gating one would be inventing a threshold. The number is what makes the
-	 *   observation in #25 arguable rather than anecdotal.
+	 *   route. `DESIGN.md` §5b gates the wall and §9.6 gates the use page, both at
+	 *   75% of the fold; the drill-in is still only measured, because §5b states no
+	 *   rule for it and gating one would be inventing a threshold here. Two cases
+	 *   are measured rather than gated on every route — 200% text, and a window
+	 *   shorter than 46rem where a 4:5 plate cannot fit at all. The number is what
+	 *   makes the observation in #25 arguable rather than anecdotal.
+	 * - **Plate size** reports the rendered width of the use page's plate and the
+	 *   effective size of the plate's own smallest annotation, on the viewports the
+	 *   560px floor does not cover as well as the ones it does (#64).
 	 * - **Touch targets under 44px** is printed alongside the gate so a run that
 	 *   *does* fail says which controls and how far off they are, rather than
 	 *   only that something is.
@@ -1687,10 +1784,34 @@ async function main() {
 		}
 	}
 	if (measuredFolds.length) {
+		const byRoute = new Map();
+		for (const f of measuredFolds) {
+			if (!byRoute.has(f.route)) byRoute.set(f.route, []);
+			byRoute.get(f.route).push(`${f.viewport} ${f.top}px (${f.percent}%)`);
+		}
+		for (const [route, cells] of byRoute) {
+			console.log(
+				`Fold (measured, not gated — 200% text, or a window shorter than ${MIN_GATE_HEIGHT / 16}rem): ${route}: ${cells.join(", ")}`,
+			);
+		}
+	}
+	if (plateSizes.length) {
+		/*
+		 * The rendered plate width against the effective size of the plate's own
+		 * smallest annotation (13px in an 800px-wide authored file). The floor is
+		 * marked per cell because it only applies from `fromWidth` up — and printing
+		 * the effective size rather than the pixel width is what makes a phone's
+		 * 355px an honest number rather than a failure.
+		 */
+		const rule = ROUTES.find((r) => r.plateMin);
 		console.log(
-			`Fold (measured, not gated — no threshold exists for these yet): ${
-				measuredFolds.map((f) => `${f.route}/${f.viewport} ${f.top}px (${f.percent}%)`).join(", ")
-			}`,
+			`Plate size — ${rule.plateMin.px}px floor from ${rule.plateMin.fromWidth}px wide (a 13px plate annotation lands at ${((rule.plateMin.px / 800) * 13).toFixed(1)}px): ` +
+				plateSizes
+					.map(
+						(p) =>
+							`${p.viewport} ${p.width === null ? "missing" : `${p.width}px`} (${p.width === null ? "—" : `${((p.width / 800) * 13).toFixed(1)}px annotation`}${p.gated ? ", gated" : ""})`,
+					)
+					.join(", "),
 		);
 	}
 	if (tapUnder44.size) {
