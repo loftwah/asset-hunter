@@ -196,6 +196,50 @@ export const boardLabel = (name: string) =>
 	name === DEFAULT_BOARD ? "Shortlist" : name;
 
 /**
+ * Whether the controls that act on a board's entries may be offered at all
+ * (#65).
+ *
+ * Copy, clear and export all act on entries. With none on the board, every one
+ * of them is a control that looks live and produces nothing — which `DESIGN.md`
+ * §9.6 calls worse than no control ("a control that looks live and is not is
+ * worse than no control"), and §1.5 forbids in stronger terms: nothing on
+ * screen should be a claim the record does not support.
+ *
+ * It is a named function rather than an `if` in the template because the page
+ * and the endpoint have to agree. A form posted from a tab that was rendered
+ * before the board was cleared is a real request, and it must get the same
+ * answer as the page that offered the control.
+ *
+ * `entries` is a count because the two callers count different things on
+ * purpose: the page counts what it actually rendered, so a board whose every
+ * slug the catalogue rejected is correctly empty here, and the endpoint counts
+ * what the cookie holds, which is the only thing it can copy.
+ */
+export function boardCanManage(entries: number): boolean {
+	return entries > 0;
+}
+
+/**
+ * The boards a reader can switch between, or `null` when there is only one.
+ *
+ * #65 found the hole this closes: the switcher used to list only boards with
+ * entries on them, so after copying a board — which empties the one you copied
+ * *from* — the reader landed on an empty board, was told the entries were on
+ * `Pirates`, and had no control anywhere on the page that could take them
+ * there. The honest zero is the fix, not hiding the board: a board with `0` on
+ * it is a real board the reader can go to, which is exactly what they need when
+ * the other one is empty.
+ *
+ * Only ever `null` for a reader with a single board, where a switcher with one
+ * entry is a control that does nothing.
+ */
+export function boardSwitcher(boards: Boards): { name: string; label: string; count: number }[] | null {
+	const entries = Object.entries(boards);
+	if (entries.length < 2) return null;
+	return entries.map(([name, slugs]) => ({ name, label: boardLabel(name), count: slugs.length }));
+}
+
+/**
  * What a board POST did, read back out of the query string the endpoint
  * redirects to.
  *
@@ -207,10 +251,19 @@ export const boardLabel = (name: string) =>
  *
  * `titleFor` is supplied by the caller so the message can name the entry in the
  * reader's words and stay pure: the slugs stay strings here.
+ *
+ * `keptElsewhere` is how many entries survive on the reader's *other* boards,
+ * and it exists because the cleared sentence used to be a lie (#65): clearing
+ * one board empties that board only, and telling someone whose entries just
+ * vanished from the screen that "nothing was kept anywhere else" is a claim
+ * about the record that the record does not support. A caller that does not
+ * know the count keeps the old wording, which is the honest reading of a
+ * request that carried none.
  */
 export function boardOutcome(
 	params: URLSearchParams,
 	titleFor: (slug: string) => string | undefined,
+	context: { keptElsewhere?: number } = {},
 ): { tone: "ok" | "problem"; message: string } | null {
 	const saved = params.get("saved");
 	if (saved) {
@@ -223,10 +276,35 @@ export function boardOutcome(
 		return { tone: "ok", message: `Removed from your shortlist: ${name ?? unsaved}.` };
 	}
 	if (params.get("cleared")) {
-		return { tone: "ok", message: "This board is empty. Nothing was kept anywhere else." };
+		// Clearing empties one board and leaves the others alone, so the second
+		// sentence is built from the count rather than assumed. The reader is
+		// looking at a board that has just gone empty, which is the worst moment
+		// to tell them something false about where their work went.
+		const kept = context.keptElsewhere ?? 0;
+		return {
+			tone: "ok",
+			message: kept
+				? `This board is empty. ${kept} ${kept === 1 ? "entry is" : "entries are"} kept on your other ${kept === 1 ? "board" : "boards"}.`
+				: "This board is empty. Nothing was kept anywhere else.",
+		};
 	}
-	if (params.get("copied")) {
-		return { tone: "ok", message: "Copied to a new board. Both are empty now." };
+	/*
+	 * `copied` carries the destination board's name, because "both are empty now"
+	 * was wrong twice over: only the board you copied *from* is empty, and a
+	 * reader who just watched entries leave the screen deserves to be told which
+	 * board now holds them.
+	 */
+	const copied = params.get("copied");
+	if (copied) {
+		return { tone: "ok", message: `Copied to ${copied}, which now holds them.` };
+	}
+	/*
+	 * A copy posted from a form that was rendered before the board was cleared.
+	 * It changed nothing, and the honest answer says so in words rather than
+	 * reporting a copy that never happened (#65).
+	 */
+	if (params.get("nocopy")) {
+		return { tone: "problem", message: "Nothing to copy: this board is empty." };
 	}
 	return null;
 }

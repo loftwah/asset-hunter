@@ -32,6 +32,7 @@ import {
 	COOKIE_NAME,
 	COOKIE_OPTIONS,
 	applyAction,
+	boardCanManage,
 	normaliseBoardName,
 	parseBoards,
 	serialiseBoards,
@@ -66,6 +67,15 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
 	const known = new Set(loaded.value.possibilities.map((p) => p.slug));
 
 	const current = parseBoards(cookies.get(COOKIE_NAME)?.value);
+	/*
+	 * Whether there is anything on the board being acted on, decided by the same
+	 * rule the page uses to decide whether to offer the control (#65). The form is
+	 * not rendered on an empty board, but a request can still arrive from a tab
+	 * that was rendered before the board was emptied — and a copy of nothing has
+	 * to be answered as the refusal it is rather than as a copy.
+	 */
+	const sourceEntries = (current[board] ?? []).filter((s) => known.has(s)).length;
+	const manageable = boardCanManage(sourceEntries);
 	const next = applyAction(current, action, { slug, board, to, known });
 
 	// Clearing the last entry removes the cookie rather than leaving an empty one
@@ -91,6 +101,21 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
 		url.searchParams.set(action === "save" ? "saved" : "unsaved", slug);
 	}
 	if (action === "clear") url.searchParams.set("cleared", "1");
-	if (action === "rename") url.searchParams.set("copied", "1");
+	/*
+	 * A copy names the board it copied into, because the reader is sent back to
+	 * the board they copied *from* — which is now empty — and "copied to a new
+	 * board" left them with no idea where their entries went. A copy of an empty
+	 * board says it did nothing instead.
+	 */
+	if (action === "rename") {
+		const destination = normaliseBoardName(to);
+		// A name that normalises to the board itself, or to nothing, changes
+		// nothing — so it is answered as the refusal it is too.
+		if (manageable && destination && destination !== board) {
+			url.searchParams.set("copied", destination);
+		} else {
+			url.searchParams.set("nocopy", "1");
+		}
+	}
 	return redirect(url.pathname + url.search, 303);
 };

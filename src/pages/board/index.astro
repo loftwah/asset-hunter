@@ -18,6 +18,7 @@
 import Base from "../../layouts/Base.astro";
 import PossibilityTile from "../../components/PossibilityTile.astro";
 import OutcomeFlash from "../../components/OutcomeFlash.astro";
+import BoardSwitcher from "../../components/BoardSwitcher.astro";
 import { loadPossibilities } from "../../lib/catalogue";
 import { runApp } from "../../lib/effect/root";
 import { MEDIA_LABEL, RIGHTS_MEANING, verticalLabel } from "../../lib/vocabulary";
@@ -25,6 +26,7 @@ import {
 	COOKIE_NAME,
 	DEFAULT_BOARD,
 	MAX_PER_BOARD,
+	boardCanManage,
 	boardOutcome,
 	boardTotals,
 	normaliseBoardName,
@@ -46,12 +48,27 @@ const items = slugs.map((slug) => bySlug.get(slug)).filter((p): p is NonNullable
 const dropped = slugs.length - items.length;
 
 /*
+ * Whether this board can be *managed*, decided by the same rule the POST
+ * endpoint applies (#65). It counts what actually rendered rather than what the
+ * cookie names, so a board whose every slug the catalogue has since dropped is
+ * correctly unmanageable — there is nothing left to copy, clear or export, and a
+ * control that offers to do any of them is a claim the record does not support.
+ */
+const manageable = boardCanManage(items.length);
+
+/*
  * The answer to the POST that sent the reader here. It used to be inferred from
  * membership — "did you just save this?" — which is why saving said something and
  * unsaving, removing and clearing all said nothing at all, including the two
  * actions that destroy work.
+ *
+ * `keptElsewhere` is what makes the cleared sentence true: clearing empties the
+ * board being looked at and leaves the reader's other boards alone, so "nothing
+ * was kept anywhere else" was only ever true when they had no other boards.
  */
-const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?.title);
+const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?.title, {
+	keptElsewhere: totals.items,
+});
 ---
 
 <Base
@@ -60,62 +77,47 @@ const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?
 	path="/board"
 	noindex
 >
-	<header class="head shell">
-		<p class="tag tag--ember">Shortlist</p>
-		<h1 class="display head__title">
-			{items.length > 0 ? `${items.length} to choose between` : "Nothing saved yet"}
-		</h1>
-		<p class="lede">
-			{
-				items.length > 0
-					? "Plates side by side at the same size. Source, licence and technique are behind each one, because a comparison that starts with metadata is a comparison you have already lost."
-					: // "Hover" is not an instruction a phone can follow. The `+` is
-					  // revealed on hover where there is a pointer and always shown
-					  // where there is not, so the copy names the control and says
-					  // where it appears instead.
-						"Press the + on any plate to keep it here — it appears when you point at a tile, and is always there on a touch screen or a keyboard. The list lives in this browser, so nothing is uploaded and nothing follows you to another machine."
-			}
-		</p>
+	{
+		/*
+		 * The header only exists when there is something to head. An empty board
+		 * used to get a headline here ("Nothing saved yet"), a live copy form, and
+		 * then a *second* headline and a second explanation 180px lower down
+		 * (#65) — two answers to one state, the second of which contradicted the
+		 * first about whether anything was missing. So the loaded board keeps the
+		 * header and the empty board gets one self-contained state below, and the
+		 * `h1` moves with it: one headline on the page either way, and never a
+		 * heading level that skips.
+		 */
+		manageable && (
+			<header class="head shell">
+				<p class="tag tag--ember">Shortlist</p>
+				<h1 class="display head__title">{items.length} to choose between</h1>
+				<p class="lede">
+					Plates side by side at the same size. Source, licence and technique are behind each
+					one, because a comparison that starts with metadata is a comparison you have already
+					lost.
+				</p>
 
-		{
-			totals.boards > 1 && (
-				<nav class="boards" aria-label="Boards">
-					<ul>
-						{Object.entries(boards)
-							.filter(([, list]) => list.length > 0)
-							.map(([name, list]) => (
-								<li>
-									<a
-										href={`/board?board=${encodeURIComponent(name)}`}
-										class:list={["chip", { "chip--on": name === active }]}
-										aria-current={name === active ? "page" : undefined}
-									>
-										{name === DEFAULT_BOARD ? "Shortlist" : name}
-										<span class="chip__n">{list.length}</span>
-									</a>
-								</li>
-							))}
-					</ul>
-				</nav>
-			)
-		}
+				<BoardSwitcher boards={boards} active={active} manageable={manageable} />
 
-		<form class="newboard shell" method="post" action="/api/board">
-			<input type="hidden" name="action" value="rename" />
-			<input type="hidden" name="board" value={active} />
-			<input type="hidden" name="back" value={back} />
-			<label class="visually-hidden" for="to">New board name</label>
-			<input
-				id="to"
-				type="text"
-				name="to"
-				placeholder="Copy this board to a new name"
-				maxlength="40"
-				autocomplete="off"
-			/>
-			<button type="submit">Copy board</button>
-		</form>
-	</header>
+				<form class="newboard" method="post" action="/api/board">
+					<input type="hidden" name="action" value="rename" />
+					<input type="hidden" name="board" value={active} />
+					<input type="hidden" name="back" value={back} />
+					<label class="visually-hidden" for="to">New board name</label>
+					<input
+						id="to"
+						type="text"
+						name="to"
+						placeholder="Copy this board to a new name"
+						maxlength="40"
+						autocomplete="off"
+					/>
+					<button type="submit">Copy board</button>
+				</form>
+			</header>
+		)
+	}
 
 	<div class="results shell">
 		{
@@ -133,16 +135,48 @@ const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?
 
 		{
 			items.length === 0 ? (
+				/*
+				 * The empty board, and the whole of what it is (#65). The copy form
+				 * is not disabled and not greyed out — it is *absent*, because with
+				 * no entries on the board it copies nothing, and DESIGN.md §9.6 says
+				 * a control that cannot be used is a claim about the record and
+				 * claims about the record are made in words: the way in is the answer
+				 * here, not a management control for a board that does not exist yet.
+				 *
+				 * It reappears on its own once there is something to copy, because it
+				 * is gated on `manageable` above rather than hidden per-state.
+				 */
 				<div class="empty">
-					<h2 class="display empty__title">This board is empty</h2>
+					<p class="tag tag--ember">Shortlist</p>
+					{/*
+					 * `head__title` as well as `empty__title`: the same type class as the
+					 * loaded board's headline, so the empty state is not quietly a smaller
+					 * page than the loaded one. `DESIGN.md` §8 asks for a state
+					 * indistinguishable in quality, and a headline three steps down the
+					 * fluid scale is the easiest way to fail that without writing a
+					 * sentence about it. `empty__title` stays as the hook `check:visual`
+					 * counts to prove the empty state rendered.
+					 */}
+					<h1 class="display head__title empty__title">This board is empty</h1>
 					<p class="lede">
-						Which is a real state with a real answer, not a failure: nothing has been saved to
-						it yet. The wall is one click away, and so is every vertical.
+						Nothing has been saved to it yet, which is a real state with a real answer rather
+						than a failure. Press the + on any plate to keep it here — it appears when you point
+						at a tile, and is always there on a touch screen or a keyboard. The list lives in
+						this browser, so nothing is uploaded and nothing follows you to another machine.
 					</p>
 					<div class="empty__links">
 						<a class="button" href="/">Open the wall</a>
 						<a class="button button--ghost" href="/verticals">Browse verticals</a>
 					</div>
+
+					{/*
+					 * The switcher sits *after* the way in, never above it, and it
+					 * renders only when there is another board to switch to — which is
+					 * exactly the state a copy leaves behind. It is the one control an
+					 * empty board still carries, because following a copy needs a way
+					 * to follow it (#65).
+					 */}
+					<BoardSwitcher boards={boards} active={active} manageable={manageable} />
 				</div>
 			) : (
 				<>
@@ -265,46 +299,16 @@ const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?
 		padding-block: var(--sp-6) var(--sp-4);
 	}
 
+	/* The empty board has no header above it, so its state is the top of the
+	   page. The lede was the only line between the headline and the actions and
+	   it reads as a wall of prose without a little air. */
+	.empty__title + .lede {
+		margin-block-start: var(--sp-2);
+	}
+
 	.head__title {
 		font-size: var(--step-3);
 		max-width: 24ch;
-	}
-
-	.boards ul {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--sp-2);
-		list-style: none;
-		padding: 0;
-	}
-
-	.chip {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		min-height: 2.75rem;
-		padding: 0.3rem 0.9rem;
-		border: 1px solid var(--line);
-		border-radius: 999px;
-		font-family: var(--font-mono);
-		font-size: var(--step--1);
-		color: var(--ink-2);
-	}
-
-	.chip:hover {
-		color: var(--ink);
-		border-color: var(--ember-line);
-	}
-
-	.chip--on {
-		color: var(--canvas);
-		background: var(--ember);
-		border-color: var(--ember);
-	}
-
-	.chip__n {
-		font-variant-numeric: tabular-nums;
-		opacity: 0.8;
 	}
 
 	.newboard {
@@ -520,10 +524,6 @@ const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?
 		justify-items: start;
 		padding-block: var(--sp-7);
 		max-width: var(--measure);
-	}
-
-	.empty__title {
-		font-size: var(--step-2);
 	}
 
 	.empty__links {

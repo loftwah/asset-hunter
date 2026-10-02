@@ -264,6 +264,165 @@ describe("shortlist board", () => {
 		assert.match(html, /Open the wall/);
 	});
 
+	/*
+	 * #65: the empty state, compared against the loaded one.
+	 *
+	 * Asserting only the empty side proves nothing — an empty page that renders
+	 * one headline and no controls would pass every "the empty board has no live
+	 * control" check while being a worse page than the loaded one. So both
+	 * renders are fetched here and compared: the same furniture, the same quality
+	 * of answer, and the difference between them exactly where the difference is
+	 * supposed to be.
+	 */
+	live("the empty board is one answer of the same quality as the loaded one (#65)", async () => {
+		const cookie = `ah_board=${encodeURIComponent(
+			JSON.stringify({ default: ["density-gradient", "raymarched-sdf"] }),
+		)}`;
+		const [emptyHtml, loadedHtml] = await Promise.all([
+			(await fetch(`${baseUrl}/board`)).text(),
+			(await fetch(`${baseUrl}/board`, { headers: { cookie } })).text(),
+		]);
+
+		// The two renders are genuinely different states, or the comparison below
+		// would be comparing a page with itself.
+		assert.match(loadedHtml, /2 to choose between/, "the loaded board did not render its entries");
+		assert.match(emptyHtml, /This board is empty/);
+
+		// 1. Exactly one headline and one explanation for the empty state. The
+		//    old page had "Nothing saved yet" in the header and "This board is
+		//    empty" below it, each with its own paragraph.
+		for (const [name, html] of [
+			["empty", emptyHtml],
+			["loaded", loadedHtml],
+		] as const) {
+			assert.equal((html.match(/<h1[ >]/g) ?? []).length, 1, `${name}: more than one h1`);
+			assert.equal(
+				(html.match(/class="lede"/g) ?? []).length,
+				1,
+				`${name}: more than one lede paragraph`,
+			);
+			// The same headline class on both sides. This is what makes §8's
+			// "indistinguishable in quality" checkable rather than aspirational: the
+			// empty state is not allowed a smaller headline than the loaded one, and
+			// sharing the class is how that is enforced rather than eyeballed — the
+			// empty state had a `--step-2` headline against the loaded `--step-3`.
+			assert.match(
+				html.match(/<h1[^>]*>/)?.[0] ?? "",
+				/head__title/,
+				`${name}: the headline is not the same type as the loaded board's`,
+			);
+		}
+		assert.doesNotMatch(
+			emptyHtml,
+			/Nothing saved yet/,
+			"the empty board still answers the same state twice",
+		);
+
+		// 2. The copy control is absent, not live-and-copies-nothing, and not
+		//    greyed out: on an empty board there is nothing to copy, and DESIGN.md
+		//    §9.6 says a control that cannot be used is worse than no control.
+		assert.doesNotMatch(
+			emptyHtml,
+			/action="\/api\/board"/,
+			"the empty board still offers a form POST to the board endpoint",
+		);
+		assert.doesNotMatch(emptyHtml, /Copy board/, "the copy button is still on an empty board");
+		assert.doesNotMatch(
+			emptyHtml,
+			/<button/,
+			"an empty board should have no buttons at all — only the way in",
+		);
+		// …and it is absent because it is gated, not because it was deleted: a
+		// board with entries still gets it, which is what makes the comparison
+		// meaningful.
+		assert.match(loadedHtml, /Copy board/, "the copy control vanished from a loaded board");
+		assert.match(loadedHtml, /action="\/api\/board"/);
+
+		// 3. The empty state leads. Its first action has to come before any
+		//    board-management control, and the headline before the actions.
+		const emptyAt = emptyHtml.indexOf('class="empty"');
+		assert.ok(emptyAt > -1, "the empty state did not render");
+		const wallLinkAt = emptyHtml.indexOf("Open the wall");
+		assert.ok(wallLinkAt > emptyAt, "the way in is not inside the empty state");
+		assert.ok(
+			emptyHtml.indexOf("This board is empty") < wallLinkAt,
+			"the headline does not come before the actions",
+		);
+
+		// 4. Same page furniture on both sides, so the empty state is a real
+		//    answer rather than a thin error-shaped page.
+		for (const marker of ['class="masthead"', "<footer", "skip-link", "<main"]) {
+			assert.ok(emptyHtml.includes(marker), `the empty board is missing ${marker}`);
+			assert.ok(loadedHtml.includes(marker), `the loaded board is missing ${marker}`);
+		}
+
+		// 5. The empty state offers a way forward, not just a statement.
+		assert.match(emptyHtml, /href="\/"/, "the empty board does not link to the wall");
+		assert.match(emptyHtml, /href="\/verticals"/, "the empty board does not link to the verticals");
+	});
+
+	live("a board whose every entry was dropped reads as empty, not as broken (#65)", async () => {
+		// Every slug in the cookie names something the catalogue does not have,
+		// so nothing renders. The board-management controls act on entries, so with
+		// none of them the copy form must be gone here too — and the drop is still
+		// announced, because that is a correction the reader needs to hear.
+		const cookie = `ah_board=${encodeURIComponent(JSON.stringify({ default: ["nope-a", "nope-b"] }))}`;
+		const html = await (await fetch(`${baseUrl}/board`, { headers: { cookie } })).text();
+		assert.match(html, /does not have/, "the drop is announced, not hidden");
+		assert.match(html, /This board is empty/);
+		assert.doesNotMatch(html, /Copy board/, "a board with nothing on it still offers a copy");
+	});
+
+	live("copying a board with nothing on it is refused in words (#65)", async () => {
+		// The form is not rendered on an empty board, but a request can arrive
+		// from a tab rendered before the board was emptied. It must not report a
+		// copy that did not happen.
+		const res = await fetch(`${baseUrl}/api/board`, {
+			method: "POST",
+			redirect: "manual",
+			headers: { "content-type": "application/x-www-form-urlencoded" },
+			body: new URLSearchParams({ action: "rename", board: "default", to: "Pirates" }),
+		});
+		assert.equal(res.status, 303);
+		const location = res.headers.get("location") ?? "";
+		assert.match(location, /nocopy=1/, `expected the refusal, got ${location}`);
+		const html = await (await fetch(`${baseUrl}/board${location.slice(location.indexOf("?"))}`)).text();
+		assert.match(html, /Nothing to copy/i, "the refusal is not stated to the reader");
+	});
+
+	live("a real copy says which board the entries went to (#65)", async () => {
+		const cookie = `ah_board=${encodeURIComponent(JSON.stringify({ default: ["density-gradient"] }))}`;
+		const res = await fetch(`${baseUrl}/api/board`, {
+			method: "POST",
+			redirect: "manual",
+			headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+			body: new URLSearchParams({ action: "rename", board: "default", to: "Pirates" }),
+		});
+		assert.equal(res.status, 303);
+		const location = res.headers.get("location") ?? "";
+		assert.match(location, /copied=Pirates/, `expected the destination board, got ${location}`);
+		/*
+		 * Re-requested with the cookie the endpoint actually set, not the one that
+		 * was sent: after a copy the board it came from is empty and the entries
+		 * live on `Pirates`, so re-reading the old cookie would show a board that
+		 * never existed and this test would pass for the wrong reason.
+		 */
+		const updated = res.headers.get("set-cookie")?.match(/ah_board=([^;]*)/)?.[1];
+		assert.ok(updated, "the endpoint set no cookie");
+		const query = location.slice(location.indexOf("?"));
+		const html = await (
+			await fetch(`${baseUrl}/board${query}`, { headers: { cookie: `ah_board=${updated}` } })
+		).text();
+		assert.match(html, /Copied to Pirates/, "the copy does not say where the entries went");
+		// The reader lands on the board they copied *from*, which is now empty,
+		// so the empty state has to be what is on screen underneath the answer.
+		assert.match(html, /This board is empty/);
+		assert.doesNotMatch(html, /both are empty/i, "the old false claim is still there");
+		// …and the destination is reachable from there, which is what makes the
+		// sentence useful rather than merely different.
+		assert.match(html, /board=Pirates/, "the copy did not leave the entries findable");
+	});
+
 	live("saving from the wall is a form POST that works without JavaScript", async () => {
 		const wall = await (await fetch(`${baseUrl}/`)).text();
 		assert.ok((wall.match(/action="\/api\/board"/g) ?? []).length > 0, "no save control on the wall");

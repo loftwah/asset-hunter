@@ -1,0 +1,117 @@
+---
+/**
+ * The boards a reader can switch between.
+ *
+ * A component rather than markup repeated in the page because it is rendered in
+ * two places for two different reasons (#65): above the entries on a board you
+ * can manage, and *below* the way in on an empty one. The second placement is
+ * the point — a copy empties the board you copied from and then tells you the
+ * entries are on another board, so the switcher is the only control that can
+ * follow that sentence, and with it absent the page pointed somewhere it could
+ * not take you.
+ *
+ * The count is rendered even at `0`. An empty board is a real board a reader can
+ * open, and it is the one a copy empties, so the honest zero is what makes it
+ * reachable at all. A single board renders nothing: a switcher with one entry is
+ * a control that does nothing.
+ */
+import { boardSwitcher } from "../lib/board";
+import type { Boards } from "../lib/board";
+
+interface Props {
+	boards: Boards;
+	/** The board being shown, so it can be marked rather than merely listed. */
+	active: string;
+	/**
+	 * Whether the board in front of the reader has anything on it.
+	 *
+	 * It changes how the current board is marked, which is the whole point of
+	 * passing it: on a board with entries, the current board is the one you are
+	 * working on and it takes the accent. On an empty board it is the one
+	 * destination with nothing in it, and filling it with the accent would point
+	 * at it while the page is asking the reader to go somewhere else — so there it
+	 * is marked quietly and the ember is left to the way in, which is the one
+	 * thing on the page worth pressing (`DESIGN.md` §1.2: the accent marks the
+	 * single highest-priority element, not every current item).
+	 */
+	manageable: boolean;
+}
+
+const { boards, active, manageable } = Astro.props;
+const switcher = boardSwitcher(boards);
+---
+
+{
+	switcher && (
+		<nav class="boards" aria-label="Boards">
+			<ul>
+				{switcher.map(({ name, label, count }) => (
+					<li>
+						<a
+							href={`/board?board=${encodeURIComponent(name)}`}
+							class:list={["chip", { "chip--on": name === active && manageable }]}
+							aria-current={name === active ? "page" : undefined}
+						>
+							{label}
+							<span class="chip__n">{count}</span>
+						</a>
+					</li>
+				))}
+			</ul>
+		</nav>
+	)
+}
+
+<style>
+	ul {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-2);
+		list-style: none;
+		padding: 0;
+	}
+
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-height: 2.75rem;
+		padding: 0.3rem 0.9rem;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		color: var(--ink-2);
+	}
+
+	.chip:hover {
+		color: var(--ink);
+		border-color: var(--ember-line);
+	}
+
+	/* The board being shown is the one marked, and the ember marks selection and
+	   nothing else. `aria-current` carries the same fact to a screen reader, so
+	   the colour is never the only signal. */
+	.chip--on {
+		color: var(--canvas);
+		background: var(--ember);
+		border-color: var(--ember);
+	}
+
+	/*
+	 * On an empty board the current board is the one with nothing on it, so it is
+	 * not filled — it is outlined in the loud border instead. Two things read as
+	 * loud on this page would mean the accent marks nothing, and this way the
+	 * ember belongs to the way in. `aria-current` still says which board this is,
+	 * so the state is never carried by colour alone.
+	 */
+	.chip[aria-current="page"]:not(.chip--on) {
+		color: var(--ink);
+		border-color: var(--line-loud);
+	}
+
+	.chip__n {
+		font-variant-numeric: tabular-nums;
+		opacity: 0.8;
+	}
+</style>
