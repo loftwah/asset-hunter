@@ -1,0 +1,454 @@
+---
+/**
+ * The curation cockpit (#52).
+ *
+ * Where a filed report, a crawl's draft and an unmeasured field become a
+ * decision. It is a route on the public app gated by EmDash's own session and
+ * role rather than a separate admin tool, because:
+ *
+ * - the data it reads is EmDash content, and the tools that write it are the
+ *   CMS content API;
+ * - a second admin surface would be a second place for the catalogue's rules to
+ *   be re-implemented and disagree with the first;
+ * - this route's whole job is to be *next to* the content it flags, so an editor
+ *   can go from a report to the entry in one click.
+ *
+ * What it deliberately does not do is edit. Curation happens in EmDash, which
+ * has revisions, drafts and an audit trail already. This is the queue that says
+ * what needs attention and where to go.
+ *
+ * Gated at \`role >= editor\`. A subscriber who finds this URL gets the same 404
+ * an anonymous visitor would, because a queue of unfilled problems is
+ * information about the catalogue.
+ */
+import Base from "../../layouts/Base.astro";
+import { loadReports, loadRatings, aggregateBySubject, actorFrom } from "../../lib/signals.ts";
+import { REPORTS, type Report } from "../../lib/rating.ts";
+import { loadPossibilities } from "../../lib/catalogue.ts";
+import { getEmDashCollection } from "emdash";
+
+/** EmDash's roles, by level. Editor is the threshold for curation. */
+const EDITOR = 40;
+
+const viewer = actorFrom(Astro.locals?.user);
+const level = Number((Astro.locals?.user as { role?: unknown } | undefined)?.role ?? 0);
+if (!viewer || level < EDITOR) {
+	// A 404 rather than a 403: this page is not a thing that exists for you, and
+	// a 403 confirms it exists.
+	return new Response("Not found", { status: 404 });
+}
+
+const [{ possibilities }, reports, ratings] = await Promise.all([
+	loadPossibilities(),
+	loadReports(),
+	loadRatings(),
+]);
+
+// Queue 1: open reports, grouped by reason with the licence concern first,
+// because it is the one where being wrong makes the catalogue unsafe.
+const priority = ["licence-changed", "dead-source", "broken-preview", "duplicate"];
+const open = reports.filter((r) => !r.resolution);
+const ordered = [...open].sort((a, b) => {
+	const ai = priority.indexOf(a.reason);
+	const bi = priority.indexOf(b.reason);
+	return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi) || a.subjectSlug.localeCompare(b.subjectSlug);
+});
+
+// Queue 2: machine drafts the crawl created. They are held, unranked and
+// unpublished, which is correct — but nothing surfaces them for a decision, so
+// without this they would sit there forever.
+const { entries: draftEntries } = await getEmDashCollection("possibilities", {
+	status: "draft",
+	limit: 50,
+});
+const drafts = (draftEntries as unknown as { id: string; data: Record<string, unknown> }[]).map(
+	(e) => ({
+		id: e.id,
+		title: String(e.data.title ?? e.id),
+		rightsStatus: (e.data.rights_status as string) ?? null,
+		vertical: (e.data.vertical as string) ?? null,
+		hunt: (e.data.source_hunt as string) ?? null,
+		syncedAt: (e.data.machine_synced_at as string) ?? null,
+		examples: (e.data.example_count as number) ?? 0,
+		sources: (e.data.distinct_sources as number) ?? 0,
+	}),
+);
+
+// Queue 3: entries whose machine observations were never made, or whose sources
+// were never verified. Not errors — the honest state of a catalogue that has not
+// been crawled — but they are the backlog.
+const unmeasured = possibilities.filter((p) => p.novelty === null || p.coverage === null);
+const unverified = possibilities.filter((p) => (p.distinctSources ?? 0) === 0);
+
+// Ratings with a single rater are a consensus-shaped number resting on one
+// person, which is the thing worth knowing before a curator leans on it.
+const aggregates = aggregateBySubject(ratings);
+const thinRatings = [...aggregates.entries()]
+	.filter(([, aggregate]) => aggregate.count === 1)
+	.map(([key, aggregate]) => ({ key, average: aggregate.average, count: aggregate.count }));
+
+const linkFor = (report: Report) =>
+	report.subjectType === "possibility"
+		? `/possibilities/${report.subjectSlug}`
+		: report.subjectType === "example"
+			? `/_emdash/admin/examples`
+			: "#";
+
+const totals = {
+	reports: open.length,
+	licences: open.filter((r) => r.reason === "licence-changed").length,
+	drafts: drafts.length,
+	unmeasured: unmeasured.length,
+	unverified: unverified.length,
+};
+---
+
+<Base
+	title="Curation"
+	description="Exception queues for the Asset Hunter catalogue: open reports, held crawl output, and what has not been measured."
+	path="/curate"
+	noindex
+>
+	<header class="head shell">
+		<p class="tag tag--ember">Curation</p>
+		<h1 class="display head__title">What needs a decision</h1>
+		<p class="lede">
+			Four queues. Everything here is a question rather than an edit: the decisions are made in
+			the <a href="/_emdash/admin">EmDash admin</a>, which has the revisions and the audit
+			trail. This page exists so nothing sits in the catalogue unexamined.
+		</p>
+		<dl class="tally">
+			<div>
+				<dt class="tag">Open reports</dt>
+				<dd class="tally__n" class:list={{ "tally__n--warn": totals.licences > 0 }}>
+					{totals.reports}
+				</dd>
+			</div>
+			<div>
+				<dt class="tag">Licence concerns</dt>
+				<dd class="tally__n">{totals.licences}</dd>
+			</div>
+			<div>
+				<dt class="tag">Held drafts</dt>
+				<dd class="tally__n">{totals.drafts}</dd>
+			</div>
+			<div>
+				<dt class="tag">Unmeasured</dt>
+				<dd class="tally__n">{totals.unmeasured}</dd>
+			</div>
+		</dl>
+	</header>
+
+	<div class="queues shell">
+		<section aria-labelledby="q-reports">
+			<h2 id="q-reports" class="section__title">
+				Open reports
+				<span class="tag">{ordered.length}</span>
+			</h2>
+			{
+				ordered.length === 0 ? (
+					<p class="empty-note">
+						Nothing reported. That is a real answer, not an absence: nobody has told us
+						anything is wrong.
+					</p>
+				) : (
+					<ul class="queue">
+						{ordered.map((report) => (
+							<li class:list={["row", { "row--urgent": report.reason === "licence-changed" }]}>
+								<p class="row__head">
+									<a class="row__title" href={linkFor(report)}>
+										{report.subjectSlug}
+									</a>
+									<span class="tag">{REPORTS[report.reason].label}</span>
+									{report.userId ? (
+										<span class="tag">from a reader</span>
+									) : (
+										<span class="tag">no reader</span>
+									)}
+								</p>
+								<p class="row__means">{REPORTS[report.reason].means}</p>
+								<p class="row__action">{REPORTS[report.reason].action}</p>
+								{report.detail && <p class="row__detail">“{report.detail}”</p>}
+								<p class="row__foot">
+									{report.createdAt.slice(0, 10)} ·{" "}
+									<a href="/_emdash/admin/reports">close it in the admin</a>
+								</p>
+							</li>
+						))}
+					</ul>
+				)
+			}
+		</section>
+
+		<section aria-labelledby="q-drafts">
+			<h2 id="q-drafts" class="section__title">
+				Held crawl output
+				<span class="tag">{drafts.length}</span>
+			</h2>
+			<p class="section__why">
+				A hunt creates entries as drafts at rank 0. That is deliberate — a crawl never decides
+				what the public catalogue shows — but nothing else surfaces them, so without this queue
+				they would sit unpublished forever and nobody would know they existed.
+			</p>
+			{
+				drafts.length === 0 ? (
+					<p class="empty-note">
+						No held drafts. Either no hunt has been synced, or everything it found has already
+						been reviewed.
+					</p>
+				) : (
+					<ul class="queue">
+						{drafts.map((draft) => (
+							<li class="row">
+								<p class="row__head">
+									<span class="row__title row__title--plain">{draft.title}</span>
+									<span class="tag">{draft.vertical ?? "unclassified"}</span>
+									<span class="tag">{draft.rightsStatus ?? "unstated"}</span>
+								</p>
+								<p class="row__means">
+									{draft.examples} example(s) · {draft.sources} with a licence that was read
+								</p>
+								<p class="row__foot">
+									{draft.hunt ? `hunt ${draft.hunt} · ` : ""}
+									{draft.syncedAt ? `synced ${draft.syncedAt.slice(0, 10)}` : "never synced"} ·{" "}
+									<a href="/_emdash/admin/possibilities">review it</a>
+								</p>
+							</li>
+						))}
+					</ul>
+				)
+			}
+		</section>
+
+		<section aria-labelledby="q-unmeasured">
+			<h2 id="q-unmeasured" class="section__title">
+				What has not been measured
+				<span class="tag">{unmeasured.length} unmeasured · {unverified.length} unverified</span>
+			</h2>
+			<p class="section__why">
+				Not errors. The honest state of a catalogue that has not been crawled: \`novelty\` and
+				\`coverage\` are null because nothing measured them, and \`distinct_sources\` is 0 because
+				no licence has been read. Publishing an estimate in any of those fields would be
+				fabricated evidence, which is the one thing this project will not do.
+			</p>
+			<ul class="tags">
+				{unmeasured.slice(0, 40).map((p) => (
+					<li>
+						<a class="tag tag--link" href={`/possibilities/${p.slug}`}>
+							{p.title}
+						</a>
+					</li>
+				))}
+			</ul>
+			{unmeasured.length > 40 && (
+				<p class="section__why">…and {unmeasured.length - 40} more.</p>
+			)}
+		</section>
+
+		{
+			thinRatings.length > 0 && (
+				<section aria-labelledby="q-thin">
+					<h2 id="q-thin" class="section__title">
+						One reader standing behind a number
+						<span class="tag">{thinRatings.length}</span>
+					</h2>
+					<p class="section__why">
+						A single rating renders as \`4.0 from 1 rating\`, which is honest but easy to read
+						as consensus once the count is out of sight. Worth knowing before a ranking leans
+						on it.
+					</p>
+					<ul class="tags">
+						{thinRatings.map((entry) => {
+							const [, slug] = entry.key.split(":");
+							return (
+								<li>
+									<a class="tag tag--link" href={`/possibilities/${slug}`}>
+										{slug} · {entry.average}★ from 1
+									</a>
+								</li>
+							);
+						})}
+					</ul>
+				</section>
+			)
+		}
+	</div>
+</Base>
+
+<style>
+	.head {
+		display: grid;
+		gap: var(--sp-4);
+		justify-items: start;
+		padding-block: var(--sp-6) var(--sp-5);
+	}
+
+	.head__title {
+		font-size: var(--step-3);
+	}
+
+	.head .lede a {
+		color: var(--ember);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+
+	.tally {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
+		gap: var(--sp-4);
+		width: 100%;
+		padding-top: var(--sp-3);
+		border-top: 1px solid var(--line);
+	}
+
+	.tally__n {
+		font-family: var(--font-display);
+		font-weight: 600;
+		font-size: var(--step-2);
+		line-height: 1.1;
+		color: var(--ink);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.tally__n--warn {
+		color: var(--rights-review);
+	}
+
+	.queues {
+		display: grid;
+		gap: var(--sp-7);
+		padding-bottom: var(--sp-7);
+	}
+
+	.section__title {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: var(--sp-3);
+		padding-bottom: var(--sp-2);
+		border-bottom: 1px solid var(--line);
+		font-size: var(--step-2);
+	}
+
+	.section__why {
+		margin-top: var(--sp-3);
+		max-width: 72ch;
+		font-size: var(--step--1);
+		line-height: 1.55;
+		color: var(--ink-3);
+	}
+
+	.queue {
+		list-style: none;
+		padding: 0;
+		margin-top: var(--sp-4);
+		display: grid;
+		gap: var(--sp-4);
+	}
+
+	.row {
+		display: grid;
+		gap: var(--sp-2);
+		padding: var(--sp-4);
+		border: 1px solid var(--line);
+		border-left: 2px solid var(--line-strong);
+		border-radius: var(--radius);
+		background: var(--surface);
+	}
+
+	.row--urgent {
+		border-left-color: var(--rights-review);
+	}
+
+	.row__head {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: var(--sp-2) var(--sp-3);
+	}
+
+	.row__title {
+		font-family: var(--font-display);
+		font-weight: 600;
+		font-size: var(--step-0);
+		color: var(--ink);
+		display: inline-block;
+		min-height: 1.5rem;
+		padding-block: 0.15rem;
+	}
+
+	.row__title:hover {
+		color: var(--ember);
+	}
+
+	.row__title--plain {
+		color: var(--ink-2);
+	}
+
+	.row__means,
+	.row__action {
+		font-size: var(--step--1);
+		line-height: 1.5;
+		color: var(--ink-2);
+	}
+
+	.row__action {
+		color: var(--ink-3);
+	}
+
+	.row__detail {
+		padding-left: var(--sp-3);
+		border-left: 1px solid var(--line-strong);
+		font-size: var(--step--1);
+		line-height: 1.5;
+		color: var(--ink-2);
+	}
+
+	.row__foot {
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		color: var(--ink-4);
+	}
+
+	.row__foot a {
+		color: var(--ink-3);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+		display: inline-block;
+		min-height: 1.5rem;
+		padding-block: 0.15rem;
+	}
+
+	.empty-note {
+		margin-top: var(--sp-3);
+		font-size: var(--step--1);
+		color: var(--ink-3);
+	}
+
+	.tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-2);
+		list-style: none;
+		padding: 0;
+		margin-top: var(--sp-3);
+	}
+
+	.tag--link {
+		display: inline-block;
+		min-height: 1.75rem;
+		padding: 0.2rem 0.6rem;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		color: var(--ink-2);
+		text-transform: none;
+		letter-spacing: 0;
+	}
+
+	.tag--link:hover {
+		color: var(--ink);
+		border-color: var(--ember-line);
+	}
+</style>
