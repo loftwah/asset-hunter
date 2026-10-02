@@ -17,9 +17,10 @@ import {
 	mediaSrc,
 	type Possibility,
 } from "../lib/catalogue";
-import { MEDIA_LABEL, verticalLabel } from "../lib/vocabulary";
+import { verticalLabel } from "../lib/vocabulary";
 import { Effect } from "effect";
 import { runApp } from "../lib/effect/root";
+import { excerpt, facetLabels } from "../lib/search-text";
 
 const query = (Astro.url.searchParams.get("q") ?? "").trim();
 const all = query.length > 0 ? await search(query, { limit: 60 }) : { items: [] };
@@ -37,10 +38,12 @@ const rawHits = all.items.filter(
  * EmDash's `snippet` is the matched title, which repeats what the row already
  * shows. What a search result needs to answer is *why* this matched, so the
  * line under the title is the entry's own summary with the query terms marked.
- * The text is escaped before any markup is added.
+ *
+ * Both the marking and the windowing live in `../lib/search-text.ts` (#63), pure
+ * and tested: a window that opens mid-word and a meta line that says
+ * "Motion / Video  Motion" both read as a rendering fault rather than as a
+ * design choice.
  */
-const escapeHtml = (value: string) =>
-	value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /** Query words worth matching: two letters match everything, so they are dropped. */
 const queryTerms = query
@@ -48,42 +51,8 @@ const queryTerms = query
 	.split(/[^\p{L}\p{N}]+/u)
 	.filter((t) => t.length > 2);
 
-const markTerms = (value: string) => {
-	if (!queryTerms.length) return escapeHtml(value);
-	const escaped = escapeHtml(value);
-	// Case-insensitive, bounded alternation, longest-first so "seams" is not
-	// split into "seam" + a stray "s" when both are in the query.
-	const pattern = [...new Set(queryTerms)]
-		.sort((a, b) => b.length - a.length)
-		.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-		.join("|");
-	const re = new RegExp(`(${pattern})`, "gi");
-	// Split/restore rather than a replacer, so the query text itself can never
-	// inject markup: only whole matched groups are wrapped.
-	return escaped
-		.split(re)
-		.map((part, i) => (i % 2 === 1 ? `<mark>${part}</mark>` : part))
-		.join("");
-};
-
 /** A window of the summary around the first match, so the reason stays visible. */
-const reasonFor = (text: string | null | undefined) => {
-	if (!text) return null;
-	const lower = text.toLowerCase();
-	let at = -1;
-	for (const term of queryTerms) {
-		at = lower.indexOf(term);
-		if (at !== -1) break;
-	}
-	const WINDOW = 190;
-	if (at === -1) {
-		const cut = text.length > WINDOW ? `${text.slice(0, WINDOW).trimEnd()}…` : text;
-		return markTerms(cut);
-	}
-	const start = Math.max(0, at - Math.floor(WINDOW / 3));
-	const end = Math.min(text.length, start + WINDOW);
-	return `${start > 0 ? "…" : ""}${markTerms(text.slice(start, end).trim())}${end < text.length ? "…" : ""}`;
-};
+const reasonFor = (text: string | null | undefined) => excerpt(text, { terms: queryTerms });
 
 /**
  * EmDash's index knows about every published entry. `loadPossibilities` honours
@@ -291,14 +260,20 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 													}
 												</span>
 												<span class="found__meta">
-													{possibility?.vertical && (
-														<span class="tag">{verticalLabel(possibility.vertical)}</span>
-													)}
-													{possibility?.mediaKind && (
-														<span class="tag">
-															{MEDIA_LABEL[possibility.mediaKind] ?? possibility.mediaKind}
-														</span>
-													)}
+													{/*
+													 * The vertical and the media kind are not the same
+													 * fact. `Motion / Video` and `Motion` both label a
+													 * motion entry, so printing both says one thing
+													 * twice — the exact duplication `docs/UNSLOP.md`
+													 * rejects. `facetLabels` drops the subsumed one
+													 * and keeps both when they genuinely differ.
+													 */}
+													{facetLabels(
+														possibility?.vertical,
+														possibility?.mediaKind,
+													).map((label) => (
+														<span class="tag">{label}</span>
+													))}
 													<ProvenanceMarkers
 														rights={possibility?.rightsStatus}
 														origin={possibility?.representativeOrigin}
