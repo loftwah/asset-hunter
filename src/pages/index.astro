@@ -14,19 +14,38 @@ import { loadPossibilities, tallyVerticals } from "../lib/catalogue";
 import { runApp } from "../lib/effect/root";
 import { COOKIE_NAME, boardOutcome, boardTotals, parseBoards } from "../lib/board";
 import { RIGHTS_LABEL, RIGHTS_MEANING, verticalLabel } from "../lib/vocabulary";
+import { describeScale, requestedScale, scaleWall } from "../lib/scale-wall";
 
 const { possibilities, cacheHint } = await runApp(loadPossibilities());
 // `cacheHint` is absent when EmDash had nothing to say — a query that failed
 // is now a typed failure rather than an empty page, so there is no hint to set.
 if (Astro.cache?.enabled && cacheHint) Astro.cache.set(cacheHint);
 
-const verticals = tallyVerticals(possibilities);
+/*
+ * The scale fixture (#49). `?scale=500` renders this wall with five hundred
+ * synthetic entries — the same component, the same grid, the same filter, the
+ * same lazy strategy — so `npm run check:perf` measures the product rather than
+ * a page built to resemble it. See `src/lib/scale-wall.ts` for why it is a
+ * parameter and not a route.
+ *
+ * Two conditions, both load-bearing. `import.meta.env.DEV` means production
+ * ignores the parameter entirely, so the deployed Worker never carries a wall
+ * of entries that do not exist — the same hard guarantee `/lab` makes, reached
+ * the same way. And the base is what `loadPossibilities` just returned, so there
+ * is no fixture data to ship and none to drift.
+ */
+const asked = requestedScale(Astro.url, import.meta.env.DEV);
+const scale: ReturnType<typeof describeScale> | null =
+	asked === null ? null : describeScale(possibilities.length, asked, asked);
+const catalogue = asked === null ? possibilities : scaleWall(possibilities, asked);
+
+const verticals = tallyVerticals(catalogue);
 const requested = Astro.url.searchParams.get("vertical");
 const activeVertical = verticals.find((v) => v.slug === requested)?.slug ?? null;
 
 const filtered = activeVertical
-	? possibilities.filter((p) => p.vertical === activeVertical)
-	: possibilities;
+	? catalogue.filter((p) => p.vertical === activeVertical)
+	: catalogue;
 
 // Density ramp: the first entry of the unfiltered wall gets a lead tile that
 // spans two columns and two rows of the same grid. A filtered view is already
@@ -46,10 +65,12 @@ const totals = boardTotals(boards);
  * free; without this, a keyboard reader and a screen-reader reader got a page
  * reload and nothing at all.
  */
-const bySlug = new Map(possibilities.map((p) => [p.slug, p.title]));
+const bySlug = new Map(catalogue.map((p) => [p.slug, p.title]));
 const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug), {
 	// The wall is where a reader sees they are on a board at all, so a sentence
-	// claiming their work is gone has to be right here too (#65).
+	// claiming their work is gone has to be right here too (#65). Counted from
+	// the real catalogue, not the scale fixture — a synthetic entry is not a
+	// reader's saved work.
 	keptElsewhere: totals.items,
 });
 
@@ -83,7 +104,7 @@ for (const p of filtered) {
 		<dl class="tally">
 			<div>
 				<dt class="tag">Possibilities</dt>
-				<dd class="tally__n">{possibilities.length}</dd>
+				<dd class="tally__n" data-tally="possibilities">{catalogue.length}</dd>
 			</div>
 			<div>
 				<dt class="tag">Verticals</dt>
@@ -94,9 +115,24 @@ for (const p of filtered) {
 					Verified sources
 					<span class="visually-hidden">counted against a licence read at the source</span>
 				</dt>
-				<dd class="tally__n">{possibilities.reduce((n, p) => n + (p.distinctSources ?? 0), 0)}</dd>
+				<dd class="tally__n">{catalogue.reduce((n, p) => n + (p.distinctSources ?? 0), 0)}</dd>
 			</div>
 		</dl>
+		{/*
+			The scale fixture announces itself, and says so where only a screenshot
+			reader will see it. A 500-entry wall that looked exactly like the real
+			one would be a capture nobody could trust, and the whole value of the
+			fixture is that somebody can look at it. `visually-hidden` rather than a
+			banner, because a development notice in the design of a media-first
+			page is precisely the kind of thing DESIGN.md rejects.
+		*/}
+		{
+			scale && (
+				<p class="visually-hidden" data-scale-note>
+					{`Scale fixture: ${scale.entries} synthetic entries derived from the ${scale.base} in the catalogue, across ${scale.passes} passes. Development only.`}
+				</p>
+			)
+		}
 	</section>
 
 	<nav class="rail shell" aria-label="Filter by vertical">
@@ -109,7 +145,7 @@ for (const p of filtered) {
 					data-vertical=""
 					aria-current={!activeVertical ? "true" : undefined}
 				>
-					All<span class="chip__n">{possibilities.length}</span>
+					All<span class="chip__n">{catalogue.length}</span>
 				</a>
 			</li>
 			{
@@ -136,11 +172,11 @@ for (const p of filtered) {
 		 * why they are waiting.
 		*/}
 		<p class="visually-hidden" role="status" data-filter-status>
-			{`Showing all ${possibilities.length} possibilities.`}
+			{`Showing all ${catalogue.length} possibilities.`}
 		</p>
 	</nav>
 
-	<section class="wall shell" aria-label="Possibilities">
+	<section class="wall shell" aria-label="Possibilities" data-entries={catalogue.length}>
 		{
 			filtered.length === 0 ? (
 				<div class="empty">
@@ -154,7 +190,7 @@ for (const p of filtered) {
 					</a>
 				</div>
 			) : (
-				<div class="grid" data-grid>
+				<div class="grid" data-grid data-tiles={filtered.length}>
 					{filtered.map((p, i) => (
 						<PossibilityTile
 							possibility={p}

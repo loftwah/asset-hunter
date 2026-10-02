@@ -92,6 +92,11 @@ const VIEWPORTS = [
  *   *recorded* rather than asserted. See `MEASURED_FOLDS` — there is a rule for
  *   the wall and none for the drill-in, and a script is not where a design
  *   authority gets invented.
+ * - `capture: false` audits a route without writing a screenshot. It exists for
+ *   documents too tall to photograph honestly: a `fullPage` capture of a 5,000-tile
+ *   wall is 1.1 million pixels tall, and Chromium silently clamps it — which
+ *   produces a file that looks like a capture and is not one. A matrix that
+ *   accumulates confidently-wrong screenshots is worse than one with fewer of them.
  */
 const ROUTES = [
 	// `stickyFits` marks the two routes that hold sticky chrome — the wall's
@@ -142,7 +147,40 @@ const ROUTES = [
 	// matrix that fails because a deliberately-absent route is absent would train
 	// people to ignore the matrix.
 	...(baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1")
-		? [{ path: "/lab", name: "lab", expect: { ".case": 30, "#vocabulary": 1, ".signal-case": 7 }, media: true }]
+		? [
+				{ path: "/lab", name: "lab", expect: { ".case": 30, "#vocabulary": 1, ".signal-case": 7 }, media: true },
+				/*
+				 * The scale wall (#49), at the largest size in the matrix rather than
+				 * a sample of it.
+				 *
+				 * Audited at every viewport like a real route because it is the real
+				 * route with a bigger catalogue: the same component, grid, filter and
+				 * lazy strategy with `?scale=5000`. A matrix of one 24-entry wall
+				 * cannot find the failure modes that only exist when there are enough
+				 * tiles for the grid to wrap oddly, for the sticky rail to have a long
+				 * document to sit over, or for tap-target checking to hit its own
+				 * time budget — and each of those is a real reader on a real phone.
+				 *
+				 * `?scale=` is refused outside `astro dev`, so it is skipped rather
+				 * than reported against a production origin, exactly like `/lab`.
+				 *
+				 * No `media: true`. The blank-frame and layout-shift checks assume a
+				 * page's imagery is its content; at 5,000 lazy plates the audit
+				 * window legitimately finds most of them unfetched, and calling that a
+				 * failure would be the harness disagreeing with the lazy strategy that
+				 * is the thing working. `npm run check:perf` is where media loading at
+				 * scale is measured, and it measures it properly.
+				 */
+				{
+					path: "/?scale=5000",
+					name: "wall-scale-5000",
+					expect: { ".tile": 5000 },
+					fold: ".tile__plate",
+					scroll: 1400,
+					stickyFits: true,
+					capture: false,
+				},
+			]
 		: []),
 	{ path: "/board", name: "board", expect: { ".empty__title": 1 } },
 	{ path: "/search?q=seam", name: "search", expect: { ".count": 1 }, media: true },
@@ -1379,7 +1417,7 @@ async function main() {
 			// offset — so capturing after the scroll silently removed the masthead
 			// from every screenshot of every route that has one. The evidence is
 			// worthless if the harness is what moved the thing it is photographing.
-			if (!auditOnly) {
+			if (!auditOnly && route.capture !== false) {
 				await page.screenshot({
 					path: `${outDir}${route.name}--${viewport.name}.png`,
 					fullPage: viewport.width >= 768,
