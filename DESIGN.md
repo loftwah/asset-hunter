@@ -133,6 +133,33 @@ Measured, at the time of writing:
 | 390×844   | 88px     | 478px (57%)        | 14597px     |
 | 360×780   | 87px     | 473px (61%)        | 13747px     |
 
+### The fold on a selection page
+
+`/use/<slug>` is the same kind of surface and carries the same rule, because
+before #64 it was the one page on the site where the specimen was unreadable and
+off-screen: it rendered its only plate at 104px, which put a plate authored at
+800px with 13px annotations at 1.7px, and started it at 991px in a 1280×800
+window — 124% of the fold.
+
+So the use page leads with the plate too: a breadcrumb, one headline, one line of
+lede, one action, and then the representative plate beside the use decision.
+`npm run check:visual` gates it the same way, at 75% of the fold. The two
+landscape rows are the exception and are printed rather than gated, because a
+390px-tall window cannot contain a 4:5 plate however the header is composed —
+the same rule, and the same reasoning, as the sticky plate's 46rem condition.
+
+Measured on `/use/density-gradient` after #64:
+
+| Viewport  | Plate          | 13px annotation lands at | Plate starts |
+| --------- | -------------- | ------------------------ | ------------ |
+| 1920×1080 | 640×800 (0.80) | 10.4px                   | 364px (34%)  |
+| 1680×1050 | 640×800 (0.80) | 10.4px                   | 364px (35%)  |
+| 1280×800  | 593×741 (0.74) | 9.6px                    | 364px (46%)  |
+| 1024×768  | 640×800 (0.80) | 10.4px                   | 356px (46%)  |
+| 768×1024  | 640×800 (0.80) | 10.4px                   | 420px (41%)  |
+| 390×844   | 355×444 (0.44) | 5.8px                    | 544px (64%)  |
+| 360×780   | 327×408 (0.41) | 5.3px                    | 542px (69%)  |
+
 ## 6. Specimen plates
 
 Plates live in `public/specimens/*.svg`, one per possibility, `800×1000` (4:5),
@@ -149,6 +176,21 @@ Every plate follows the same grammar:
 
 Plates are always `origin: generated`. Never label a repo-shipped plate
 `upstream`.
+
+**The annotations are the reason a plate has a size, and a cap.** They are set
+at 12–19px in an 800×1000 file, so what a reader can read is a function of where
+the plate is rendered: at 0.8 of its authored width the smallest of them lands at
+~10px, and at 0.13 — which is what `/use/<slug>` used to do — it lands at 1.7px
+and the plate is a texture rather than an illustration. Two consequences:
+
+- `SpecimenPlate.astro` caps the plate at `40rem`, which is 0.8 of the authored
+  width. Past that the plate stops getting more legible and starts costing the
+  page its second column, so the drill-in is no larger at 1920px than it is at
+  768px.
+- A plate may never be shown *below* about 0.7 of its authored size where the
+  viewport has room for it. `npm run check:visual` asserts that floor on
+  `/use/<slug>`, the surface §9.6 singles out as the one where the preview has to
+  do work.
 
 ## 7. Interaction
 
@@ -343,6 +385,55 @@ page is where the obligations live.
 
 Every control explains itself in one line. A download is the single accent on a
 page; there is at most one, because two would mean the accent marks nothing.
+
+### The composition of `/use/<slug>`
+
+Added by #64, when this page turned out to be the one surface on the site where
+the specimen was neither readable nor on screen.
+
+- **The plate is the page's largest element**, and it is the first thing after the
+  header (§5b). Before this it was the page's only image at 104–128px, below a
+  1259px stack of prose at 390 wide.
+- **The plate and the use decision sit side by side from 1280px**, which is the
+  width at which the plate is 0.7 of its authored size with a column left for the
+  words. Below that the plate takes the full shell, which is wider than any split
+  would give it, and the decision follows underneath. The two-column switch is
+  later than the drill-in's 860px on purpose: on the drill-in the plate is one
+  block among many, here it is the page.
+- **The plate does not stick here**, unlike the drill-in's. A sticky element is
+  bounded by its own grid area, and the decision column is a 500px column beside
+  a 780px plate, so a sticky plate would pin at its own top and unpin on the next
+  scroll: a 0px range, and 59px of plate off screen at 1024×768. The drill-in's
+  prose column is four times the plate's height, which is the case a sticky plate
+  is for.
+- **The plate never renders below 0.7 of its authored 800px where the viewport can
+  hold it**, so a 13px plate annotation lands at 9px or more. `npm run
+  check:visual` asserts the 560px floor from 1280px up and prints every width
+  beside the effective annotation size. Below 1280 the plate is the shell's own
+  width — at 390px that is 355px and 5.8px annotations, which is exactly a wall
+  tile's width, and that is the honest limit of a 4:5 diagram on a phone. What the
+  page adds there is that this plate is the first thing on it, at 2.8× the 128px
+  the row thumbnail used to render at, rather than one of twenty-four.
+- **One component, both surfaces.** `SpecimenPlate.astro` renders the drill-in's
+  plate and this page's, and the caption is a required prop: the plate and the
+  original are different files, and a plate that forgets to say so becomes a
+  compile error rather than a page nobody looked at.
+- **An example is not shown the same file twice.** Every example's preview falls
+  back to the possibility's plate, so the plate is shown once, at plate size; an
+  example carrying its own preview gets it through the same component at the same
+  size, beside its label.
+- **The four states are answered in one place.** The decision column carries a
+  census — the four states, each with a ring beside it and its count, worst
+  first — because the plate is the loudest thing on the page and the rights are
+  the reason for it. A row reading 0 is an answer. The census is hidden when there
+  are no examples at all, because four rows of zeroes would read as a finding
+  about the rights rather than as the absence of anything to have an opinion
+  about.
+- **One line per fact, once.** The handoff statement says what is on offer and
+  what was withheld; the obligation above it says what is owed. They were the same
+  sentence printed twice, three lines apart, on the page whose whole job is an
+  unambiguous decision. The refusal `/api/payload/<example>` returns still states
+  the rule around it, because a plain-text body has no labels to do it with.
 
 ## 10. Metadata and social
 

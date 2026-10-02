@@ -323,9 +323,20 @@ export function useDecision(example: Example): UseDecision {
 			return {
 				as: "record",
 				blockedBy: "rights",
-				statement:
-					`${USE_STATE_LABEL[state]}. ${USE_STATE_OBLIGATION[state]} ` +
-					"No file is served from this record, at this address or any other.",
+				/*
+				 * The handoff fact and nothing else.
+				 *
+				 * This used to be `${label}. ${USE_STATE_OBLIGATION[state]} No file is
+				 * served…`, because `handoff.statement` doubles as the whole answer in the
+				 * plain-text body `/api/payload/<example>` returns for a refusal. On the
+				 * page it is not the whole answer: `ExampleUse` renders the state and the
+				 * obligation on their own lines directly above it, so the same sentence
+				 * was printed twice, three lines apart, on the one page whose entire job
+				 * is an unambiguous decision (DESIGN.md §9.6). The obligation is still on
+				 * the record — `recordDocument()` carries `obligation` and `label`
+				 * separately — and the refusal body still reads as a refusal.
+				 */
+				statement: "No file is served from this record, at this address or any other.",
 			};
 		}
 		if (!credit) {
@@ -665,6 +676,21 @@ export function payloadFilename(example: Example): string {
 const NO_STORE = { "cache-control": "no-store" } as const;
 
 /**
+ * A refusal as plain text: which rule fired, what it obliges, and what is on
+ * offer instead.
+ *
+ * Kept beside `payloadResult` rather than inside `useDecision` because the
+ * decision has three parts and each surface shows a different subset. The page
+ * shows them as three labelled lines; a refusal body has to state them in one
+ * sentence each, in that order, or it says only that the rule fired.
+ */
+function refusalText(decision: UseDecision): string {
+	return [decision.label, decision.obligation, decision.handoff.statement]
+		.filter((part): part is string => Boolean(part))
+		.join(" ");
+}
+
+/**
  * What `/api/payload/<example>` serves.
  *
  * The gate is `useDecision`, recomputed here from the record rather than taken
@@ -702,7 +728,16 @@ export async function payloadResult(input: {
 		return {
 			status: 403,
 			headers: { ...headers, "x-ah-blocked-by": decision.handoff.blockedBy, "content-type": "text/plain; charset=utf-8" },
-			body: `${decision.handoff.statement}\n`,
+			/*
+			 * The rule around the handoff fact, because here it *is* the whole
+			 * answer. On a page the state, the obligation and the handoff are three
+			 * labelled lines, so `handoff.statement` carries only the last of them and
+			 * repeating the other two would print the obligation twice (#64). A plain
+			 * text refusal has no labels, so it says which rule fired and why — which
+			 * is what `tests/asset-use.test.ts` asserts: a refusal has to say what the
+			 * rule is, not just that the rule fired.
+			 */
+			body: `${refusalText(decision)}\n`,
 			bytes: null,
 		};
 	}
