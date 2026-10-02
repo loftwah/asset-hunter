@@ -258,6 +258,13 @@ content.
 light mode is ever genuinely wanted, it is a separate visual system, not a token
 flip.
 
+Dark-only is also why the brand kit carries one-ink light-ground variants
+(`brand/mark-canvas.svg`, `brand/mark-compact-canvas.svg`) that the catalogue
+itself never uses: they exist for print, for a slide, and for anyone placing the
+mark on paper. Reversal is a one-colour operation here on purpose — the mark has
+no gradient to invert, so a reversed mark is the same geometry in a different
+ink, not a second asset to design.
+
 ## 9.4 Brand tokens → catalogue usage (#16 mapping)
 
 The brand vocabulary below is the one `docs/UNSLOP.md` refers to. Every token is
@@ -285,6 +292,52 @@ consumer catalogue would make the editing surface worse for its actual job.
 The public catalogue owns all visual presentation: masthead, wall, drill-in,
 search, 404, RSS, OG images. If a change touches either side, it belongs to
 exactly one.
+
+### 9.4a The mark, its variants, clear space and minimum size
+
+The mark has **one source of truth**: `src/lib/brand/mark.ts`. The masthead
+renders it inline (`src/components/Wordmark.astro` takes its shapes from that
+module and may not draw any of its own), and every file in `brand/` plus
+`public/favicon.svg` and the PNG icon set is generated from it by
+`npm run brand:build`. `npm run brand:check` and `tests/brand.test.ts` both fail
+if any of those stop agreeing — the mark used to be drawn twice and the copies
+had already drifted.
+
+**Two forms, not two sizes.** The `full` form is the mark. The `compact` form is
+the icon, and it is not a shrunken `full`: measured at favicon sizes, `full`'s
+sighting ticks overlap the outer ring's stroke band and fuse with it, and its
+42%-opacity ring dithers to a muddy brick over near-black. At 16px `full` is an
+orange donut with a cross in it. `compact` drops the ticks and the inner ring,
+drops the opacity, and thickens what is left.
+
+| File                    | Form     | Ink                      | Use it for                                        |
+| ----------------------- | -------- | ------------------------ | ------------------------------------------------- |
+| `brand/mark.svg`        | full     | ember                    | Default export. Dark surfaces where the accent is welcome |
+| `brand/mark-ink.svg`    | full     | `--ink`                  | One ink reversed for dark. This is what the masthead and footer render |
+| `brand/mark-canvas.svg` | full     | `--canvas`               | One ink positive for light and print               |
+| `brand/mark-compact.svg`      | compact | ember              | Anything under 32px on a dark surface             |
+| `brand/mark-compact-ink.svg`  | compact | `--ink`            | Small sizes where the accent would be the loudest thing on screen |
+| `brand/mark-compact-canvas.svg` | compact | `--canvas`      | Small sizes on light backgrounds                  |
+| `brand/mark-maskable.svg` | compact | ember on canvas           | Android maskable icon, mark held inside the safe zone |
+| `brand/clear-space.svg`  | —        | —                        | The diagram below, generated from the constants    |
+
+**Clear space is 3 units of the mark's 24-unit box** on every side of the mark
+and of the wordmark lockup. That is twice the `full` form's 1.5-unit stroke, so
+nothing else on the page can crowd the mark without touching it. At the
+masthead's 20px mark the band is 2.5px. Nothing is allowed inside it: no rule,
+no image edge, no second mark, no plate.
+
+**Minimum size is 32px for the `full` form and 16px for the `compact` form.**
+These are measured, not aspirational. The `full` form's ticks are already gone at
+the masthead's 20px, so `full` is a masthead-and-larger mark; below 32px use
+`compact`. `compact` never goes below 16px, which is the smallest a browser tab
+or an Android launcher ever asks for.
+
+**The masthead mark is `--ink`, not ember.** Ember is reserved for action,
+selection and the single highest-priority element on a viewport (§1.2); a logo
+coloured with the accent would spend the accent on identity. The favicon is
+ember for the opposite reason — a 16px tab icon has no context, and in greyscale
+the accent is the only thing that keeps it from being a grey ring.
 
 ## 9.5 Shortlist and compare
 
