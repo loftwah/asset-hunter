@@ -287,6 +287,31 @@
 					"type": "boolean"
 				},
 				{
+					"slug": "dispute_state",
+					"label": "Rights dispute",
+					"type": "select"
+				},
+				{
+					"slug": "dispute_reason",
+					"label": "Dispute reason",
+					"type": "select"
+				},
+				{
+					"slug": "dispute_note",
+					"label": "Dispute note",
+					"type": "text"
+				},
+				{
+					"slug": "dispute_reported_at",
+					"label": "Dispute reported at",
+					"type": "string"
+				},
+				{
+					"slug": "dispute_resolved_at",
+					"label": "Dispute resolved at",
+					"type": "string"
+				},
+				{
 					"slug": "source_id",
 					"label": "Source candidate id",
 					"type": "string"
@@ -474,6 +499,233 @@
 					"slug": "resolution",
 					"label": "Resolution",
 					"type": "text"
+				}
+			]
+		},
+		{
+			"slug": "disputes",
+			"label": "Rights disputes",
+			"labelSingular": "Rights dispute",
+			"supports": [
+				"drafts",
+				"search"
+			],
+			"commentsEnabled": false,
+			"fields": [
+				{
+					"slug": "title",
+					"label": "Title",
+					"type": "string",
+					"required": true
+				},
+				{
+					"slug": "subject_type",
+					"label": "Subject type",
+					"type": "select",
+					"required": true
+				},
+				{
+					"slug": "subject_slug",
+					"label": "Subject",
+					"type": "string",
+					"required": true,
+					"searchable": true
+				},
+				{
+					"slug": "reason",
+					"label": "Reason",
+					"type": "select",
+					"required": true
+				},
+				{
+					"slug": "state",
+					"label": "State",
+					"type": "select",
+					"required": true
+				},
+				{
+					"slug": "detail",
+					"label": "What was reported",
+					"type": "text"
+				},
+				{
+					"slug": "report_id",
+					"label": "Report",
+					"type": "string"
+				},
+				{
+					"slug": "reporter_id",
+					"label": "Reported by",
+					"type": "string"
+				},
+				{
+					"slug": "reported_at",
+					"label": "Reported at",
+					"type": "string"
+				},
+				{
+					"slug": "resolution",
+					"label": "Resolution",
+					"type": "text"
+				},
+				{
+					"slug": "resolved_at",
+					"label": "Resolved at",
+					"type": "string"
+				},
+				{
+					"slug": "resolved_by",
+					"label": "Resolved by",
+					"type": "string"
+				}
+			]
+		},
+		{
+			"slug": "exclusions",
+			"label": "Exclusions",
+			"labelSingular": "Exclusion",
+			"supports": [
+				"drafts",
+				"search"
+			],
+			"commentsEnabled": false,
+			"fields": [
+				{
+					"slug": "title",
+					"label": "Title",
+					"type": "string",
+					"required": true
+				},
+				{
+					"slug": "scope",
+					"label": "Scope",
+					"type": "select",
+					"required": true
+				},
+				{
+					"slug": "match",
+					"label": "Match",
+					"type": "string",
+					"required": true,
+					"searchable": true
+				},
+				{
+					"slug": "reason",
+					"label": "Reason",
+					"type": "select"
+				},
+				{
+					"slug": "detail",
+					"label": "Detail",
+					"type": "text"
+				},
+				{
+					"slug": "state",
+					"label": "State",
+					"type": "select",
+					"required": true
+				},
+				{
+					"slug": "dispute_slug",
+					"label": "Dispute",
+					"type": "string"
+				},
+				{
+					"slug": "recorded_at",
+					"label": "Recorded at",
+					"type": "string"
+				},
+				{
+					"slug": "recorded_by",
+					"label": "Recorded by",
+					"type": "string"
+				},
+				{
+					"slug": "lifted_at",
+					"label": "Lifted at",
+					"type": "string"
+				},
+				{
+					"slug": "lifted_by",
+					"label": "Lifted by",
+					"type": "string"
+				},
+				{
+					"slug": "lift_reason",
+					"label": "Lift reason",
+					"type": "text"
+				}
+			]
+		},
+		{
+			"slug": "audit_events",
+			"label": "Rights audit trail",
+			"labelSingular": "Audit event",
+			"supports": [
+				"drafts",
+				"search"
+			],
+			"commentsEnabled": false,
+			"fields": [
+				{
+					"slug": "title",
+					"label": "Title",
+					"type": "string",
+					"required": true
+				},
+				{
+					"slug": "action",
+					"label": "Action",
+					"type": "select",
+					"required": true
+				},
+				{
+					"slug": "subject_type",
+					"label": "Subject type",
+					"type": "select",
+					"required": true
+				},
+				{
+					"slug": "subject_slug",
+					"label": "Subject",
+					"type": "string",
+					"required": true,
+					"searchable": true
+				},
+				{
+					"slug": "field",
+					"label": "Field",
+					"type": "string"
+				},
+				{
+					"slug": "before",
+					"label": "Before",
+					"type": "text"
+				},
+				{
+					"slug": "after",
+					"label": "After",
+					"type": "text"
+				},
+				{
+					"slug": "reason",
+					"label": "Reason",
+					"type": "select"
+				},
+				{
+					"slug": "detail",
+					"label": "Detail",
+					"type": "text"
+				},
+				{
+					"slug": "actor_id",
+					"label": "Decided by",
+					"type": "string"
+				},
+				{
+					"slug": "occurred_at",
+					"label": "Occurred at",
+					"type": "string"
 				}
 			]
 		},
@@ -2021,12 +2273,65 @@
 									"text": "Corrections are auditable and take effect on the record rather than on the asset. Content addressing means a licence can be corrected without touching the bytes, and the previous classification is kept rather than overwritten."
 								}
 							]
+						},
+						{
+							"_type": "block",
+							"style": "normal",
+							"children": [
+								{
+									"_type": "span",
+									"text": "Every drill-in carries a report form that takes the words you would use rather than this catalogue's internal classifications. Report the licence, the attribution, a dead source, an asset that should not be handed over, an infringement claim, or simply that you made the work and do not want it here. You do not need to know which of those the catalogue will call it."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"style": "h2",
+							"children": [
+								{
+									"_type": "span",
+									"text": "Taking something down"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"style": "normal",
+							"children": [
+								{
+									"_type": "span",
+									"text": "A report that says a rights claim is open, or that the work should not be surfaced at all, withdraws the download the moment it is filed. The file stops being served at its address immediately; the entry leaves the public catalogue if the report is about the whole entry. Nothing is deleted, and no account or proof of authorship is needed for the request to be honoured first and argued about afterwards."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"style": "normal",
+							"children": [
+								{
+									"_type": "span",
+									"text": "The source, the licence evidence, the commit and the content hash stay on the record, because they are what a correction is made from and what proves what was served. What stops is the handover. The same request also excludes the source from future ingestion, so a later crawl cannot put it back: an exclusion is a durable record, not a box somebody ticks. If one example has to go, the possibility it demonstrated stays, and another example is chosen to represent it."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"style": "normal",
+							"children": [
+								{
+									"_type": "span",
+									"text": "Every change says which field moved, what it held before, what it holds now, and why, and that trail is kept with the record. Nothing about a disputed payload stays publicly served while it is examined."
+								}
+							]
 						}
 					]
 				}
 			}
 		],
 		"ratings": [],
-		"reports": []
+		"reports": [],
+		"disputes": [],
+		"exclusions": [],
+		"audit_events": []
 	}
 }

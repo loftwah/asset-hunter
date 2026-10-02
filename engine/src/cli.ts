@@ -42,6 +42,12 @@ import { extractPossibilities, kindFor, type ExtractedPossibility } from "./poss
 import { buildPayload, validatePayload, type PublishPayload } from "./publish.ts";
 import { EmDashApi, EmDashApiError } from "./runtime/emdash.ts";
 import { mergeExample, mergePossibility, shouldPublish } from "./merge.ts";
+import {
+	describeExclusion,
+	exclusionFor,
+	parseExclusions,
+	type Exclusion,
+} from "./exclusions.ts";
 import { briefFingerprint as fingerprintOf } from "./brief.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -115,10 +121,34 @@ function cmdHunt(briefPath: string, env: Record<string, string | undefined>) {
 		Effect.gen(function* () {
 			const brief = loadBrief(briefPath);
 			const github = yield* GitHubApi;
+			const emdash = yield* EmDashApi;
+			/*
+			 * Standing takedowns, read before the crawl starts (#54).
+			 *
+			 * Read through `EmDashApi.list` like every other engine call, and a failure
+			 * here is logged rather than fatal: a crawl that cannot reach the catalogue
+			 * should still record what it found, and `sync` will consult the exclusions
+			 * again before it writes anything. What must never happen is a run that
+			 * *silently* ignores them — so the failure is reported and the hunt goes on
+			 * with an empty list rather than pretending it read them.
+			 */
+			const exclusions = yield* emdash
+				.list("exclusions")
+				.pipe(
+					Effect.map(parseExclusions),
+					Effect.catchTag("EmDashApiError", (error) =>
+						Effect.sync(() => {
+							console.error(
+								`  ! could not read standing exclusions (${error.detail}); this hunt cannot honour a takedown it cannot see`,
+							);
+							return [] as Exclusion[];
+						}),
+					),
+				);
 			// `hunt` keeps its transcript imperative, so it is bridged as a promise.
 			// Everything it does that touches the network is an Effect internally.
 			yield* Effect.tryPromise({
-				try: () => hunt(brief, github),
+				try: () => hunt(brief, github, exclusions),
 				catch: (cause) => cause,
 			}).pipe(Effect.catchCause((cause) => Effect.logError(Cause.pretty(cause))));
 		}),
@@ -133,7 +163,11 @@ function cmdHunt(briefPath: string, env: Record<string, string | undefined>) {
  * effectful work; it is a transcript, and modelling it as one would buy nothing
  * and cost every line. The network calls around it are Effects.
  */
-async function hunt(brief: HuntBrief, github: GitHubApi["Service"]): Promise<void> {
+async function hunt(
+	brief: HuntBrief,
+	github: GitHubApi["Service"],
+	exclusions: readonly Exclusion[] = [],
+): Promise<void> {
 	const waves = loadWaves(engineRoot);
 	const maxCandidates = brief.constraints?.maxCandidates ?? 25;
 	const minStars = brief.constraints?.minStars ?? 0;
@@ -142,9 +176,22 @@ async function hunt(brief: HuntBrief, github: GitHubApi["Service"]): Promise<voi
 	console.log(`\nHunt — ${brief.intent}`);
 	console.log(`  brief        ${briefFingerprint(brief)}  (${brief.verticals.join(", ")})`);
 	console.log(`  credentials  ${github.authenticated ? "GITHUB_TOKEN" : "none — unauthenticated, slow"}`);
-	console.log(`  limit        ${maxCandidates} candidates\n`);
+	console.log(`  limit        ${maxCandidates} candidates`);
+	if (exclusions.some((entry) => entry.active)) {
+		// Said out loud at the top rather than silently folded into the "kept" count:
+		// a hunt that finds less than its brief says must be able to say why, or the
+		// catalogue looks smaller than it is.
+		console.log(
+			`  exclusions   ${exclusions.filter((entry) => entry.active).length} standing takedown(s) will be skipped`,
+		);
+	}
+	console.log("");
 
 	const queue: LandedHit[] = [];
+	// Every hit a takedown removed, so the run can name them at the end. Silence here
+	// would read as "we looked and found nothing", which is the impression a takedown
+	// is most in danger of leaving.
+	const stopped: { fullName: string; exclusion: Exclusion }[] = [];
 	for (const query of brief.queries) {
 		let page = 1;
 		// Keep paging while a page comes back full: GitHub caps a search at 1000
@@ -174,8 +221,28 @@ async function hunt(brief: HuntBrief, github: GitHubApi["Service"]): Promise<voi
 				break;
 			}
 			hits = [...found.value];
+			/*
+			 * The takedown filter, first (#54).
+			 *
+			 * A repository somebody has asked us to stop ingesting is dropped before
+			 * it becomes a candidate, not after: keeping it would write a candidate,
+			 * spend a download on it, and then drop it — re-reading the very material
+			 * the request was about. This is the first of the acceptance criteria, and
+			 * it belongs at the point where material is *found* rather than where it
+			 * is written.
+			 */
+			const takedown = hits
+				.map((hit) => ({
+					fullName: hit.fullName,
+					exclusion: exclusionFor(exclusions, { fullName: hit.fullName }),
+				}))
+				.filter((entry): entry is { fullName: string; exclusion: Exclusion } => entry.exclusion !== null);
+			for (const entry of takedown) {
+				if (!stopped.some((seen) => seen.fullName === entry.fullName)) stopped.push(entry);
+			}
 			const kept = hits.filter(
 				(h) =>
+					!takedown.some((hit) => hit.fullName === h.fullName) &&
 					!h.archived &&
 					!h.fork &&
 					h.stars >= minStars &&
@@ -190,7 +257,7 @@ async function hunt(brief: HuntBrief, github: GitHubApi["Service"]): Promise<voi
 			});
 			const below = hits.filter((h) => h.stars < minStars).length;
 			console.log(
-				`  ${query} p${page} — ${hits.length} hits, ${kept.length} kept${below ? ` (${below} under ${minStars} stars)` : ""}`,
+				`  ${query} p${page} — ${hits.length} hits, ${kept.length} kept${below ? ` (${below} under ${minStars} stars)` : ""}${takedown.length ? ` (${takedown.length} excluded by takedown)` : ""}`,
 			);
 			// A hit carries the wave that found it, so a candidate can be *explained*
 			// rather than merely listed — "why is this here" is a question a person asks
@@ -250,6 +317,10 @@ async function hunt(brief: HuntBrief, github: GitHubApi["Service"]): Promise<voi
 
 	const candidates = [...loadCandidates(engineRoot).values()];
 	const s = summarise(candidates);
+	if (stopped.length) {
+		console.log(`\n  ${stopped.length} hit(s) skipped because of a standing takedown:`);
+		for (const entry of stopped.slice(0, 8)) console.log(`    ⊘ ${describeExclusion(entry.exclusion)}`);
+	}
 	console.log("\nRecorded");
 	console.log(`  candidates   ${s.total}`);
 	console.log(`  files read   ${s.readFiles}`);
@@ -503,6 +574,8 @@ interface SyncReport {
 	failed: { slug: string; error: string }[];
 	/** Human-owned fields the engine chose not to write, by entry. */
 	preserved: string[];
+	/** Entries a takedown stopped this run from writing (#54). */
+	excluded: string[];
 	/** Things that happened which a person should look at. */
 	notices: string[];
 }
@@ -537,10 +610,26 @@ function cmdSync(dryRun: boolean, env: Record<string, string | undefined>) {
 				failed: [],
 				preserved: [],
 				notices: [],
+				excluded: [],
 			};
 
+			/*
+			 * Exclusions are read before anything is written (#54).
+			 *
+			 * This is the acceptance criterion, not a nicety: a takedown that the
+			 * engine cannot see is a takedown that the next crawl quietly undoes. The
+			 * read is over HTTP like everything else here — the engine is an ordinary
+			 * API client and has no privileged path into the CMS.
+			 */
+			const exclusions = parseExclusions(yield* api.list("exclusions"));
+			if (exclusions.some((exclusion) => exclusion.active)) {
+				console.log(
+					`\n  ${exclusions.filter((exclusion) => exclusion.active).length} active exclusion(s) will be honoured`,
+				);
+			}
+
 			for (const possibility of payload.possibilities) {
-				yield* reconcilePossibility(api, possibility, dryRun, report).pipe(
+				yield* reconcilePossibility(api, possibility, dryRun, report, exclusions).pipe(
 					Effect.catch((error) =>
 						Effect.sync(() => {
 							report.failed.push({
@@ -559,6 +648,10 @@ function cmdSync(dryRun: boolean, env: Record<string, string | undefined>) {
 			console.log(`  preserved ${report.preserved.length} editorial field(s) left untouched`);
 			for (const line of report.updated.slice(0, 10)) console.log(`    ~ ${line}`);
 			for (const line of report.created.slice(0, 10)) console.log(`    + ${line}`);
+			if (report.excluded.length) {
+				console.log(`\n  ${report.excluded.length} entr(ies) not written because of a takedown:`);
+				for (const line of report.excluded.slice(0, 8)) console.log(`    ⊘ ${line}`);
+			}
 			if (report.notices.length) {
 				console.log(`\n  ${report.notices.length} notice(s) for a person:`);
 				for (const notice of report.notices.slice(0, 8)) console.log(`    ! ${notice}`);
@@ -583,13 +676,26 @@ const reconcilePossibility = (
 	possibility: PublishPayload["possibilities"][number],
 	dryRun: boolean,
 	report: SyncReport,
+	exclusions: readonly Exclusion[],
 ) =>
 	Effect.gen(function* () {
 		const existing = yield* api.read("possibilities", possibility.slug);
 		// The merge policy decides what to write. The CLI does not.
-		const merge = mergePossibility(existing?.data ?? null, possibility.data);
+		const merge = mergePossibility(existing?.data ?? null, possibility.data, { exclusions });
 		report.preserved.push(...merge.preserved.map((f) => `${possibility.slug}.${f}`));
 		report.notices.push(...merge.notes.map((n) => `${possibility.slug}: ${n}`));
+		// A merge that wrote nothing *and* said it was excluded is a takedown, not a
+		// no-op: the two are indistinguishable from the counters alone, and reading a
+		// takedown as "unchanged" is exactly how one gets silently undone.
+		if (
+			merge.notes.some((note) => note.startsWith("not written")) &&
+			!Object.keys(merge.write).length
+		) {
+			report.excluded.push(
+				`${possibility.slug} — ${merge.notes.find((note) => note.startsWith("not written"))}`,
+			);
+			return;
+		}
 
 		if (existing && !Object.keys(merge.write).length) {
 			report.unchanged.push(possibility.slug);
@@ -614,8 +720,14 @@ const reconcilePossibility = (
 
 		for (const example of possibility.examples) {
 			const current = yield* api.read("examples", example.slug);
-			const exampleMerge = mergeExample(current?.data ?? null, example.data);
+			const exampleMerge = mergeExample(current?.data ?? null, example.data, { exclusions });
 			report.notices.push(...exampleMerge.notes.map((n) => `${example.slug}: ${n}`));
+			if (exampleMerge.notes.some((note) => note.startsWith("not written"))) {
+				report.excluded.push(
+					`${example.slug} — ${exampleMerge.notes.find((note) => note.startsWith("not written"))}`,
+				);
+				continue;
+			}
 			if (dryRun) continue;
 			if (!Object.keys(exampleMerge.write).length && current) continue;
 			yield* api.write(

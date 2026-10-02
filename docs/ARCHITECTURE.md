@@ -114,8 +114,10 @@ specific ways, so the policy is decided per field:
 | editorial         | human         | human wins, and the run reports it as preserved   |
 | `visibility`      | human         | human wins; a new machine entry is created `draft` |
 | rights regression | engine        | engine wins, even over a human review             |
+| rights dispute    | human         | engine writes nothing over it, in either direction |
+| exclusion         | human         | the engine does not write the entry at all        |
 
-Two rules exist because they are the ones that would quietly damage the
+Four rules exist because they are the ones that would quietly damage the
 catalogue:
 
 - **A weaker rights status is written even over a curated entry.** A "cleared"
@@ -125,6 +127,78 @@ catalogue:
   on a run that changed nothing makes every re-run a write, which is the
   opposite of idempotent and leaves `hunt:verify` unable to tell a no-op from a
   real change.
+- **A rights dispute is a refusal, not a conflict (#54).** The engine has no
+  standing to decide whether somebody's objection has been answered, so it does
+  not clear `dispute_state`, does not open one, and does not re-enable a
+  `downloadable` flag while one is live — whatever the licence evidence says.
+- **An exclusion is a refusal too (#54).** `mergeExample` writes *nothing* for
+  an excluded resource, and a possibility whose every source is excluded is not
+  rewritten at all. A crawl that keeps refreshing an entry whose whole
+  provenance has been taken down is re-asserting a claim somebody asked to
+  withdraw.
+
+### Rights correction and takedown (#54)
+
+The correction path is four words, defined in
+[`VOCABULARY.md`](VOCABULARY.md) and implemented in two modules:
+`src/lib/disputes.ts` (pure) and `src/lib/takedown.ts` (Effects).
+
+| Word           | Where it lives                                   | What it does |
+| -------------- | ------------------------------------------------ | ------------ |
+| **report**     | `reports`, plus `REPORTS` in `src/lib/rating.ts` | A reader's signal. Six reasons are rights matters, and `REPORT_PRIORITY` puts them above every quality signal. |
+| **dispute**    | `disputes`, one row per subject                   | The case. `open` / `quarantined` withhold; `corrected` / `dismissed` are terminal and leave the record standing. |
+| **quarantine** | `examples.dispute_state`                         | The gate. Read by `useDecision`, so every surface withholds without joining against anything. |
+| **exclusion**  | `exclusions`, read by the engine every run       | The durable instruction. Scoped to a repository, a path, a content hash or a catalogue entry. |
+| **audit event**| `audit_events`, append-only, never public        | One row per change: field, before, after, reason. |
+
+The reporter path takes the words a person would use, never the catalogue's
+classifications, and a rights report withdraws the handover **at the moment it
+is filed**: `/api/signal` opens the dispute and writes `dispute_state` in one
+request, so a URL handed out before the report stops working without anybody
+reloading a page that might have cached the link. Withholding is a gate and
+never a deletion — `licence_evidence`, `content_hash`, `attribution` and the
+provenance are untouched, because the correction that resolves the dispute is
+made from them.
+
+`HandoffBlock` grew a `disputed` value for this, and it is checked **first** in
+`useDecision`. That ordering is the argument: "somebody has objected and nobody
+has looked yet" is not "the licence forbids this", and a reader told the second
+thing has been told something untrue. `/api/payload/<example>` answers `403`
+with `x-ah-blocked-by: disputed`; `/api/record/<example>` stays ungated and gains
+a `dispute` block, because the evidence is owed to a reader whatever the rights
+are.
+
+A dispute on a **possibility** withdraws the entry (`visibility: hidden`) only
+for the two reasons that are a person asking not to be surfaced — an infringement
+claim or an opt-out. A licence correction against a possibility corrects its
+examples instead: a possibility does not need deleting because one of its
+examples is wrong, and `recomputePossibility` is what happens instead. It re-floors
+`rights_status` across the examples that remain, sets `example_count` and
+`distinct_sources` to what is actually there, and re-chooses the representative
+from `chooseRepresentative` — reporting the swap, because a wall that silently
+changed its picture is unexplainable.
+
+The cockpit queues; `/curate/disputes/<slug>` decides. It writes through the CMS
+content API, so every change lands in EmDash's revisions, and each action appends
+its own audit row saying which field moved and why — which a CMS field cannot
+carry on its own. The queues themselves stay form-free: `tests/curate.test.ts`
+asserts that, and it is the right rule, because the cockpit is a list of questions
+and `/pages/licensing` is where a reader is told the route exists.
+
+### Re-crawl behaviour
+
+An exclusion is durable because the **engine** consults it, in three places:
+
+1. `hunt` filters search results before a repository becomes a candidate — the
+   point at which material is *found*, rather than where it is written;
+2. `planRefresh` skips an excluded source before every other rule, including the
+   new-source branch, and reports it separately from an ordinary skip;
+3. `mergeExample` refuses to write an excluded example, and `mergePossibility`
+   refuses an entry whose every source is excluded.
+
+A row that cannot be read as an exclusion (no scope, no match) is dropped rather
+than displayed: an exclusion that matches nothing reads in the cockpit like
+protection and protects nothing.
 
 `visibility` exists so that a crawl never decides what the public catalogue
 shows. Machine entries arrive as drafts at `editorial_rank: 0`, which puts them
@@ -185,10 +259,17 @@ worse failure.
 | Collection     | Purpose                                    | Notable fields                              |
 | -------------- | ------------------------------------------ | ------------------------------------------- |
 | `possibilities` | Catalogue entries                          | `editorial_rank`, `rights_status`, `specimen` |
-| `examples`     | Evidence for a possibility                 | `origin`, `source_repo`, `content_hash`, `licence_spdx` |
+| `examples`     | Evidence for a possibility                 | `origin`, `source_repo`, `content_hash`, `licence_spdx`, `dispute_state` |
 | `collections`  | Overlapping curated groupings              | `members` → reference to `possibilities`    |
 | `pages`        | Editorial content                          | `content` (Portable Text)                   |
+| `ratings`, `reports` | One reader's signals                  | `subject_type`, `subject_slug`, `reason`    |
+| `disputes`, `exclusions`, `audit_events` | Rights correction (#54) | `state`, `scope` + `match`, `field` + `before` + `after` |
 | taxonomy `vertical` | Primary browsing axis                  | Applied to `possibilities` and `examples`   |
+
+The last row is EmDash content like everything else, and that is the point: a
+creator's takedown has to be answerable by the people who hold the catalogue, not
+by an engineer reconstructing what happened from a log somewhere else. There is
+no side table and no parallel store.
 
 **Collections overlap by design.** The vertical taxonomy answers "what area is
 this"; collections answer "what is it for". A possibility in three collections
@@ -225,9 +306,13 @@ drill-in, `/use/<slug>` and the API cannot answer differently.
 **No download control exists without all of those conditions, and the payload
 route re-derives the same decision from the record rather than trusting the
 page.** A hand-typed URL gets the answer a hidden control would have hidden.
+A fifth condition sits in front of all four and is not a rights status at all:
+**no rights dispute is open** on the example (#54). It is checked first, and it
+withholds whatever the licence evidence says — see the section above.
 The refusal statuses are chosen to say different things: `403` the licence does
-not permit it, `409` it permits but there is nothing verified to hand over, `503`
-the bytes are there and do not match the digest.
+not permit it **or a rights concern is open**, `409` it permits but there is
+nothing verified to hand over, `503` the bytes are there and do not match the
+digest.
 
 ### Origin semantics
 
@@ -269,8 +354,8 @@ that can hand anything over.
 
 | Route                      | What it serves                                              | Gate |
 | -------------------------- | ----------------------------------------------------------- | ---- |
-| `GET /api/record/<example>` | The source, licence, provenance and credit for one example, as JSON (`asset-hunter.record/1`) | None. The evidence is owed to a reader whatever the rights are — including, especially, when the rights forbid reuse |
-| `GET /api/payload/<example>` | The retained original, unmodified, with `X-AH-SHA256`        | The use state, then a recorded credit, then a retained payload, then a recorded digest — all four |
+| `GET /api/record/<example>` | The source, licence, provenance and credit for one example, as JSON (`asset-hunter.record/1`) | None. The evidence is owed to a reader whatever the rights are — including, especially, when the rights forbid reuse, and including while a dispute is open |
+| `GET /api/payload/<example>` | The retained original, unmodified, with `X-AH-SHA256`        | The use state, then a recorded credit, then a retained payload, then a recorded digest — all four — and no open rights dispute ahead of them |
 
 The payload route hashes what it is about to send and compares it with the
 record's `content_hash` before a single byte goes out; a mismatch serves
@@ -349,10 +434,14 @@ response, which is a documented HTTP contract rather than a shared module.
 - #40 deterministic publish/sync — `engine/` plus the contract above. The merge
   policy, the payload invariants and the idempotency guarantee are implemented
   and tested; `npm run hunt:sync` followed by `npm run hunt:verify` is the proof.
-- #54 rights correction and takedown — corrections apply to the record, never the
-  bytes, which content addressing makes cheap. The merge policy already carries
-  the audit trail a takedown needs: the licence quote and hash are kept on the
-  example, so a correction can show what the evidence was when it was read.
+- #54 rights correction and takedown — implemented. `src/lib/disputes.ts` holds the
+  decisions and `src/lib/takedown.ts` the Effects; `disputes`, `exclusions` and
+  `audit_events` are EmDash collections, so the workflow is answerable without an
+  engineer. A rights report withdraws the handover on filing
+  (`examples.dispute_state`, read by `useDecision`), an exclusion is consulted by
+  the engine in `hunt`, `planRefresh` and the merge policy, one example's removal
+  recomputes the possibility rather than deleting it, and every change appends an
+  audit event with the field, the value before, the value after and the reason.
 - #42 safe public asset-use and attribution — `src/lib/asset-use.ts` decides, the
   two API routes gate, and `/use/<slug>` shows. A payload is only offered when
   a licence permits it, a credit is recorded, the original is retained and a

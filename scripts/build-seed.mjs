@@ -232,6 +232,17 @@ const seed = {
 				{ slug: "technical", label: "Technical data", type: "json" },
 				{ slug: "downloadable", label: "Downloadable", type: "boolean" },
 				{ slug: "featured", label: "Featured", type: "boolean" },
+				// --- Rights disputes (#54) --------------------------------------
+				// A dispute is a state on the record, not a separate collection, so
+				// every surface that reads the example — the drill-in, the use page,
+				// the record route and the payload route — withholds the asset without
+				// joining against anything. A missing or unreadable value withholds
+				// too: the gate in `src/lib/asset-use.ts` decides that, not the admin.
+				{ slug: "dispute_state", label: "Rights dispute", type: "select" },
+				{ slug: "dispute_reason", label: "Dispute reason", type: "select" },
+				{ slug: "dispute_note", label: "Dispute note", type: "text" },
+				{ slug: "dispute_reported_at", label: "Dispute reported at", type: "string" },
+				{ slug: "dispute_resolved_at", label: "Dispute resolved at", type: "string" },
 				// --- Sync bookkeeping (#40) --------------------------------------
 				{ slug: "source_id", label: "Source candidate id", type: "string" },
 				{ slug: "source_revision", label: "Source revision", type: "string" },
@@ -301,6 +312,94 @@ const seed = {
 			],
 		},
 		{
+			// Rights disputes (#54) — one case per subject.
+			//
+			// EmDash content rather than a side table, for the same reason reports
+			// are: a takedown has to be answerable by the people who hold the
+			// catalogue. One row per subject rather than one per action, because the
+			// history of actions is the audit trail and having two append-only records
+			// of the same thing is how they drift apart.
+			slug: "disputes",
+			label: "Rights disputes",
+			labelSingular: "Rights dispute",
+			supports: ["drafts", "search"],
+			commentsEnabled: false,
+			fields: [
+				{ slug: "title", label: "Title", type: "string", required: true },
+				{ slug: "subject_type", label: "Subject type", type: "select", required: true },
+				{ slug: "subject_slug", label: "Subject", type: "string", required: true, searchable: true },
+				{ slug: "reason", label: "Reason", type: "select", required: true },
+				// `open` and `quarantined` withhold the asset; `corrected` and
+				// `dismissed` are terminal and leave the record standing.
+				{ slug: "state", label: "State", type: "select", required: true },
+				{ slug: "detail", label: "What was reported", type: "text" },
+				{ slug: "report_id", label: "Report", type: "string" },
+				// The reporter's EmDash id, not their email: this row is the case, and
+				// the contact record is the report.
+				{ slug: "reporter_id", label: "Reported by", type: "string" },
+				{ slug: "reported_at", label: "Reported at", type: "string" },
+				{ slug: "resolution", label: "Resolution", type: "text" },
+				{ slug: "resolved_at", label: "Resolved at", type: "string" },
+				{ slug: "resolved_by", label: "Resolved by", type: "string" },
+			],
+		},
+		{
+			// Exclusions (#54) — the machine-readable half of a takedown.
+			//
+			// This is the row the crawl consults, and it is the reason an explicit
+			// takedown survives a refresh: the next run reads it and does not ingest
+			// the material again, without anybody remembering to tick a box.
+			// `scope` + `match` is the whole contract, and `engine/src/exclusions.ts`
+			// is the other end of it.
+			slug: "exclusions",
+			label: "Exclusions",
+			labelSingular: "Exclusion",
+			supports: ["drafts", "search"],
+			commentsEnabled: false,
+			fields: [
+				{ slug: "title", label: "Title", type: "string", required: true },
+				{ slug: "scope", label: "Scope", type: "select", required: true },
+				{ slug: "match", label: "Match", type: "string", required: true, searchable: true },
+				{ slug: "reason", label: "Reason", type: "select" },
+				{ slug: "detail", label: "Detail", type: "text" },
+				// `active` excludes; `lifted` is kept for the record and excludes
+				// nothing, so "was this ever excluded?" stays answerable.
+				{ slug: "state", label: "State", type: "select", required: true },
+				{ slug: "dispute_slug", label: "Dispute", type: "string" },
+				{ slug: "recorded_at", label: "Recorded at", type: "string" },
+				{ slug: "recorded_by", label: "Recorded by", type: "string" },
+				{ slug: "lifted_at", label: "Lifted at", type: "string" },
+				{ slug: "lifted_by", label: "Lifted by", type: "string" },
+				{ slug: "lift_reason", label: "Lift reason", type: "text" },
+			],
+		},
+		{
+			// The audit trail (#54) — append-only, and never public.
+			//
+			// One row per change: which field, what it held before, what it holds
+			// after, and why. `before` and `after` are recorded as held rather than
+			// normalised, because "what it used to say" is only evidence while it is
+			// still exactly what it said.
+			slug: "audit_events",
+			label: "Rights audit trail",
+			labelSingular: "Audit event",
+			supports: ["drafts", "search"],
+			commentsEnabled: false,
+			fields: [
+				{ slug: "title", label: "Title", type: "string", required: true },
+				{ slug: "action", label: "Action", type: "select", required: true },
+				{ slug: "subject_type", label: "Subject type", type: "select", required: true },
+				{ slug: "subject_slug", label: "Subject", type: "string", required: true, searchable: true },
+				{ slug: "field", label: "Field", type: "string" },
+				{ slug: "before", label: "Before", type: "text" },
+				{ slug: "after", label: "After", type: "text" },
+				{ slug: "reason", label: "Reason", type: "select" },
+				{ slug: "detail", label: "Detail", type: "text" },
+				{ slug: "actor_id", label: "Decided by", type: "string" },
+				{ slug: "occurred_at", label: "Occurred at", type: "string" },
+			],
+		},
+		{
 			slug: "pages",
 			label: "Pages",
 			labelSingular: "Page",
@@ -347,6 +446,12 @@ const seed = {
 		// Ratings and reports are created by readers through the app, not seeded.
 		ratings: [],
 		reports: [],
+		// So are disputes, exclusions and the audit trail: every one of them is
+		// created by a decision somebody made, and seeding an example of each would
+		// put a fictional takedown in the public content of the shipped catalogue.
+		disputes: [],
+		exclusions: [],
+		audit_events: [],
 	},
 };
 

@@ -102,6 +102,21 @@ export interface Example {
 	 * happens here, once, so every reader of the model gets the same answer.
 	 */
 	downloadable: boolean;
+	/**
+	 * The rights dispute state, as stored (#54).
+	 *
+	 * Raw on purpose, not narrowed to the four known values: the gate in
+	 * `./disputes.ts` treats an unrecognised state as *live*, and narrowing here
+	 * would turn "a state this build cannot read" into "no dispute", which is the
+	 * one direction that is never safe. See `withholdsAsset`.
+	 */
+	disputeState?: string | null;
+	/** Which report reason opened it. Recorded, never reclassified. */
+	disputeReason?: string | null;
+	/** What the reporter said, in their words. */
+	disputeNote?: string | null;
+	disputeReportedAt?: string | null;
+	disputeResolvedAt?: string | null;
 }
 
 export interface CuratedCollection {
@@ -252,6 +267,11 @@ function toExample(entry: RawEntryValue): Effect.Effect<Example, CatalogueDecode
 			attribution: text(d.attribution),
 			contentHash: text(d.content_hash),
 			downloadable: flagValue(d.downloadable),
+			disputeState: text(d.dispute_state),
+			disputeReason: text(d.dispute_reason),
+			disputeNote: text(d.dispute_note),
+			disputeReportedAt: text(d.dispute_reported_at),
+			disputeResolvedAt: text(d.dispute_resolved_at),
 		})),
 		Effect.mapError((error) => new CatalogueDecodeError({ subject: entry.id, detail: error.detail })),
 	);
@@ -405,12 +425,33 @@ export function loadExample(id: string): CatalogueRead<Example | null> {
  * that only `getEmDashEntry`'s `references` option provides.
  */
 export function loadExamplesFor(possibilitySlug: string): CatalogueRead<{ examples: Example[] }> {
+	return Effect.map(
+		loadExampleGraph(),
+		(graph) => ({ examples: graph[possibilitySlug] ?? [] }),
+	);
+}
+
+/**
+ * Every example, grouped by the possibility it belongs to.
+ *
+ * The same fan-out as `loadExamplesFor` — one `reference` resolution per example,
+ * which is the N+1 this project pays on purpose — but resolved once for the whole
+ * catalogue rather than once per entry.
+ *
+ * It exists for the rights workflow (#54), which has to answer "which possibility
+ * does this example belong to" from the *example* side. Everything else goes the
+ * other way, from a possibility to its examples; a curator looking at a dispute on
+ * an example has only the example. Without this, recomputing a possibility after
+ * one of its examples goes away would cost a query per possibility clicked.
+ *
+ * An example whose parent link does not resolve is filed under the empty key rather
+ * than dropped: it is still in the catalogue, and a total that quietly loses a row is
+ * the fabricated-evidence failure `docs/ARCHITECTURE.md` warns about.
+ */
+export function loadExampleGraph(): CatalogueRead<Record<string, Example[]>> {
 	return Effect.gen(function* () {
 		const emdash = yield* EmDashContent;
-		const page = yield* emdash.collection("examples", { limit: 100 });
-		// Bounded fan-out; see `REFERENCE_CONCURRENCY`. `Effect.forEach` preserves
-		// input order in the result, so the example list is still ordered by the
-		// collection's own order rather than by which query returned first.
+		const page = yield* emdash.collection("examples", { limit: 200 });
 		const resolved = yield* Effect.forEach(
 			page.entries,
 			(entry) =>
@@ -419,16 +460,19 @@ export function loadExamplesFor(possibilitySlug: string): CatalogueRead<{ exampl
 						references: { possibility: true },
 					});
 					// A reference that failed to resolve is not a reason to drop the
-					// example: the collection row is still the canonical record, and a
-					// missing parent link is a CMS gap rather than a wrong answer.
+					// example: the collection row is still the canonical record.
 					const source = found.entry ?? entry;
-					return referenceIds(source, "possibility").includes(possibilitySlug)
-						? yield* toExample(source)
-						: null;
+					return { parents: referenceIds(source, "possibility"), example: yield* toExample(source) };
 				}),
 			{ concurrency: REFERENCE_CONCURRENCY },
 		);
-		return { examples: resolved.filter((example): example is Example => example !== null) };
+		const graph: Record<string, Example[]> = {};
+		for (const { parents, example } of resolved) {
+			for (const key of parents.length ? parents : [""]) {
+				(graph[key] ??= []).push(example);
+			}
+		}
+		return graph;
 	});
 }
 

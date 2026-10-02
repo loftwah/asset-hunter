@@ -279,11 +279,23 @@ export function buildPayload(
  * A catalogue entry that says "cleared" because one of five sources was MIT
  * while the other four had no licence at all is exactly the false certainty
  * this product is built to avoid.
+ *
+ * A status that is not one of the four counts as `reference` — the weakest thing
+ * there is. That direction is the same one the app's `weakestRights` and
+ * `useStateFor` take, and it matters here because `validatePayload` refuses an
+ * unknown status *after* this runs: an entry built from a status this build
+ * cannot read must not be described as cleared on its way to being rejected.
+ * `tests/takedown.test.ts` asserts the two implementations agree, because the
+ * architecture keeps them in separate systems.
  */
 export function worstRights(statuses: string[]): string {
 	const order = ["cleared", "attribution", "review", "reference"];
 	if (!statuses.length) return "reference";
-	return statuses.reduce((worst, s) => (order.indexOf(s) > order.indexOf(worst) ? s : worst), "cleared");
+	return statuses.reduce((worst, s) => {
+		const index = order.indexOf(s);
+		if (index === -1) return "reference";
+		return order.indexOf(worst) > index ? worst : s;
+	}, "cleared");
 }
 
 function rightsNoteFor(p: ExtractedPossibility): string {

@@ -177,6 +177,19 @@ export const ExampleData = Schema.Struct({
 	attribution: Text,
 	content_hash: Text,
 	downloadable: Flag,
+	// --- Rights disputes (#54) ----------------------------------------------
+	// A dispute is a *state on the record*, not a collection: it has to travel with
+	// the example so every surface that reads the record — the drill-in, the use
+	// page, the record route and the payload route — withholds the asset without
+	// having to join against anything. `dispute_state` is deliberately a string
+	// rather than an enum here: the *gate* decides what an unrecognised value
+	// means, and it answers "withhold". Narrowing it at the boundary would make
+	// that unanswerable.
+	dispute_state: Text,
+	dispute_reason: Text,
+	dispute_note: Text,
+	dispute_reported_at: Text,
+	dispute_resolved_at: Text,
 });
 
 /**
@@ -212,6 +225,83 @@ export const ReportData = Schema.Struct({
 	user_id: Text,
 	user_email: Text,
 	resolution: Text,
+});
+
+/**
+ * A rights dispute row (#54).
+ *
+ * One row per subject, mutated as the case moves rather than appended per
+ * action — the audit trail is what is append-only, and having two append-only
+ * records of the same thing is how they drift apart. `example_slug` is stored as
+ * text as well as being a `reference`, because the queue has to render a row for
+ * a subject that has been deleted, and a reference to nothing renders as nothing.
+ */
+export const DisputeData = Schema.Struct({
+	title: Schema.optional(Schema.String),
+	subject_type: Schema.optional(Schema.NullOr(Schema.String)),
+	subject_slug: Text,
+	/** The reason the report was filed under, unchanged. */
+	reason: Schema.optional(Schema.NullOr(Schema.String)),
+	/** The dispute state. Open and quarantined withhold the asset. */
+	state: Schema.optional(Schema.NullOr(Schema.String)),
+	detail: Text,
+	/** The report row this case was opened from, when it was opened by a report. */
+	report_id: Text,
+	/** The reporter's EmDash id. No email: this row is not the contact record. */
+	reporter_id: Text,
+	reported_at: Text,
+	resolution: Text,
+	resolved_at: Text,
+	resolved_by: Text,
+});
+
+/**
+ * An exclusion row (#54) — the machine-readable half of a takedown.
+ *
+ * `match` is the exact string the engine compares against, and it is never
+ * derived from a display label. The projection in `./takedown.ts` validates the
+ * shape of the value it matches on (`owner/repo`, a path, a sha256, a slug)
+ * because a scope with a value that cannot be that shape is a row that would
+ * silently exclude nothing.
+ */
+export const ExclusionData = Schema.Struct({
+	title: Schema.optional(Schema.String),
+	scope: Schema.optional(Schema.NullOr(Schema.String)),
+	match: Text,
+	reason: Schema.optional(Schema.NullOr(Schema.String)),
+	detail: Text,
+	/** `active` excludes; `lifted` is kept for the record and excludes nothing. */
+	state: Schema.optional(Schema.NullOr(Schema.String)),
+	/** The dispute this exclusion came from, so the two can be read together. */
+	dispute_slug: Text,
+	recorded_at: Text,
+	recorded_by: Text,
+	lifted_at: Text,
+	lifted_by: Text,
+	lift_reason: Text,
+});
+
+/**
+ * An audit event row (#54) — append-only, and never public.
+ *
+ * `before` and `after` are `Text` on purpose. They hold whatever the field held,
+ * including values no field of ours would accept today, because "what it used to
+ * say" is only evidence if it is recorded verbatim. The reader gets the sentence
+ * in `detail`; this row is the reason behind it.
+ */
+export const AuditEventData = Schema.Struct({
+	title: Schema.optional(Schema.String),
+	action: Schema.optional(Schema.NullOr(Schema.String)),
+	subject_type: Schema.optional(Schema.NullOr(Schema.String)),
+	subject_slug: Text,
+	/** The field that changed. `null` when the action was not a field change. */
+	field: Text,
+	before: Text,
+	after: Text,
+	reason: Schema.optional(Schema.NullOr(Schema.String)),
+	detail: Text,
+	actor_id: Text,
+	occurred_at: Text,
 });
 
 /** The body EmDash returns from a successful create. */
