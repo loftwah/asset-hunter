@@ -59,6 +59,11 @@ export interface CollectionQuery {
 	readonly limit?: number;
 	readonly cursor?: string;
 	readonly orderBy?: Readonly<Record<string, "asc" | "desc">>;
+	/**
+	 * Publish state. Defaults to `published`; only the curation cockpit asks for
+	 * anything else, and it has to say so.
+	 */
+	readonly status?: "draft" | "published" | "archived";
 }
 
 /** Options accepted by `getEmDashEntry`'s `references`. */
@@ -144,7 +149,18 @@ export class EmDashContent extends Context.Service<
 				const operation = `read ${name}`;
 				const page = yield* read(operation, () =>
 					getEmDashCollection(name, {
-						status: "published",
+						// Published unless a caller says otherwise. The public
+						// catalogue must never see a draft, and that default is the
+						// guarantee — so a caller that *wants* drafts has to name it.
+						//
+						// The curation cockpit is that caller: it reads this same
+						// service to surface held crawl output. It used to get
+						// published rows and call them drafts, so the queue claimed
+						// 24 held drafts against a database holding 5, and listed
+						// published seed entries as unreviewed crawl output. A queue
+						// that cannot be trusted is worse than no queue, because an
+						// editor learns to skip it.
+						status: query.status ?? "published",
 						limit: query.limit ?? 100,
 						cursor: query.cursor,
 						orderBy: query.orderBy as Record<string, "asc" | "desc"> | undefined,

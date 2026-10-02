@@ -1,0 +1,157 @@
+- generic [active] [ref=f5e1]:
+  - link "Skip to catalogue" [ref=f5e2] [cursor=pointer]:
+    - /url: "#main"
+  - banner [ref=f5e3]:
+    - generic [ref=f5e4]:
+      - link "Asset Hunter — home" [ref=f5e5] [cursor=pointer]:
+        - /url: /
+        - img "Asset Hunter" [ref=f5e6]
+        - generic [ref=f5e11]: Asset Hunter
+      - navigation "Primary" [ref=f5e12]:
+        - list [ref=f5e13]:
+          - listitem [ref=f5e14]:
+            - link "Catalogue" [ref=f5e15] [cursor=pointer]:
+              - /url: /
+          - listitem [ref=f5e16]:
+            - link "Verticals" [ref=f5e17] [cursor=pointer]:
+              - /url: /verticals
+          - listitem [ref=f5e18]:
+            - link "Collections" [ref=f5e19] [cursor=pointer]:
+              - /url: /collections
+          - listitem [ref=f5e20]:
+            - link "Licensing" [ref=f5e21] [cursor=pointer]:
+              - /url: /pages/licensing
+          - listitem [ref=f5e22]:
+            - link "About" [ref=f5e23] [cursor=pointer]:
+              - /url: /pages/about
+          - listitem [ref=f5e24]:
+            - link "Gallery" [ref=f5e25] [cursor=pointer]:
+              - /url: /gallery
+      - search [ref=f5e26]:
+        - generic [ref=f5e27]: Search possibilities
+        - searchbox "Search possibilities" [ref=f5e28]
+        - generic [aria-hidden]: /
+  - main [ref=f5e29]:
+    - generic [ref=f5e30]:
+      - paragraph [ref=f5e31]: The real thing
+      - heading "Gallery" [level=1] [ref=f5e32]
+      - paragraph [ref=f5e33]:
+        - text: Every image below is a screenshot of this site taken by
+        - code [ref=f5e34]: capture-reference.mjs
+        - text: — the same command that captures the design reference. Each one links to the live route it shows.
+    - region "Screenshots of the catalogue" [ref=f5e35]:
+      - article [ref=f5e36]:
+        - link [ref=f5e37] [cursor=pointer]:
+          - /url: /
+          - img "The catalogue wall at 1280. One distinct possibility per plate, ordered by editorial rank, with the rights legend underneath." [ref=f5e39]
+          - generic [ref=f5e40]:
+            - heading "The wall" [level=2] [ref=f5e41]
+            - paragraph [ref=f5e42]: The catalogue wall at 1280. One distinct possibility per plate, ordered by editorial rank, with the rights legend underneath.
+            - paragraph [ref=f5e43]:
+              - code [ref=f5e44]: /
+      - article [ref=f5e45]:
+        - link [ref=f5e46] [cursor=pointer]:
+          - /url: /possibilities/density-gradient
+          - 'img "The drill-in for a single possibility: the technique, the build notes, a prompt scaffold, the rights in words, and every example recorded against it." [ref=f5e48]'
+          - generic [ref=f5e49]:
+            - heading "One possibility" [level=2] [ref=f5e50]
+            - paragraph [ref=f5e51]: "The drill-in for a single possibility: the technique, the build notes, a prompt scaffold, the rights in words, and every example recorded against it."
+            - paragraph [ref=f5e52]:
+              - code [ref=f5e53]: /possibilities/density-gradient
+      - article [ref=f5e54]:
+        - link [ref=f5e55] [cursor=pointer]:
+          - /url: /search?q=seam
+          - img "Search is a ranked list, not a grid, and each row says why it matched rather than repeating its own title." [ref=f5e57]
+          - generic [ref=f5e58]:
+            - heading "Search" [level=2] [ref=f5e59]
+            - paragraph [ref=f5e60]: Search is a ranked list, not a grid, and each row says why it matched rather than repeating its own title.
+            - paragraph [ref=f5e61]:
+              - code [ref=f5e62]: /search?q=seam
+      - article [ref=f5e63]:
+        - link [ref=f5e64] [cursor=pointer]:
+          - /url: /pages/licensing
+          - img "Licensing states all four rights statuses in full sentences, because rights are never behind a hover." [ref=f5e66]
+          - generic [ref=f5e67]:
+            - heading "Licensing" [level=2] [ref=f5e68]
+            - paragraph [ref=f5e69]: Licensing states all four rights statuses in full sentences, because rights are never behind a hover.
+            - paragraph [ref=f5e70]:
+              - code [ref=f5e71]: /pages/licensing
+    - region [ref=f5e72]:
+      - generic [ref=f5e73]:
+        - heading "On a phone" [level=2] [ref=f5e74]
+        - paragraph [ref=f5e75]: "The wall at 390 wide. The catalogue is above the fold here too: the intro is a band, not a hero."
+        - link "Open the wall" [ref=f5e76] [cursor=pointer]:
+          - /url: /
+      - link [ref=f5e77] [cursor=pointer]:
+        - /url: /
+        - 'img "The wall at 390 wide. The catalogue is above the fold here too: the intro is a band, not a hero." [ref=f5e78]'
+    - complementary [ref=f5e79]:
+      - heading "About these images" [level=2] [ref=f5e80]
+      - paragraph [ref=f5e81]:
+        - text: They are captures of this site, not renders of a design that does not exist. Regenerate them with
+        - code [ref=f5e82]: npm run capture:reference
+        - text: against a running dev server; the gallery images are copied from the same pass, so a gallery picture and the reference capture it came from are the same bytes — asserted byte-for-byte in
+        - code [ref=f5e83]: tests/site-shell.test.ts
+        - text: . The share cards in
+        - code [ref=f5e84]: public/og*.png
+        - text: are produced the same way, by
+        - code [ref=f5e85]: npm run generate:og
+        - text: .
+  - contentinfo [ref=f5e86]:
+    - generic [ref=f5e87]:
+      - generic [ref=f5e88]:
+        - img "Asset Hunter" [ref=f5e89]
+        - paragraph [ref=f5e94]: A discovery engine for creative and technical possibilities.
+      - generic [ref=f5e95]:
+        - generic [ref=f5e96]:
+          - heading "Catalogue" [level=2] [ref=f5e97]
+          - list [ref=f5e98]:
+            - listitem [ref=f5e99]:
+              - link "Catalogue" [ref=f5e100] [cursor=pointer]:
+                - /url: /
+            - listitem [ref=f5e101]:
+              - link "Verticals" [ref=f5e102] [cursor=pointer]:
+                - /url: /verticals
+            - listitem [ref=f5e103]:
+              - link "Collections" [ref=f5e104] [cursor=pointer]:
+                - /url: /collections
+            - listitem [ref=f5e105]:
+              - link "Licensing" [ref=f5e106] [cursor=pointer]:
+                - /url: /pages/licensing
+            - listitem [ref=f5e107]:
+              - link "About" [ref=f5e108] [cursor=pointer]:
+                - /url: /pages/about
+            - listitem [ref=f5e109]:
+              - link "Gallery" [ref=f5e110] [cursor=pointer]:
+                - /url: /gallery
+            - listitem [ref=f5e111]:
+              - link "Your shortlist" [ref=f5e112] [cursor=pointer]:
+                - /url: /board
+        - generic [ref=f5e113]:
+          - heading "Rights" [level=2] [ref=f5e114]
+          - list [ref=f5e115]:
+            - listitem [ref=f5e116]:
+              - link "How we classify" [ref=f5e117] [cursor=pointer]:
+                - /url: /pages/licensing
+            - listitem [ref=f5e118]:
+              - link "The four statuses" [ref=f5e119] [cursor=pointer]:
+                - /url: /pages/licensing#the-statuses
+        - generic [ref=f5e120]:
+          - heading "Project" [level=2] [ref=f5e121]
+          - list [ref=f5e122]:
+            - listitem [ref=f5e123]:
+              - link "What this is" [ref=f5e124] [cursor=pointer]:
+                - /url: /pages/about
+            - listitem [ref=f5e125]:
+              - link "Run it locally" [ref=f5e126] [cursor=pointer]:
+                - /url: /pages/quickstart
+            - listitem [ref=f5e127]:
+              - link "Gallery" [ref=f5e128] [cursor=pointer]:
+                - /url: /gallery
+            - listitem [ref=f5e129]:
+              - link "RSS feed" [ref=f5e130] [cursor=pointer]:
+                - /url: /rss.xml
+            - listitem [ref=f5e131]:
+              - link "Source" [ref=f5e132] [cursor=pointer]:
+                - /url: https://github.com/loftwah/asset-hunter
+    - paragraph [ref=f5e133]: Reference-only material is never presented as cleared for use. Always read the licence on the source asset.

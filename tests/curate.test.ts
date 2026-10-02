@@ -179,11 +179,46 @@ describe("honesty about the catalogue's own gaps", () => {
 		const stated = Number.parseInt(text(html).match(/Held drafts\s+(\d+)/)?.[1] ?? "NaN", 10);
 		assert.ok(Number.isFinite(stated), `could not read the held-draft count: ${text(html).slice(0, 200)}`);
 
-		// Astro appends a scoping attribute to every element, so the attribute is
-		// matched rather than the whole tag.
 		const section = html.match(/<section aria-labelledby="q-drafts"[\s\S]*?<\/section>/)?.[0] ?? "";
 		const rows = (section.match(/<li class="row"/g) ?? []).length;
 		assert.equal(stated, rows, `states ${stated} held drafts, lists ${rows}`);
+	});
+
+	withEditor("the held-draft queue holds drafts, not the published catalogue", async () => {
+		// This queue is the one place in the app that legitimately reads drafts.
+		// It used to read *published* rows and label them crawl output: it claimed
+		// 24 held drafts against a database holding 5, and listed seed entries a
+		// curator had already published as unreviewed machine output. A queue that
+		// cannot be trusted is worse than no queue.
+		const html = await (await fetch(`${baseUrl}/curate`, { headers: { cookie: editorCookie! } })).text();
+		const section = html.match(/<section aria-labelledby="q-drafts"[\s\S]*?<\/section>/)?.[0] ?? "";
+		const listed = [
+			...section.matchAll(/<span class="row__title row__title--plain"[^>]*>([^<]+)</g),
+		].map((m) => m[1].trim());
+		if (listed.length === 0) return; // nothing held — nothing to mislabel
+
+		// Every listed row must carry a hunt. A machine entry always has
+		// `source_hunt`; a hand-authored seed entry never does. Counted inside the
+		// rows rather than the section, because the section's own prose contains
+		// "a hunt creates entries as drafts" and would match too.
+		const rowBlocks = [...section.matchAll(/<li class="row"[\s\S]*?<\/li>/g)].map((m) => m[0]);
+		const withHunt = rowBlocks.filter((row) => /hunt \S+/.test(row)).length;
+		assert.equal(
+			withHunt,
+			listed.length,
+			`${listed.length - withHunt} listed row(s) have no hunt — they are not crawl output`,
+		);
+
+		// And none of them may be on the public wall, which is the invariant the
+		// whole queue exists to make visible.
+		const wall = await (await fetch(`${baseUrl}/`)).text();
+		for (const title of listed) {
+			assert.equal(
+				wall.includes(title),
+				false,
+				`"${title}" is listed as held crawl output but is published on the wall`,
+			);
+		}
 	});
 
 	withEditor("name the state that is actually missing, not a generic one", async () => {

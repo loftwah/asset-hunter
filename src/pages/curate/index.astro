@@ -88,12 +88,16 @@ const ordered = [...open].sort((a, b) => {
 // Queue 2: machine drafts the crawl created. They are held, unranked and
 // unpublished, which is correct — but nothing surfaces them for a decision, so
 // without this they would sit there forever.
-// Drafts are not a public read, so they go through the same service with an
-// explicit status rather than through a second query path. `EmDashContent` has no
-// `status` argument because the public catalogue must never see a draft; the one
-// place that legitimately needs them reads the collection directly and says so.
+//
+// `status: "draft"` is named explicitly because the service defaults to
+// `published` and that default is the guarantee the public catalogue relies on.
+// Without it this queue listed the published catalogue and called it crawl
+// output: 24 rows claimed against a database holding 5, showing seed entries a
+// curator had already published.
 const draftPage = await runApp(
-	Effect.flatMap(EmDashContent, (emdash) => emdash.collection("possibilities", { limit: 50 })),
+	Effect.flatMap(EmDashContent, (emdash) =>
+		emdash.collection("possibilities", { limit: 50, status: "draft" }),
+	),
 	{ signal: Astro.request.signal },
 );
 const drafts = draftPage.entries.map((e) => {
