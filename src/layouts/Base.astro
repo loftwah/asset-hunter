@@ -14,6 +14,7 @@
  */
 import Wordmark from "../components/Wordmark.astro";
 import { loadPrimaryNav, isCurrentLink } from "../lib/site-shell";
+import { buildInfo, buildSentence } from "../lib/build-info";
 import { runApp } from "../lib/effect/root";
 import "../styles/global.css";
 
@@ -30,6 +31,11 @@ interface Props {
 const { title, description, path, ogImage = "/og.png", bare = false, noindex = false } = Astro.props;
 
 const canonical = new URL(path ?? Astro.url.pathname, Astro.site ?? Astro.url.origin).href;
+
+// Read once per render; the `<meta>` and the footer both use it, and two calls
+// could not disagree anyway because both read constants — but one value named
+// once is easier to reason about than two named call sites.
+const build = buildInfo();
 const ogUrl = new URL(ogImage, Astro.site ?? Astro.url.origin).href;
 const fullTitle = path && path !== "/" ? `${title} — Asset Hunter` : "Asset Hunter — A field guide to what can be made";
 
@@ -68,6 +74,19 @@ const isCurrent = (href: string) => isCurrentLink(current, href);
 		/>
 		<meta name="theme-color" content="#08090a" />
 		<meta name="color-scheme" content="dark" />
+		{/*
+		 * Which commit is this page. #81's whole finding was that the deployed
+		 * site served code three commits behind `main` and nothing said so — nine
+		 * accessibility defects were live in production while `main` had already
+		 * fixed every one of them. So every page states it, in view-source, with
+		 * no request to make.
+		 *
+		 * Rendered only when the commit is real. A build with no git behind it has
+		 * no commit to name, and a `<meta>` claiming `"unknown"` would be a tag
+		 * that looks like a value. `buildSentence` says so in words instead.
+		*/}
+		{build.commit && <meta name="asset-hunter:commit" content={build.commit} />}
+		<meta name="asset-hunter:build" content={buildSentence(build)} />
 
 		<meta property="og:type" content="website" />
 		<meta property="og:site_name" content="Asset Hunter" />
@@ -254,6 +273,25 @@ const isCurrent = (href: string) => isCurrentLink(current, href);
 					<p class="footer__legal shell">
 						Reference-only material is never presented as cleared for use. Always read the
 						licence on the source asset.
+					</p>
+					{/*
+					 * The build stamp, in text a person can read.
+
+					 * #81: the deployed site served code three commits behind `main`
+					 * and nine accessibility defects were live while `main` had
+					 * already fixed them — and nothing said so. A `<meta>` tag is
+					 * only visible to someone who opens view-source, which is
+					 * exactly the person who was not going to. This line is on
+					 * every page at every viewport, and it says `plus uncommitted
+					 * changes` rather than printing a bare sha that reads like
+					 * certainty.
+
+					 * Deliberately dull: 11px, the quietest ink, and no link. A
+					 * version string that looks like a feature is a version string
+					 * nobody checks.
+					*/}
+					<p class="footer__build shell" data-build={build.commit ?? "unknown"}>
+						{buildSentence(build)}
 					</p>
 				</footer>
 			)
@@ -598,6 +636,27 @@ const isCurrent = (href: string) => isCurrentLink(current, href);
 	.footer__legal {
 		padding-block: var(--sp-4);
 		border-top: 1px solid var(--line);
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		color: var(--ink-4);
+		letter-spacing: 0.02em;
+	}
+
+	/*
+	 * The build stamp (#81). Same size and ink as the legal line above it and no
+	 * rule of its own: it is provenance, not policy, and it should be the last
+	 * thing on the page rather than a section.
+	 *
+	 * `--step--2` rather than something smaller on purpose. Two reasons: the
+	 * documented fluid scale starts at `--step--2` (`DESIGN.md` §type), so
+	 * inventing a `--step--3` would widen the scale for one line of metadata; and
+	 * the alternative — `--step--2` at reduced `opacity` — would push measured
+	 * contrast under the floor that `scripts/visual-qa.mjs` checks, turning a
+	 * build stamp into a contrast defect. Quiet by position and by being last,
+	 * not by being illegible.
+	 */
+	.footer__build {
+		padding-block-end: var(--sp-4);
 		font-family: var(--font-mono);
 		font-size: var(--step--2);
 		color: var(--ink-4);

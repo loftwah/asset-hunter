@@ -16,6 +16,7 @@
 		"build": "astro build",
 		"preview": "astro build && wrangler dev --config dist/server/wrangler.json",
 		"deploy": "astro build && wrangler deploy",
+		"deploy:check": "node scripts/check-deploy-freshness.mjs",
 		"typecheck": "astro check",
 		"emdash": "emdash",
 		"seed": "seed/seed.json",
