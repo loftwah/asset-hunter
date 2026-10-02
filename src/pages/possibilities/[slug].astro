@@ -9,19 +9,22 @@
 import Base from "../../layouts/Base.astro";
 import PossibilityTile from "../../components/PossibilityTile.astro";
 import ProvenanceMarkers from "../../components/ProvenanceMarkers.astro";
+import ExampleUse from "../../components/ExampleUse.astro";
 import {
 	loadExamplesFor,
 	loadPossibilities,
 	loadPossibility,
 	mediaSrc,
-	type Example,
 } from "../../lib/catalogue";
+import { assetUsePaths, summariseUse, summaryLine } from "../../lib/asset-use";
+import { Effect } from "effect";
+import { runApp } from "../../lib/effect/root";
 import {
 	MEDIA_LABEL,
-	ORIGIN_LABEL,
 	ORIGIN_MEANING,
-	RIGHTS_LABEL,
 	RIGHTS_MEANING,
+	originLabelFor,
+	rightsLabelFor,
 	verticalLabel,
 } from "../../lib/vocabulary";
 import {
@@ -39,17 +42,21 @@ import {
 } from "../../lib/signals";
 
 const { slug } = Astro.params;
-const { possibility: p, cacheHint } = await loadPossibility(slug ?? "");
+const { possibility: p, cacheHint } = await runApp(loadPossibility(slug ?? ""), {
+	signal: Astro.request.signal,
+});
 if (Astro.cache?.enabled && cacheHint) Astro.cache.set(cacheHint);
 
 if (!p) {
 	return Astro.rewrite("/404");
 }
 
-const [{ possibilities }, { examples }] = await Promise.all([
-	loadPossibilities(),
-	loadExamplesFor(p.slug),
-]);
+// `Effect.all` rather than `Promise.all`: same shape, in a runtime that can be
+// interrupted when the reader navigates away mid-render.
+const [{ possibilities }, { examples }] = await runApp(
+	Effect.all([loadPossibilities(), loadExamplesFor(p.slug)]),
+	{ signal: Astro.request.signal },
+);
 
 const src = mediaSrc(p);
 const vertical = p.vertical ? verticalLabel(p.vertical) : null;
@@ -59,7 +66,9 @@ const vertical = p.vertical ? verticalLabel(p.vertical) : null;
 // "this licence is wrong" note because someone has no account is the worst
 // possible answer to it.
 const viewer = actorFrom(Astro.locals?.user);
-const [ratings, reports] = await Promise.all([loadRatings(), loadReports()]);
+const [ratings, reports] = await runApp(Effect.all([loadRatings(), loadReports()]), {
+	signal: Astro.request.signal,
+});
 const community = aggregateRatings(
 	ratings.filter((r) => r.subjectType === "possibility" && r.subjectSlug === p.slug),
 	viewer?.id ?? null,
@@ -83,19 +92,14 @@ function promptLines(value: string | null | undefined): string[] {
 }
 const scaffold = promptLines(p.promptScaffold);
 
-/** Renders provenance rows only when there is real evidence behind them. */
-function evidenceRows(example: Example) {
-	return [
-		{ label: "Source", value: example.sourceUrl },
-		{ label: "Repository", value: example.sourceRepo },
-		{ label: "Ref", value: example.sourceRef },
-		{ label: "Path", value: example.sourcePath },
-		{ label: "Licence", value: example.licenceSpdx },
-		{ label: "Evidence", value: example.licenceEvidence },
-		{ label: "Attribution", value: example.attribution },
-		{ label: "Content hash", value: example.contentHash },
-	].filter((row) => Boolean(row.value));
-}
+/*
+ * The use states of the examples beneath this possibility (#42), counted here
+ * so the drill-in leads with the answer rather than making a reader open
+ * something to find out whether anything is reusable. The counts come from the
+ * same `examples` the list below renders, so the number and the rows cannot
+ * disagree. The labels themselves live in `src/lib/vocabulary.ts`.
+ */
+const useSummary = summariseUse(examples);
 ---
 
 <Base
@@ -168,7 +172,7 @@ function evidenceRows(example: Example) {
 				<figcaption class="tag">
 					{
 						p.representativeOrigin
-							? `${ORIGIN_LABEL[p.representativeOrigin as keyof typeof ORIGIN_LABEL] ?? p.representativeOrigin} specimen`
+							? `${originLabelFor(p.representativeOrigin)} specimen`
 							: "Specimen"
 					}
 					· reference plate
@@ -372,7 +376,7 @@ function evidenceRows(example: Example) {
 						p.rightsStatus && (
 							<p class="rights__status" style={`--c: var(--rights-${p.rightsStatus})`}>
 								<span class="rights__dot" aria-hidden="true" />
-								<strong>{RIGHTS_LABEL[p.rightsStatus as keyof typeof RIGHTS_LABEL]}</strong>
+								<strong>{rightsLabelFor(p.rightsStatus)}</strong>
 								<span class="rights__meaning">
 									{RIGHTS_MEANING[p.rightsStatus as keyof typeof RIGHTS_MEANING]}
 								</span>
@@ -389,60 +393,57 @@ function evidenceRows(example: Example) {
 			</div>
 		</div>
 
+		/*
+			Examples and their use states (#42). The list stays media-first and the
+			use block sits inside each row, because a reader who has to leave the
+			page to find out whether a file is reusable will not find out. The
+			counts above come from these same examples.
+		*/
 		{
 			examples.length > 0 && (
 				<section class="examples shell" aria-labelledby="examples-title">
 					<h2 id="examples-title" class="tag tag-rule">Examples · {examples.length}</h2>
+					<p class="examples__summary" data-use-summary={summaryLine(useSummary)}>
+						{summaryLine(useSummary)} ·{" "}
+						<a class="examples__use-link" href={assetUsePaths.use(p.slug)}>
+							What may be used, and what it costs
+						</a>
+					</p>
 					<ul class="examples__list">
-						{examples.map((example) => {
-							const rows = evidenceRows(example);
-							return (
-								<li class="example">
-									<div class="example__media">
-										<img
-											src={mediaSrc(example, src)}
-											alt={example.title}
-											width="800"
-											height="1000"
-											loading="lazy"
-											decoding="async"
-										/>
-									</div>
-									<div class="example__body">
-										<h3 class="example__title">{example.title}</h3>
-										<ProvenanceMarkers
-											rights={example.rightsStatus}
-											origin={example.origin}
-											size="sm"
-										/>
-										{example.origin && (
-											<p class="example__origin">
-												{ORIGIN_MEANING[example.origin as keyof typeof ORIGIN_MEANING]}
-											</p>
-										)}
-										{example.note && <p class="example__note">{example.note}</p>}
-										{rows.length > 0 && (
-											<dl class="evidence">
-												{rows.map((row) => (
-													<div class="evidence__row">
-														<dt class="tag">{row.label}</dt>
-														<dd class="evidence__value">
-															{row.label === "Source" && row.value ? (
-																<a href={row.value} rel="noopener noreferrer nofollow" target="_blank">
-																	{row.value}
-																</a>
-															) : (
-																row.value
-															)}
-														</dd>
-													</div>
-												))}
-											</dl>
-										)}
-									</div>
-								</li>
-							);
-						})}
+						{examples.map((example) => (
+							<li class="example">
+								<div class="example__media">
+									<img
+										src={mediaSrc(example, src)}
+										alt={example.title}
+										width="800"
+										height="1000"
+										loading="lazy"
+										decoding="async"
+									/>
+								</div>
+								<div class="example__body">
+									<h3 class="example__title">{example.title}</h3>
+									<ProvenanceMarkers
+										rights={example.rightsStatus}
+										origin={example.origin}
+										size="sm"
+									/>
+									{example.origin && (
+										<p class="example__origin">
+											{ORIGIN_MEANING[example.origin as keyof typeof ORIGIN_MEANING]}
+										</p>
+									)}
+									{example.note && <p class="example__note">{example.note}</p>}
+								</div>
+								{/*
+								 * Full width under the media and the label, not squeezed into the
+								 * label column: the actions and the credit block need room to be
+								 * read rather than scrolled.
+								 */}
+								<ExampleUse example={example} />
+							</li>
+						))}
 					</ul>
 				</section>
 			)
@@ -1014,30 +1015,26 @@ function evidenceRows(example: Example) {
 		max-width: 62ch;
 	}
 
-	.evidence {
-		display: grid;
-		gap: var(--sp-2);
-		margin-top: var(--sp-2);
-		padding-top: var(--sp-3);
-		border-top: 1px solid var(--line);
-	}
-
-	.evidence__row {
-		display: grid;
-		grid-template-columns: 8rem minmax(0, 1fr);
-		gap: var(--sp-3);
-		align-items: baseline;
-	}
-
-	.evidence__value {
+	/* The honest count, stated once, above the rows it counts. */
+	.examples__summary {
+		margin-top: var(--sp-3);
 		font-family: var(--font-mono);
 		font-size: var(--step--2);
-		color: var(--ink-2);
-		overflow-wrap: anywhere;
+		color: var(--ink-3);
 	}
 
-	.evidence__value a:hover {
-		color: var(--ember);
+	.examples__use-link {
+		display: inline-flex;
+		align-items: center;
+		min-height: 1.75rem;
+		color: var(--ink-2);
+		text-decoration: underline;
+		text-decoration-color: var(--ember-line);
+		text-underline-offset: 3px;
+	}
+
+	.examples__use-link:hover {
+		color: var(--ink);
 	}
 
 	.related__grid {
@@ -1065,10 +1062,9 @@ function evidenceRows(example: Example) {
 		}
 	}
 
-	@media (width <= 560px) {
-		.evidence__row {
-			grid-template-columns: 1fr;
-			gap: 0.15rem;
-		}
+	/* Full-width use block: the label column is 12rem, which is room for a title
+	   and not for an obligation. */
+	.example > .use {
+		grid-column: 1 / -1;
 	}
 </style>

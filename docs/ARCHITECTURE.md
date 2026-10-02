@@ -180,6 +180,28 @@ first.
 Rights attach to an **example**, never to a possibility. Repository licence
 metadata is a hint, not authority.
 
+### Rights → use state
+
+A rights status is a fact about a licence. A **use state** is the answer to "what
+may I do with this file", and it is the word the public surfaces lead with.
+`src/lib/asset-use.ts` is the only place the mapping is made, so the wall, the
+drill-in, `/use/<slug>` and the API cannot answer differently.
+
+| Rights status | Use state    | A payload is handed over when…                                  |
+| ------------- | ------------ | --------------------------------------------------------------- |
+| `cleared`     | reusable     | a payload is retained **and** a SHA-256 is recorded against it     |
+| `attribution` | reusable with attribution | as above, **and** a recorded credit exists to reproduce |
+| `review`      | review required | never — nothing here has been cleared on the reader's behalf   |
+| `reference`   | reference only | never — this is the whole of its permission                     |
+| anything else | reference only | never — an unrecognised status is not evidence of permission    |
+
+**No download control exists without all of those conditions, and the payload
+route re-derives the same decision from the record rather than trusting the
+page.** A hand-typed URL gets the answer a hidden control would have hidden.
+The refusal statuses are chosen to say different things: `403` the licence does
+not permit it, `409` it permits but there is nothing verified to hand over, `503`
+the bytes are there and do not match the digest.
+
 ### Origin semantics
 
 | Origin      | Meaning                                                      |
@@ -212,17 +234,45 @@ use, so it cannot drift from what the site shows. Drafts are excluded by the
 query rather than by a filter afterwards, which is why the doctor check for
 leaked machine drafts and this endpoint agree.
 
+### Asset use and handoff
+
+Two data routes complete the asset half of the catalogue. They are read-only,
+they read the same EmDash records the pages read, and they are the only paths
+that can hand anything over.
+
+| Route                      | What it serves                                              | Gate |
+| -------------------------- | ----------------------------------------------------------- | ---- |
+| `GET /api/record/<example>` | The source, licence, provenance and credit for one example, as JSON (`asset-hunter.record/1`) | None. The evidence is owed to a reader whatever the rights are — including, especially, when the rights forbid reuse |
+| `GET /api/payload/<example>` | The retained original, unmodified, with `X-AH-SHA256`        | The use state, then a recorded credit, then a retained payload, then a recorded digest — all four |
+
+The payload route hashes what it is about to send and compares it with the
+record's `content_hash` before a single byte goes out; a mismatch serves
+nothing. No `Content-Type` is invented: `media_kind` is a catalogue label, not
+a MIME type, so the response is `application/octet-stream` with an attachment
+disposition.
+
+`/use/<slug>` is the human surface for the same records: the selection, its use
+states, its obligations and its credit. It is the drill-in's other half rather
+than a parallel product, and it reads `loadPossibility` + `loadExamplesFor` so
+the two cannot disagree about what exists.
+
 ### Content access
 
-All reads go through `src/lib/catalogue.ts`:
+All reads go through `src/lib/catalogue.ts`, and all of them are **Effects**:
 
 - `loadPossibilities()` — wall, ordered by editorial rank then title.
 - `loadPossibility(slug)` — single entry.
 - `loadExamplesFor(slug)` — examples for one possibility.
+- `loadExample(id)` — one example by its own id, for the asset-use routes.
 - `loadCollections()` / `loadCollection(slug)` — curated groupings.
-- `mediaSrc(entry)` — CMS image first, then specimen, then placeholder.
+- `mediaSrc(entry)` — CMS image first, then specimen, then placeholder. **Pure.**
 
-Three EmDash-specific constraints are encoded there because each one fails
+`mediaSrc` and the domain model stay plain functions; the reads are Effects
+because they are I/O with failure modes. The rule and the reasoning are in
+[`EFFECT_STYLE.md`](EFFECT_STYLE.md); in one line: effectful code is Effect 4 by
+default, deterministic code is plain TypeScript.
+
+Four EmDash-specific constraints are encoded there because each one fails
 silently rather than erroring:
 
 1. **Image fields are objects**, not strings. Resolved in exactly one place.
@@ -230,6 +280,28 @@ silently rather than erroring:
 3. **`reference` fields have no filterable column.** `getEmDashCollection` cannot
    filter or hydrate them; `getEmDashEntry(..., { references })` is required.
    Reading `data.members` yields nothing, with no error.
+4. **A failed query resolves, it does not reject.** `getEmDashCollection` returns
+   `entries: []` with an `error` field set when the database is unhappy, so a
+   handler that destructures `entries` renders a confident, empty catalogue. The
+   `EmDashContent` service treats that field as a typed failure instead — the one
+   behaviour this project refuses is showing something other than what EmDash is
+   serving.
+
+### Effect boundaries
+
+```text
+src/lib/effect/          services, schemas, config, cancellation  (the app)
+engine/src/runtime/       the same shape, separately              (the engine)
+```
+
+The two roots are separate on purpose: this document's engine/app boundary is a
+constraint, and a shared runner would make it a suggestion. Within each, the
+composition root is the only place a `run*` function is called, and a reader is
+decoded from Schema before it is projected onto a domain model.
+
+The engine is read-only against GitHub and read/write against EmDash, and it does
+not import app code — the one shape it duplicates on purpose is the EmDash entry
+response, which is a documented HTTP contract rather than a shared module.
 
 ## What is deliberately absent
 
@@ -254,6 +326,10 @@ silently rather than erroring:
   bytes, which content addressing makes cheap. The merge policy already carries
   the audit trail a takedown needs: the licence quote and hash are kept on the
   example, so a correction can show what the evidence was when it was read.
+- #42 safe public asset-use and attribution — `src/lib/asset-use.ts` decides, the
+  two API routes gate, and `/use/<slug>` shows. A payload is only offered when
+  a licence permits it, a credit is recorded, the original is retained and a
+  digest exists; the route then verifies the digest before serving.
 - #41 resumable crawling — the candidate store is content-addressed and records
   completed search waves, so an interrupted hunt resumes. A cheap metadata
   re-check before any file read is the remaining half.

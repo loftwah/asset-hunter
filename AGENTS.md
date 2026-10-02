@@ -15,6 +15,46 @@ concept, one word. Look terms up in `src/lib/vocabulary.ts` rather than
 re-deriving them from slugs — that is how the same concept ends up spelled three
 different ways across the wall, search and the drill-in.
 
+## Effect 4 is the default for effectful code
+
+Effect 4 is a first-class part of this stack, not an experiment. **New and
+changed effectful application code — external I/O, configuration, services,
+decoding, retries, resource lifetime — is written as Effect 4.** Plain
+TypeScript is still correct for synchronous, deterministic domain logic
+(vocabulary, board rules, rating aggregation, licence classification, payload
+building, schema and geometry helpers) and those stay plain.
+
+[`docs/EFFECT_STYLE.md`](docs/EFFECT_STYLE.md) is the house style, derived from
+the code rather than from a tutorial. Read it before writing a loader, a service
+or a config value. In short:
+
+- **Services and layers** live in `src/lib/effect/` and `engine/src/runtime/`
+  (`Context.Service` plus a `static readonly layer`; wire dependencies with
+  `Layer.provide`, never `Layer.mergeAll` into a `Context.Reference`).
+- **Schema** for everything this application did not produce: EmDash rows and
+  bodies, GitHub responses, the publish payload. Projections onto the domain
+  model stay plain functions, and a named rule (`toMeasure`, `flagValue`) decides
+  meaning rather than hiding a coercion in a schema.
+- **Typed failures** via `Schema.TaggedError`. A refusal carries a status; a
+  transport failure does not, and only the second is retryable. The detail goes
+  to the log; a reader gets a sentence.
+- **Runners are centralised.** `src/lib/effect/root.ts` and
+  `engine/src/runtime/root.ts` are the only files that call a `run*` function. A
+  runner anywhere else means the architecture is bypassed.
+- **Cancellation is a resource.** Pass `request.signal` through the runner, and
+  use `Effect.acquireRelease` for anything with a real lifetime.
+- **Unstable modules are gated.** No `effect/http`, `effect/cli`, `effect/sql`,
+  `effect/workers` or any other `@stability unstable` module without a written
+  reason. `effect@4.0.0` also has several combinators that throw on first use;
+  `docs/EFFECT_STYLE.md` lists them with the workarounds used here.
+- **Tests** use `node:test` with `TestClock` for time and service substitution
+  for I/O. `tests/effect.test.ts` is the reference.
+
+Effect 4 changed a great deal from 3. Check the current docs before working from
+memory: [4.0 release](https://effect.website/blog/releases/effect/40),
+[migration guide](https://github.com/Effect-TS/effect/blob/main/MIGRATION.md),
+[running effects](https://effect.website/docs/v4/getting-started/running-effects).
+
 ## Product mission
 
 Asset Hunter discovers useful assets/resources and the distinct **possibilities** they demonstrate, preserves provenance/licensing, classifies and previews them, compresses duplicate inventory into representative option-space coverage, and exposes the result through a media-first catalogue.
@@ -31,6 +71,9 @@ The product must preserve both halves:
 - Preserve immutable originals, hashes, provenance and exact licence evidence. Unknown/unlicensed/reference material is never presented as cleared for use.
 - Generated/derived examples must be distinguishable from upstream originals.
 - Do not weaken tests or acceptance criteria to make an issue pass.
+- Effectful application code defaults to Effect 4, per the house style above. Do
+  not add a new hand-rolled service, decoding path, retry loop or error-message
+  convention beside the ones that already exist.
 - Do not introduce paid GitHub Actions usage. Hosted Actions must remain disabled unless their $0 cost is explicitly demonstrated and justified; prefer local/repository qualification and Cloudflare-native deployment tooling.
 - Preserve unrelated user work and secrets.
 

@@ -4,11 +4,19 @@
 	"main": "./src/worker.ts",
 	"compatibility_date": "2026-02-24",
 	"compatibility_flags": ["nodejs_compat"],
+	// No `migrations_dir`: this project has no hand-written SQL migrations.
+	// EmDash's migrations are deployment-managed and recorded in
+	// `.emdash/migrations.json` — see docs/DEPLOY.md. Declaring a directory
+	// that does not exist would make `wrangler d1 migrations apply` look
+	// configured while having nothing to apply.
+	//
+	// `database_id` is filled in by `wrangler d1 create asset-hunter` and is
+	// deliberately not committed with a placeholder: a placeholder would fail
+	// at deploy time instead of failing here.
 	"d1_databases": [
 		{
 			"binding": "DB",
-			"database_name": "asset-hunter",
-			"migrations_dir": "migrations"
+			"database_name": "asset-hunter"
 		}
 	],
 	"r2_buckets": [

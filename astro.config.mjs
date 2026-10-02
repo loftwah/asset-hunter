@@ -24,16 +24,22 @@ export default defineConfig({
 	devToolbar: { enabled: false },
 	site: "https://assets.loftwah.com",
 	/**
-	 * Vite's dependency optimiser cannot pre-bundle a few of EmDash's runtime
-	 * dependencies — `modern-tar` resolves through Node builtins that do not
-	 * exist in workerd. Left to the optimiser they produce a stale
-	 * `deps_ssr` chunk reference and every route 500s with a confusing
+	 * Vite's dependency optimiser cannot pre-bundle a few of this app's runtime
+	 * dependencies, and when it tries, every route 500s with a confusing
 	 * "optimize deps" error until `node_modules/.vite` is deleted by hand.
+	 *
+	 * - `modern-tar` resolves through Node builtins that do not exist in workerd.
+	 * - EmDash's own packages are excluded because they are the integration this
+	 *   project is built on and must be loaded through the normal module graph.
+	 * - `effect` is excluded for the same reason class: it is a large, carefully
+	 *   tree-shaken library that the optimiser's single-chunk pre-bundle defeats,
+	 *   and it must run *inside* workerd rather than in a Node-shaped wrapper. #62.
+	 *
 	 * Excluding them lets Vite serve them through the normal module graph.
 	 */
 	vite: {
 		optimizeDeps: {
-			exclude: ["emdash", "@emdash-cms/admin", "@emdash-cms/cloudflare"],
+			exclude: ["emdash", "@emdash-cms/admin", "@emdash-cms/cloudflare", "effect"],
 			include: [],
 		},
 		ssr: {

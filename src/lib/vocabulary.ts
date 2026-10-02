@@ -10,6 +10,79 @@ export type RightsStatus = "cleared" | "attribution" | "review" | "reference";
 export type Origin = "upstream" | "derived" | "generated";
 export type Vertical = string;
 
+/**
+ * The per-example use state (#42).
+ *
+ * A rights status answers "what does the licence permit". A use state answers
+ * "what may I do with the example in front of me", which is the question a
+ * reader actually has on the drill-in and the only one the asset-use flow is
+ * allowed to answer. The two are separate concepts and are never collapsed into
+ * one another: `cleared` and `reusable` happen to be the same answer, and
+ * `attribution` and `reusable-with-attribution` are the same answer, but the
+ * tile shows the status and the use decision shows the state.
+ *
+ * Nothing here is a euphemism for "probably fine". There is no state whose
+ * label is a softer word than its meaning — that is what `reference-only` and
+ * `review-required` are for.
+ */
+export type UseState =
+	| "reusable"
+	| "reusable-with-attribution"
+	| "review-required"
+	| "reference-only";
+
+export const USE_STATE_LABEL: Record<UseState, string> = {
+	reusable: "Reusable",
+	"reusable-with-attribution": "Reusable with attribution",
+	"review-required": "Review required",
+	"reference-only": "Reference only",
+};
+
+/**
+ * A sentence per use state, not a word. Same rule as the rights meanings: the
+ * most consequential sentence on the page has to be a complete one, and
+ * "reference only" in particular must not read as a softer "reusable".
+ */
+export const USE_STATE_MEANING: Record<UseState, string> = {
+	reusable: "A licence was read from the source and permits reuse. The original is handed over unmodified.",
+	"reusable-with-attribution":
+		"Reuse is permitted if the recorded credit travels with the asset. The credit is shown in full, not summarised.",
+	"review-required":
+		"Something was found but not understood well enough to rely on. Read the recorded licence evidence before using any of it.",
+	"reference-only":
+		"No licence was found, or reuse is not permitted. Look, and do not copy: this is the whole of its permission.",
+};
+
+/**
+ * What the reader has to do. `null` means the use state places no obligation,
+ * which is true of exactly one state — so this is also the check that
+ * "reusable" is not a licence to be careless.
+ */
+export const USE_STATE_OBLIGATION: Record<UseState, string | null> = {
+	reusable: null,
+	"reusable-with-attribution":
+		"Reproduce the recorded credit wherever the asset appears, including in anything you generate from it.",
+	"review-required":
+		"Read the recorded licence evidence and decide for yourself. Nothing here has been cleared on your behalf.",
+	"reference-only":
+		"Do not copy, ship or redistribute. Opening the canonical source is the extent of what is permitted from this page.",
+};
+
+/**
+ * The colour token for a use state.
+ *
+ * It is the token the matching rights status already uses, because the two
+ * always answer together — but the mapping lives here so no component derives a
+ * CSS custom-property name out of a state slug, which is how a design token
+ * ends up renamed on one surface and not another.
+ */
+export const USE_STATE_COLOR: Record<UseState, string> = {
+	reusable: "var(--rights-cleared)",
+	"reusable-with-attribution": "var(--rights-attribution)",
+	"review-required": "var(--rights-review)",
+	"reference-only": "var(--rights-reference)",
+};
+
 export const RIGHTS_LABEL: Record<RightsStatus, string> = {
 	cleared: "Cleared",
 	attribution: "Attribution",
@@ -68,6 +141,26 @@ export const VERTICAL_LABEL: Record<string, string> = {
 export function verticalLabel(slug: string | null | undefined): string {
 	if (!slug) return "Unclassified";
 	return VERTICAL_LABEL[slug] ?? slug.replace(/-/g, " ");
+}
+
+/**
+ * Public label for a rights status, or null when there is none to show.
+ *
+ * Falls back to the stored value rather than to nothing, because a status the
+ * vocabulary has not been taught is still a fact about the record and hiding it
+ * would make an unknown status look like a missing field. The fallback is also
+ * what keeps a component from casting `string` into the union by hand, which is
+ * how a fourth status ends up rendered three different ways.
+ */
+export function rightsLabelFor(status: string | null | undefined): string | null {
+	if (!status) return null;
+	return RIGHTS_LABEL[status as RightsStatus] ?? status;
+}
+
+/** Public label for an origin, with the same fallback rule as `rightsLabelFor`. */
+export function originLabelFor(origin: string | null | undefined): string | null {
+	if (!origin) return null;
+	return ORIGIN_LABEL[origin as Origin] ?? origin;
 }
 
 export const MEDIA_LABEL: Record<string, string> = {

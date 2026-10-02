@@ -4,7 +4,7 @@
  * catalogue tile, so it gets a dot plus a real label rather than colour alone —
  * colour-blind users and greyscale screenshots must carry the same meaning.
  */
-import { RIGHTS_LABEL, ORIGIN_LABEL, rightsColor, originColor } from "../lib/vocabulary";
+import { originLabelFor, rightsColor, rightsLabelFor, originColor } from "../lib/vocabulary";
 
 interface Props {
 	rights?: string | null;
@@ -22,7 +22,7 @@ const fs = size === "sm" ? "0.94rem" : "1rem";
 		rights && (
 			<span class="marker marker--rights" style={`--c:${rightsColor(rights)}`}>
 				<span class="dot" aria-hidden="true" />
-				<span class="label">{RIGHTS_LABEL[rights as keyof typeof RIGHTS_LABEL] ?? rights}</span>
+				<span class="label">{rightsLabelFor(rights)}</span>
 			</span>
 		)
 	}
@@ -30,7 +30,7 @@ const fs = size === "sm" ? "0.94rem" : "1rem";
 		showOrigin && origin && (
 			<span class="marker marker--origin" style={`--c:${originColor(origin)}`}>
 				<span class="dot dot--hollow" aria-hidden="true" />
-				<span class="label">{ORIGIN_LABEL[origin as keyof typeof ORIGIN_LABEL] ?? origin}</span>
+				<span class="label">{originLabelFor(origin)}</span>
 			</span>
 		)
 	}

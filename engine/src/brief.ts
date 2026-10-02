@@ -134,10 +134,20 @@ export function validateBrief(input: unknown): ValidatedBrief {
 			`constraints.unlicensedPolicy must be keep|metadata-only|reject, got "${constraints.unlicensedPolicy}"`,
 		);
 	}
-	if (constraints.budgets?.maxFilesPerRepo !== undefined && Number(constraints.budgets.maxFilesPerRepo) <= 0) {
+	// `budgets` is optional and its own fields are optional, so it is narrowed
+	// explicitly rather than reached through `constraints.budgets?.x`. The old
+	// form typechecked only because `constraints` was `Record<string, unknown>`
+	// and every property read was unchecked; TypeScript 6 stopped allowing the
+	// implicit `{}` it inferred, which is the correct complaint — a budget read
+	// out of untyped JSON should be narrowed, not assumed.
+	const budgets: Record<string, unknown> | undefined =
+		typeof constraints.budgets === "object" && constraints.budgets !== null
+			? (constraints.budgets as Record<string, unknown>)
+			: undefined;
+	if (budgets?.maxFilesPerRepo !== undefined && Number(budgets.maxFilesPerRepo) <= 0) {
 		problems.push("constraints.budgets.maxFilesPerRepo must be greater than zero");
 	}
-	if (constraints.budgets?.maxBytes !== undefined && Number(constraints.budgets.maxBytes) <= 0) {
+	if (budgets?.maxBytes !== undefined && Number(budgets.maxBytes) <= 0) {
 		problems.push("constraints.budgets.maxBytes must be greater than zero");
 	}
 

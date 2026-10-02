@@ -2,16 +2,21 @@
 import Base from "../../layouts/Base.astro";
 import PossibilityTile from "../../components/PossibilityTile.astro";
 import { loadCollection, loadCollections } from "../../lib/catalogue";
+import { runApp } from "../../lib/effect/root.ts";
 import { verticalLabel } from "../../lib/vocabulary";
 
 const { slug } = Astro.params;
-const collection = await loadCollection(slug ?? "");
+// `.astro` frontmatter is a framework edge, so it is one of the two places
+// allowed to call a runner — and it goes through the same composition root as
+// every API route, so the catalogue read here has the same timeout, retry and
+// cancellation as the JSON contract's.
+const collection = await runApp(loadCollection(slug ?? ""), { signal: Astro.request.signal });
 
 if (!collection) {
 	return Astro.rewrite("/404");
 }
 
-const { collections } = await loadCollections();
+const { collections } = await runApp(loadCollections(), { signal: Astro.request.signal });
 // Siblings share members more often than not; suggest the most overlapping one.
 const mine = new Set(collection.members.map((m) => m.slug));
 const siblings = collections

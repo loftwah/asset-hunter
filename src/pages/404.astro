@@ -8,9 +8,10 @@
  */
 import Base from "../layouts/Base.astro";
 import { loadPossibilities, tallyVerticals } from "../lib/catalogue";
+import { runApp } from "../lib/effect/root";
 import { VERTICAL_LABEL } from "../lib/vocabulary";
 
-const { possibilities } = await loadPossibilities();
+const { possibilities } = await runApp(loadPossibilities());
 const verticals = tallyVerticals(possibilities);
 ---
 

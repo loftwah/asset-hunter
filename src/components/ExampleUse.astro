@@ -1,0 +1,446 @@
+---
+/**
+ * The use block for one example (#42).
+ *
+ * This is the only place the public catalogue decides what a reader may do with
+ * an example, and it renders the same block on the drill-in and on the use page
+ * so the two cannot disagree. Every decision comes from `src/lib/asset-use.ts`;
+ * this file only lays the answer out.
+ *
+ * Three things it deliberately does not do:
+ *
+ * - **No disabled download.** A control that cannot be used is a claim about the
+ *   record, and claims about the record are made in words. The absence of a
+ *   download is stated, with the reason, so nobody has to guess whether it was
+ *   missed or withheld.
+ * - **No colour-only state.** The use state is a word and a sentence; the ring
+ *   is reinforcement, because a green ring next to a licence nobody has read is
+ *   the failure this project exists to prevent.
+ * - **No credit unless one is recorded.** There is no template and no author
+ *   field to fill in later.
+ */
+import {
+	creditBlockId,
+	creditText,
+	revisionRows,
+	useActions,
+	useDecision,
+} from "../lib/asset-use";
+import { USE_STATE_COLOR } from "../lib/vocabulary";
+import type { Example } from "../lib/catalogue";
+
+interface Props {
+	example: Example;
+	/**
+	 * The use page adds the preview/original distinction, which needs the page's
+	 * whole context. The drill-in already shows the plate beside the block.
+	 */
+	full?: boolean;
+	/** The media shown beside this block, named so the two are never confused. */
+	plateCaption?: string;
+}
+
+const { example, full = false, plateCaption } = Astro.props;
+const decision = useDecision(example);
+const actions = useActions(example);
+const credit = creditText(example);
+const revision = revisionRows(example);
+const evidence = example.licenceEvidence?.trim() ?? "";
+const stateColor = USE_STATE_COLOR[decision.state];
+const copyId = creditBlockId(example.slug);
+const byId = (id: string) => actions.find((action) => action.id === id);
+
+/*
+ * A disclosure is its own control: the `<summary>` below is the action, so the
+ * action list holds only the controls that are separate elements. Rendering an
+ * "inspect the licence evidence" link as well would be a link to an anchor that
+ * opens nothing, which is worse than saying nothing.
+ */
+/*
+ * The canonical URL is not repeated at the foot of the block. The upstream
+ * action already opens it, and the revision disclosure already prints the raw
+ * URL as a provenance row; a third copy is a 13px-high link that duplicates a
+ * row the reader already has.
+ */
+const controls = actions.filter((action) => action.kind !== "disclosure");
+const evidenceAction = byId("licence-evidence");
+const revisionAction = byId("revision");
+---
+
+<div
+	class="use"
+	style={`--c:${stateColor}`}
+	data-use-state={decision.state}
+	data-handoff={decision.handoff.as}
+>
+	<p class="use__state">
+		<span class="use__ring" aria-hidden="true" />
+		<span class="use__head">
+			<strong class="use__label">{decision.label}</strong>
+			<span class="use__meaning">{decision.meaning}</span>
+		</span>
+	</p>
+
+	{
+		decision.obligation && (
+			<p class="use__obligation">
+				<span class="tag">Obligation</span>
+				{decision.obligation}
+			</p>
+		)
+	}
+
+	<p class="use__handoff">{decision.handoff.statement}</p>
+
+	{
+		full && plateCaption && (
+			<p class="use__preview">
+				<span class="tag">What is on screen</span>
+				{plateCaption}
+			</p>
+		)
+	}
+
+	{
+		controls.length > 0 && (
+			<ul class="use__actions">
+				{controls.map((action) => (
+					<li class="use__action" data-action={action.id}>
+						{action.kind === "copy" ? (
+							<button type="button" class="use__control" data-copy={action.copies}>
+								{action.label}
+							</button>
+						) : (
+							<a
+								href={action.href}
+								class:list={[
+									"use__control",
+									{ "use__control--primary": action.kind === "download" },
+								]}
+								rel={action.external ? "noopener noreferrer nofollow" : undefined}
+								target={action.external ? "_blank" : undefined}
+							>
+								{action.label}
+							</a>
+						)}
+						<span class="use__note">{action.note}</span>
+					</li>
+				))}
+			</ul>
+		)
+	}
+
+	{
+		evidenceAction && evidence && (
+			<details class="use__disclosure">
+				<summary class="tag">{evidenceAction.label}</summary>
+				<p class="use__note">{evidenceAction.note}</p>
+				<blockquote class="use__quote">{evidence}</blockquote>
+			</details>
+		)
+	}
+
+	{
+		revisionAction && revision.length > 0 && (
+			<details class="use__disclosure">
+				<summary class="tag">{revisionAction.label}</summary>
+				<p class="use__note">{revisionAction.note}</p>
+				<dl class="use__rows">
+					{revision.map((row) => (
+						<div class="use__row">
+							<dt class="tag">{row.label}</dt>
+							<dd>{row.value}</dd>
+						</div>
+					))}
+				</dl>
+			</details>
+		)
+	}
+
+	{
+		credit && (
+			<div class="use__credit">
+				{/*
+				 * Labelled "Recorded credit", not "credit you must reproduce": only
+				 * the attribution state carries that obligation, and a review-required
+				 * example showing the same heading would be telling a reader to
+				 * reproduce something nobody has established they owe. The obligation
+				 * is stated separately, above, where it belongs.
+				 */}
+				<p class="tag">Recorded credit</p>
+				<label class="visually-hidden" for={copyId}>
+					Recorded credit for {example.title}
+				</label>
+				<textarea id={copyId} readonly rows={credit.split("\n").length + 1}>{credit}</textarea>
+				<p class="use__note">
+					Reproduced exactly as recorded, with nothing added. Whether reproducing it is owed is
+					what the obligation above says. Selecting the text copies it with a keyboard; the
+					button does it in one press where the browser allows it.
+				</p>
+			</div>
+		)
+	}
+
+	{/*
+	 * The credit gap is only worth stating when the credit is what stands
+	 * between the reader and a lawful use. For a reference-only example the
+	 * handoff statement above has already named the real obstacle, and
+	 * repeating a second one beside it reads as a second problem.
+	 */}
+	{
+		!credit && decision.creditGap && decision.state === "reusable-with-attribution" && (
+			<p class="use__gap">
+				<span class="tag">Credit</span>
+				{decision.creditGap}
+			</p>
+		)
+	}
+
+</div>
+
+<script>
+	/**
+	 * Copy-to-clipboard for the credit blocks.
+	 *
+	 * The credit is in a readonly textarea first, so it is selectable and
+	 * copyable with a keyboard and a screen reader whether or not this script
+	 * ever runs. The button is removed when the clipboard is unavailable rather
+	 * than left in place doing nothing: a control that looks live and is not is
+	 * worse than no control, and this design leans on nothing needing JavaScript
+	 * to be usable.
+	 */
+	const wire = () => {
+		if (document.documentElement.dataset.ahCopyWired) return;
+		document.documentElement.dataset.ahCopyWired = "1";
+		for (const button of document.querySelectorAll<HTMLButtonElement>("[data-copy]")) {
+			const target = button.dataset.copy;
+			const source = target ? (document.getElementById(target) as HTMLTextAreaElement | null) : null;
+			if (!source || !navigator.clipboard?.writeText) {
+				button.remove();
+				continue;
+			}
+			button.addEventListener("click", async () => {
+				const original = button.textContent;
+				try {
+					await navigator.clipboard.writeText(source.value);
+					button.textContent = "Credit copied";
+				} catch {
+					// Clipboard permission refused. The textarea is still there and
+					// still selectable, so point at it rather than pretending the
+					// copy worked.
+					button.textContent = "Select the text above to copy";
+				}
+				setTimeout(() => {
+					button.textContent = original;
+				}, 2400);
+			});
+		}
+	};
+	wire();
+</script>
+
+<style>
+	.use {
+		display: grid;
+		gap: var(--sp-3);
+		padding: var(--sp-4);
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-left: 2px solid var(--c, var(--line-loud));
+		border-radius: var(--radius);
+	}
+
+	.use__state {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		gap: 0.4rem 0.7rem;
+		align-items: start;
+	}
+
+	/* A ring, not a filled dot: the drill-in already uses a filled dot for
+	   origin, and the two encodings have to stay tellable apart at a glance. */
+	.use__ring {
+		margin-top: 0.4em;
+		width: 0.7rem;
+		height: 0.7rem;
+		border-radius: 50%;
+		box-shadow: inset 0 0 0 2px var(--c);
+	}
+
+	.use__head {
+		display: grid;
+		gap: 0.25rem;
+	}
+
+	.use__label {
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--ink);
+	}
+
+	.use__meaning {
+		font-size: var(--step--1);
+		line-height: 1.5;
+		color: var(--ink-2);
+	}
+
+	.use__obligation,
+	.use__gap,
+	.use__preview,
+	.use__handoff {
+		font-size: var(--step--1);
+		line-height: 1.55;
+		color: var(--ink-2);
+		/* The block spans the shell, so its prose needs the measure cap the rest
+		   of the catalogue's prose has. Full-width body copy is the one thing
+		   that looks cheap on a wide screen. */
+		max-width: var(--measure);
+	}
+
+	.use__obligation .tag,
+	.use__gap .tag,
+	.use__preview .tag {
+		display: block;
+		margin-bottom: 0.2rem;
+	}
+
+	/* The handoff statement answers "why is there no download button", so it is
+	   the one line in the block that is given room. */
+	.use__handoff,
+	.use__preview {
+		color: var(--ink-3);
+	}
+
+	.use__actions {
+		display: grid;
+		gap: var(--sp-2);
+		list-style: none;
+		padding: var(--sp-3) 0 0;
+		margin-top: var(--sp-1);
+		border-top: 1px solid var(--line);
+	}
+
+	.use__action {
+		display: grid;
+		gap: 0.15rem;
+	}
+
+	.use__control {
+		justify-self: start;
+		display: inline-flex;
+		align-items: center;
+		min-height: 2.25rem;
+		padding: 0.35rem 0.7rem;
+		background: var(--surface-2);
+		border: 1px solid var(--line-loud);
+		border-radius: var(--radius);
+		color: var(--ink-2);
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		letter-spacing: 0.04em;
+		text-align: left;
+		cursor: pointer;
+		transition:
+			color var(--dur-fast) var(--ease-out),
+			border-color var(--dur-fast) var(--ease-out);
+	}
+
+	.use__control:hover {
+		color: var(--ink);
+		border-color: var(--ember-line);
+	}
+
+	/* A download is the highest-priority element on the page, so it gets the
+	   single accent — never two, and never a decorative glow. */
+	.use__control--primary,
+	.use__control--primary:hover {
+		background: var(--ember);
+		border-color: var(--ember);
+		color: var(--canvas);
+		font-weight: 600;
+	}
+
+	.use__note {
+		font-size: var(--step--2);
+		line-height: 1.45;
+		color: var(--ink-3);
+		max-width: var(--measure);
+	}
+
+	.use__disclosure {
+		border-top: 1px solid var(--line);
+		padding-top: var(--sp-2);
+	}
+
+	.use__disclosure summary {
+		cursor: pointer;
+		min-height: 2rem;
+		padding-block: var(--sp-2);
+		list-style: revert;
+	}
+
+	.use__quote {
+		margin: var(--sp-2) 0 0;
+		padding: var(--sp-3);
+		background: var(--surface-2);
+		border-left: 2px solid var(--ember-line);
+		border-radius: var(--radius);
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		line-height: 1.6;
+		color: var(--ink-2);
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
+
+	.use__rows {
+		display: grid;
+		gap: var(--sp-2);
+		margin-top: var(--sp-2);
+	}
+
+	.use__row {
+		display: grid;
+		grid-template-columns: 8rem minmax(0, 1fr);
+		gap: var(--sp-3);
+		align-items: baseline;
+	}
+
+	.use__row dd {
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		color: var(--ink-2);
+		overflow-wrap: anywhere;
+	}
+
+	.use__credit {
+		display: grid;
+		gap: var(--sp-2);
+		padding-top: var(--sp-3);
+		border-top: 1px solid var(--line);
+	}
+
+	.use__credit textarea {
+		width: 100%;
+		max-width: 34rem;
+		padding: var(--sp-3);
+		background: var(--surface-2);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		color: var(--ink-2);
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		line-height: 1.6;
+		resize: vertical;
+	}
+
+	@media (width <= 560px) {
+		.use__row {
+			grid-template-columns: 1fr;
+			gap: 0.15rem;
+		}
+	}
+</style>

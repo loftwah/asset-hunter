@@ -18,11 +18,13 @@ import {
 	type Possibility,
 } from "../lib/catalogue";
 import { MEDIA_LABEL, verticalLabel } from "../lib/vocabulary";
+import { Effect } from "effect";
+import { runApp } from "../lib/effect/root";
 
 const query = (Astro.url.searchParams.get("q") ?? "").trim();
 const all = query.length > 0 ? await search(query, { limit: 60 }) : { items: [] };
 
-const { possibilities } = await loadPossibilities();
+const { possibilities } = await runApp(loadPossibilities(), { signal: Astro.request.signal });
 const bySlug = new Map(possibilities.map((p) => [p.slug, p]));
 
 // Only possibilities and collections are surfaced as results; examples and
@@ -92,7 +94,12 @@ const hits = rawHits.map((item) => ({
 // costs a reference-resolution request, and most searches hit none.
 const collectionHits = hits.filter((h) => !h.possibility).length;
 const collectionBySlug = collectionHits
-	? new Map((await loadCollections()).collections.map((c) => [c.slug, c]))
+	? new Map(
+			(await runApp(loadCollections(), { signal: Astro.request.signal })).collections.map((c) => [
+				c.slug,
+				c,
+			]),
+		)
 	: new Map<
 			string,
 			{ title: string; tagline?: string | null; summary?: string | null; members: unknown[] }

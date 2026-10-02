@@ -80,7 +80,9 @@ export function mergePossibility(
 	existing: Record<string, unknown> | null,
 	incoming: Record<string, unknown>,
 ): MergeResult {
-	const result: MergeResult = { write: {}, preserved: [], changed: [], notes: [] };
+	// `merged` starts as a copy of the incoming record and is filled in as the
+	// policy decides each field; `write` is the subset that actually differs.
+	const result: MergeResult = { write: {}, merged: {}, preserved: [], changed: [], notes: [] };
 
 	if (!existing) {
 		// Creation. The engine supplies an initial rank of 0 so a new machine
@@ -178,7 +180,7 @@ export function mergeExample(
 			notes: ["created as a draft"],
 		};
 	}
-	const result: MergeResult = { write: {}, preserved: [], changed: [], notes: [] };
+	const result: MergeResult = { write: {}, merged: {}, preserved: [], changed: [], notes: [] };
 	const machineFields = [
 		...ENGINE_OWNED_FIELDS,
 		"origin",

@@ -4,12 +4,14 @@
 	"main": "./src/worker.ts",
 	"compatibility_date": "2026-02-24",
 	"compatibility_flags": ["nodejs_compat"],
+	// `database_id: "local"` is what keeps local work off production. There is
+	// no `migrations_dir` here either — EmDash migrations are managed by
+	// EmDash, not by SQL files in this repository.
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "asset-hunter",
-			"database_id": "local",
-			"migrations_dir": "migrations"
+			"database_id": "local"
 		}
 	],
 	"r2_buckets": [

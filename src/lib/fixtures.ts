@@ -16,7 +16,7 @@
  * broken preview — and shipping them would put lies on the public site.
  */
 
-import type { Possibility } from "./catalogue.ts";
+import type { Example, Possibility } from "./catalogue.ts";
 import type { RightsStatus } from "./vocabulary.ts";
 
 export interface LabState {
@@ -238,6 +238,147 @@ export const STATE_FIXTURES: LabState[] = [
 			rightsStatus: null,
 			representativeOrigin: null,
 			specimen: null,
+		}),
+	},
+];
+
+/* -------------------------------------------------------------------------- */
+/* Asset use (#42)                                                             */
+/* -------------------------------------------------------------------------- */
+
+export interface UseFixture {
+	/** What the fixture is proving. Shown above it in the lab. */
+	note: string;
+	example: Example;
+}
+
+/**
+ * An example literal, so a use state can be rendered without a record behind it.
+ *
+ * The point of these fixtures is the four use states and the two handoff
+ * outcomes, and the catalogue currently holds only one of them — a set of
+ * generated plates that are all reference only. Without fixtures the three
+ * reuse states would exist only in a unit test, which is exactly the "state that
+ * only exists in a screenshot" problem the lab was built to prevent.
+ */
+const exampleOf = (over: Partial<Example> & { slug: string }): Example => ({
+	title: over.slug.replace(/-/g, " "),
+	origin: "upstream",
+	mediaKind: "image",
+	specimen: plate("grain-field"),
+	image: null,
+	rightsStatus: "reference",
+	rightsNote: null,
+	note: null,
+	sourceUrl: null,
+	sourceRepo: null,
+	sourceRef: null,
+	sourcePath: null,
+	licenceSpdx: null,
+	licenceEvidence: null,
+	attribution: null,
+	contentHash: null,
+	downloadable: false,
+	...over,
+});
+
+/** A well-formed SHA-256, so the hash fixtures look like real ones. */
+const HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+/**
+ * The four use states, plus the three handoff outcomes that are not about rights.
+ *
+ * Ordered so the most restrictive answer is read first, which is the order the
+ * selection summary on `/use/<slug>` uses.
+ */
+export const USE_FIXTURES: UseFixture[] = [
+	{
+		note: "reference only — no download, and the reason stated",
+		example: exampleOf({
+			slug: "fixture-use-reference",
+			title: "Grain plate scanned from an uncredited archive",
+			rightsStatus: "reference",
+			rightsNote: "The archive published no terms. It stays because the treatment is real.",
+		}),
+	},
+	{
+		note: "review required — something found, nothing understood",
+		example: exampleOf({
+			slug: "fixture-use-review",
+			title: "Shared-economy icon set with a custom notice",
+			rightsStatus: "review",
+			licenceSpdx: "LicenseRef-scene-share",
+			licenceEvidence:
+				"\"Assets in this pack may be used in scenes sold to third parties, provided the pack is not redistributed in whole or in part.\"\n— LICENSE-NOTICE, read at the commit recorded below.",
+			sourceUrl: "https://github.com/example/shared-economy-icons",
+			sourceRepo: "example/shared-economy-icons",
+			sourceRef: "a1b2c3d",
+			sourcePath: "icons/LICENSE-NOTICE",
+		}),
+	},
+	{
+		note: "reusable with attribution — the credit is shown, not summarised",
+		example: exampleOf({
+			slug: "fixture-use-attribution",
+			title: "Paper texture set with a recorded credit",
+			rightsStatus: "attribution",
+			licenceSpdx: "CC-BY-4.0",
+			licenceEvidence:
+				"\"You are free to share and adapt this texture for any purpose, provided you give appropriate credit.\"\n— LICENSE, read at the commit recorded below.",
+			attribution: "\"Paper textures\" by Wren Aliyeva, released under CC BY 4.0.",
+			sourceUrl: "https://github.com/example/paper-textures",
+			sourceRepo: "example/paper-textures",
+			sourceRef: "9f8e7d6",
+			sourcePath: "textures/paper-01.png",
+			contentHash: HASH,
+			downloadable: false,
+		}),
+	},
+	{
+		note: "reusable — retained, hashed, and offered for download",
+		example: exampleOf({
+			slug: "fixture-use-reusable",
+			title: "Ambient loop cleared for reuse with the credit recorded",
+			rightsStatus: "cleared",
+			licenceSpdx: "CC0-1.0",
+			licenceEvidence:
+				"\"This work has been released into the public domain.\"\n— LICENSE, read at the commit recorded below.",
+			attribution: "Public domain. No attribution required, and none is claimed.",
+			sourceUrl: "https://github.com/example/ambient-loops",
+			sourceRepo: "example/ambient-loops",
+			sourceRef: "c0ffee1",
+			sourcePath: "loops/room-tone-90s.wav",
+			contentHash: HASH,
+			downloadable: true,
+		}),
+	},
+	{
+		note: "reusable but not retained — permitted, and nothing to hand over",
+		example: exampleOf({
+			slug: "fixture-use-not-retained",
+			title: "Noise floor cleared upstream and not kept here",
+			rightsStatus: "cleared",
+			licenceSpdx: "MIT",
+			attribution: "\"noise-floor\" by T. Okafor, MIT.",
+			sourceUrl: "https://github.com/example/noise-floor",
+			sourceRepo: "example/noise-floor",
+			sourcePath: "audio/floor.wav",
+			downloadable: false,
+		}),
+	},
+	{
+		note: "retained without a hash — nothing served, because nothing can be proven",
+		example: exampleOf({
+			slug: "fixture-use-unverified",
+			title: "A retained sprite sheet with no digest recorded",
+			rightsStatus: "cleared",
+			licenceSpdx: "CC0-1.0",
+			attribution: "Public domain. No attribution required.",
+			sourceUrl: "https://github.com/example/sprite-sheets",
+			sourceRepo: "example/sprite-sheets",
+			sourcePath: "sprites/run.png",
+			contentHash: null,
+			downloadable: true,
 		}),
 	},
 ];

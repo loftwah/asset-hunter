@@ -111,10 +111,41 @@ check("D1 binding declared", /d1_databases/.test(wrangler));
 check("R2 binding declared", /r2_buckets/.test(wrangler));
 check("worker entry exists", existsSync(`${root}src/worker.ts`), "src/worker.ts");
 check("nodejs_compat flag", /nodejs_compat/.test(wrangler), "required by the EmDash worker");
+
+// The production D1 needs a real id. Without one `wrangler deploy` cannot bind
+// the database, so this is the difference between a documented deployment path
+// and a plausible-looking one. The local config keeps `database_id: "local"`,
+// which is what stops local work from reaching production — so the production
+// config carrying "local" would be a serious mistake, not a missing step.
+const productionDbId = wrangler.match(/"database_id"\s*:\s*"([^"]*)"/)?.[1] ?? null;
 check(
-	"migrations directory configured",
-	/migrations_dir/.test(wrangler) || existsSync(`${root}migrations`),
-	/migrations_dir/.test(wrangler) ? "migrations_dir set" : "not configured",
+	"production D1 database_id set",
+	Boolean(productionDbId) && productionDbId !== "local",
+	productionDbId === "local"
+		? 'wrangler.jsonc has database_id "local" — local and production are the same database'
+		: productionDbId ?? "not set — run: wrangler d1 create asset-hunter, then copy the id",
+	"See docs/DEPLOY.md",
+);
+
+// A `migrations_dir` pointing at a directory that does not exist would make
+// `wrangler d1 migrations apply` look configured while having nothing to apply.
+// EmDash's own migrations are deployment-managed; see docs/DEPLOY.md.
+const migrationsDir = wrangler.match(/"migrations_dir"\s*:\s*"([^"]*)"/)?.[1] ?? null;
+check(
+	"migrations_dir points at a real directory",
+	migrationsDir === null || existsSync(`${root}${migrationsDir}`),
+	migrationsDir === null
+		? "not declared — EmDash manages its own migrations"
+		: existsSync(`${root}${migrationsDir}`)
+			? migrationsDir
+			: `"${migrationsDir}" does not exist`,
+	"EmDash migrations are deployment-managed; run: npx emdash migrate --check",
+);
+
+check(
+	"deployment procedure documented",
+	existsSync(`${root}docs/DEPLOY.md`),
+	existsSync(`${root}docs/DEPLOY.md`) ? "docs/DEPLOY.md" : "README.md links to docs/DEPLOY.md but it is missing",
 );
 
 const cloudflareVersion = pkgVersion("@astrojs/cloudflare");

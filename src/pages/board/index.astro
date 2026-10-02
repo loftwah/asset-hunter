@@ -18,6 +18,7 @@
 import Base from "../../layouts/Base.astro";
 import PossibilityTile from "../../components/PossibilityTile.astro";
 import { loadPossibilities } from "../../lib/catalogue";
+import { runApp } from "../../lib/effect/root";
 import { MEDIA_LABEL, RIGHTS_MEANING, verticalLabel } from "../../lib/vocabulary";
 import {
 	COOKIE_NAME,
@@ -35,7 +36,7 @@ const slugs = boards[active] ?? [];
 const totals = boardTotals(boards);
 const back = "/board";
 
-const { possibilities } = await loadPossibilities();
+const { possibilities } = await runApp(loadPossibilities(), { signal: Astro.request.signal });
 const bySlug = new Map(possibilities.map((p) => [p.slug, p]));
 // Only what is in the catalogue survives: a cookie naming something else is
 // dropped here rather than rendered.

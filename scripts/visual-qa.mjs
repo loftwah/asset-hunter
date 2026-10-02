@@ -51,6 +51,10 @@ const ROUTES = [
 	{ path: "/", name: "wall", expect: { ".tile": 20 }, fold: ".tile__plate", plateAspect: ".tile--featured .tile__plate" },
 	{ path: "/?vertical=games", name: "wall-filtered", expect: { ".tile": 2 }, fold: ".tile__plate" },
 	{ path: "/possibilities/density-gradient", name: "detail", expect: { ".section__title": 3 } },
+	// The asset-use flow (#42). Audited like a real route because "no download
+	// appears unless the record permits one" is a visual property too: if a
+	// control ever renders, this capture is the evidence of what changed.
+	{ path: "/use/density-gradient", name: "asset-use", expect: { ".use": 1, ".summary__payload": 1 } },
 	{ path: "/verticals", name: "verticals", expect: { ".row": 10 } },
 	{ path: "/collections", name: "collections", expect: { ".collection": 4 } },
 	{ path: "/collections/seams", name: "collection", expect: { ".tile": 4 }, fold: ".tile__plate" },

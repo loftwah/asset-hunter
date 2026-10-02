@@ -21,8 +21,17 @@
  *    no catalogue, because it is trusted.
  */
 
-import { loadCollections, loadExamplesFor, loadPossibilities, type Example, type Possibility } from "./catalogue.ts";
-import { MEDIA_LABEL, RIGHTS_LABEL, ORIGIN_LABEL, verticalLabel } from "./vocabulary.ts";
+import { DateTime, Effect } from "effect";
+import {
+	REFERENCE_CONCURRENCY,
+	loadCollections,
+	loadExamplesFor,
+	loadPossibilities,
+	type Example,
+	type Possibility,
+} from "./catalogue.ts";
+import { EmDashContent, type EmDashReadError } from "./effect/emdash.ts";
+import { MEDIA_LABEL, originLabelFor, rightsLabelFor, verticalLabel } from "./vocabulary.ts";
 import { aggregateRatings, ratingSummary, type Aggregate } from "./rating.ts";
 import { aggregateBySubject, loadRatings, loadReports } from "./signals.ts";
 
@@ -94,18 +103,21 @@ export interface Catalogue {
 	collections: { id: string; title: string; tagline: string | null; members: string[] }[];
 }
 
-const truthy = (value: unknown): boolean => value === true || value === 1 || value === "1";
-
+/**
+ * The example model already carries `downloadable` as a real boolean
+ * (`mapExample` coerces the CMS 0/1 form once, in `src/lib/catalogue.ts`), so
+ * this contract does not get to invent a second reading of the same field.
+ */
 export function serialiseExample(example: Example): CatalogueExample {
 	return {
 		id: example.slug,
 		title: example.title,
 		origin: example.origin ?? null,
-		originMeaning: example.origin ? (ORIGIN_LABEL[example.origin] ?? null) : null,
+		originMeaning: originLabelFor(example.origin),
 		mediaKind: example.mediaKind ?? null,
 		media: example.mediaKind ? (MEDIA_LABEL[example.mediaKind] ?? example.mediaKind) : null,
 		rightsStatus: example.rightsStatus ?? null,
-		rightsLabel: example.rightsStatus ? RIGHTS_LABEL[example.rightsStatus] ?? null : null,
+		rightsLabel: rightsLabelFor(example.rightsStatus),
 		rightsNote: example.rightsNote ?? null,
 		sourceUrl: example.sourceUrl ?? null,
 		sourceRepo: example.sourceRepo ?? null,
@@ -115,7 +127,7 @@ export function serialiseExample(example: Example): CatalogueExample {
 		licenceEvidence: example.licenceEvidence ?? null,
 		attribution: example.attribution ?? null,
 		contentHash: example.contentHash ?? null,
-		downloadable: truthy(example.downloadable),
+		downloadable: example.downloadable,
 	};
 }
 
@@ -135,11 +147,9 @@ export function serialisePossibility(
 		mediaKind: possibility.mediaKind ?? null,
 		media: possibility.mediaKind ? MEDIA_LABEL[possibility.mediaKind] ?? possibility.mediaKind : null,
 		representativeOrigin: possibility.representativeOrigin ?? null,
-		representativeOriginLabel: possibility.representativeOrigin
-			? ORIGIN_LABEL[possibility.representativeOrigin] ?? null
-			: null,
+		representativeOriginLabel: originLabelFor(possibility.representativeOrigin),
 		rightsStatus: possibility.rightsStatus ?? null,
-		rightsLabel: possibility.rightsStatus ? RIGHTS_LABEL[possibility.rightsStatus] ?? null : null,
+		rightsLabel: rightsLabelFor(possibility.rightsStatus),
 		rightsNote: possibility.rightsNote ?? null,
 		novelty: possibility.novelty ?? null,
 		coverage: possibility.coverage ?? null,
@@ -147,7 +157,7 @@ export function serialisePossibility(
 		distinctSources: possibility.distinctSources ?? 0,
 		communityRating: { average: rating.average, count: rating.count },
 		communityRatingSummary: ratingSummary(rating),
-		featured: truthy(possibility.featured),
+		featured: possibility.featured === true,
 		examples: examples.map(serialiseExample),
 	};
 }
@@ -171,61 +181,90 @@ export function fingerprint(value: unknown): string {
  * fields only through `getEmDashEntry` — the same N+1 the site pays. At
  * catalogue scale that is the cost of using the CMS's own resolution rather than
  * a second query the CMS knows nothing about.
+ *
+ * Two things are Effect-native here and two are not, and the split is the point:
+ *
+ * - **Effect:** the reads, the bounded fan-out over possibilities, and the
+ *   timestamp. `DateTime.nowAsDate` reads Effect's `Clock`, so a test can pin
+ *   `generated` instead of asserting on "roughly now" — which is the only way to
+ *   test a body that is *supposed* to be deterministic apart from its timestamp.
+ * - **Plain:** `serialisePossibility`, `serialiseExample` and `fingerprint`. They
+ *   are pure functions over already-decoded data, they are the part a consumer of
+ *   the JSON contract depends on, and an Effect would only make them harder to
+ *   read and to test.
+ *
+ * The three independent collections are read with `Effect.all` rather than
+ * `Promise.all`, which is the same shape in a runtime that can also be
+ * interrupted. The per-possibility loop keeps the same bound as the rest of the
+ * app: see `REFERENCE_CONCURRENCY` in `./catalogue.ts` for why it is a number
+ * and not `unbounded`.
  */
-export async function buildCatalogue(options: { site?: string; now?: Date } = {}): Promise<Catalogue> {
-	const { possibilities } = await loadPossibilities();
-	const [{ collections }, ratings, reports] = await Promise.all([
-		loadCollections(),
-		loadRatings(),
-		loadReports(),
-	]);
-	const aggregates = aggregateBySubject(ratings);
+export function buildCatalogue(
+	options: { site?: string; now?: Date } = {},
+): Effect.Effect<Catalogue, EmDashReadError, EmDashContent> {
+	return Effect.gen(function* () {
+		const { possibilities } = yield* loadPossibilities();
+		const [{ collections }, ratings, reports] = yield* Effect.all([
+			loadCollections(),
+			loadRatings(),
+			loadReports(),
+		]);
+		const aggregates = aggregateBySubject(ratings);
 
-	const serialised: CataloguePossibility[] = [];
-	for (const possibility of possibilities) {
-		const { examples } = await loadExamplesFor(possibility.slug);
-		const aggregate =
-			aggregates.get(`possibility:${possibility.slug}`) ?? aggregateRatings([]);
-		serialised.push(serialisePossibility(possibility, examples, aggregate));
-	}
-	serialised.sort((a, b) => a.id.localeCompare(b.id));
+		const serialised = yield* Effect.forEach(
+			possibilities,
+			(possibility) =>
+				Effect.gen(function* () {
+					const { examples } = yield* loadExamplesFor(possibility.slug);
+					const aggregate =
+						aggregates.get(`possibility:${possibility.slug}`) ?? aggregateRatings([]);
+					return serialisePossibility(possibility, examples, aggregate);
+				}),
+			{ concurrency: REFERENCE_CONCURRENCY },
+		);
+		serialised.sort((a, b) => a.id.localeCompare(b.id));
 
-	const rights: Record<string, number> = {};
-	const verticals = new Set<string>();
-	let exampleCount = 0;
-	for (const p of serialised) {
-		const status = p.rightsStatus ?? "unstated";
-		rights[status] = (rights[status] ?? 0) + 1;
-		if (p.vertical) verticals.add(p.vertical);
-		exampleCount += p.examples.length;
-	}
+		const rights: Record<string, number> = {};
+		const verticals = new Set<string>();
+		let exampleCount = 0;
+		for (const p of serialised) {
+			const status = p.rightsStatus ?? "unstated";
+			rights[status] = (rights[status] ?? 0) + 1;
+			if (p.vertical) verticals.add(p.vertical);
+			exampleCount += p.examples.length;
+		}
 
-	return {
-		schema: CATALOGUE_SCHEMA,
-		site: options.site ?? "https://assets.loftwah.com",
-		generated: (options.now ?? new Date()).toISOString(),
-		counts: {
-			possibilities: serialised.length,
-			examples: exampleCount,
-			collections: collections.length,
-			verticals: verticals.size,
-			rights,
-		},
-		fingerprint: fingerprint(serialised),
-		possibilities: serialised,
-		collections: collections
-			.map((c) => ({
-				id: c.slug,
-				title: c.title,
-				tagline: c.tagline ?? null,
-				members: c.members.map((m) => m.slug),
-			}))
-			.sort((a, b) => a.id.localeCompare(b.id)),
-	};
+		// Clock-driven rather than `new Date()` buried in a formatter, so the value is
+		// a dependency a test can control. An explicit `now` still wins, which is what
+		// makes a build reproducible.
+		const generated = options.now ?? (yield* DateTime.nowAsDate);
+
+		return {
+			schema: CATALOGUE_SCHEMA,
+			site: options.site ?? "https://assets.loftwah.com",
+			generated: generated.toISOString(),
+			counts: {
+				possibilities: serialised.length,
+				examples: exampleCount,
+				collections: collections.length,
+				verticals: verticals.size,
+				rights,
+			},
+			fingerprint: fingerprint(serialised),
+			possibilities: serialised,
+			collections: collections
+				.map((c) => ({
+					id: c.slug,
+					title: c.title,
+					tagline: c.tagline ?? null,
+					members: c.members.map((m) => m.slug),
+				}))
+				.sort((a, b) => a.id.localeCompare(b.id)),
+		} satisfies Catalogue;
+	});
 }
 
 /** Open reports, for the agent to know what is already known to be wrong. */
-export async function openReportCount(): Promise<number> {
-	const reports = await loadReports();
-	return reports.filter((r) => !r.resolution).length;
+export function openReportCount(): Effect.Effect<number, EmDashReadError, EmDashContent> {
+	return loadReports().pipe(Effect.map((reports) => reports.filter((r) => !r.resolution).length));
 }

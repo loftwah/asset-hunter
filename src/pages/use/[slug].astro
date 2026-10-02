@@ -1,0 +1,532 @@
+---
+/**
+ * Asset use for one possibility (#42).
+ *
+ * This is the selection half of the flow. The drill-in says what a possibility
+ * is; this page says what a reader may actually take away from the examples
+ * beneath it, per example, and what the whole selection owes in return.
+ *
+ * It reads the same records the drill-in reads — `loadPossibility` and
+ * `loadExamplesFor`, both from `src/lib/catalogue.ts` — so the two surfaces
+ * cannot be describing different catalogues. If the drill-in shows three
+ * examples, this page shows those three, with the same rights statuses, because
+ * there is only one set of them.
+ *
+ * The honest state of the asset half is stated in the open rather than implied
+ * by a missing button: today the catalogue retains generated plates and no
+ * upstream originals, so a selection can have zero downloadable assets and that
+ * zero is the answer.
+ */
+import Base from "../../layouts/Base.astro";
+import ExampleUse from "../../components/ExampleUse.astro";
+import {
+	loadExamplesFor,
+	loadPossibility,
+	mediaSrc,
+	type Example,
+	type Possibility,
+} from "../../lib/catalogue";
+import { ORIGIN_MEANING, RIGHTS_MEANING, verticalLabel } from "../../lib/vocabulary";
+import {
+	runRead,
+	selectionCreditText,
+	summariseUse,
+	summaryLine,
+} from "../../lib/asset-use";
+import { COOKIE_NAME, DEFAULT_BOARD, parseBoards } from "../../lib/board";
+
+const { slug } = Astro.params;
+/*
+ * `runRead` is the one bridge from a CMS read to a value, so this route does not
+ * need to know how a read is run. The type arguments are inferred from the read
+ * itself — naming them here would be a second, drifting claim about the shape.
+ */
+const { possibility: p, cacheHint } = await runRead(loadPossibility(slug ?? ""));
+if (Astro.cache?.enabled && cacheHint) Astro.cache.set(cacheHint);
+
+if (!p) {
+	return Astro.rewrite("/404");
+}
+
+const [{ examples }, boards] = await Promise.all([
+	runRead(loadExamplesFor(p.slug)),
+	// A cookie read is synchronous, so this is not a promise — the array keeps
+	// the two independent reads next to each other rather than in two statements.
+	Promise.resolve(parseBoards(Astro.cookies.get(COOKIE_NAME)?.value)),
+]);
+
+const summary = summariseUse(examples);
+const onBoard = (boards[DEFAULT_BOARD] ?? []).includes(p.slug);
+const vertical = p.vertical ? verticalLabel(p.vertical) : null;
+const back = `/use/${p.slug}`;
+
+// The credit for a whole selection, generated from the same recorded evidence as
+// the per-example credits. A selection with no attribution obligations has no
+// credit block, and says so, rather than showing an empty file-shaped box.
+const selectionCredit = selectionCreditText(
+	examples,
+	(example) => example.title || example.slug,
+);
+---
+
+<Base
+	title={`Using ${p.title}`}
+	description={`What may be reused from ${p.title}, what it costs, and which parts are reference only. Same records as the catalogue, with the obligations spelled out.`}
+	path={`/use/${p.slug}`}
+	ogImage={mediaSrc(p)}
+>
+	<article class="use-page">
+		<header class="head shell">
+			<nav class="crumbs" aria-label="Breadcrumb">
+				<a href="/">Catalogue</a>
+				{vertical && <><span aria-hidden="true">/</span><a href={`/verticals#${p.vertical}`}>{vertical}</a></>}
+				<span aria-hidden="true">/</span>
+				<a href={`/possibilities/${p.slug}`}>{p.title}</a>
+				<span aria-hidden="true">/</span>
+				<span class="crumbs__here">Asset use</span>
+			</nav>
+
+			<p class="tag tag--ember">Asset use</p>
+			<h1 class="display head__title">{p.title}</h1>
+			<p class="lede">
+				What you may take from this entry, what you owe if you do, and which parts are
+				reference only. Same records as the catalogue — nothing here is a second opinion.
+			</p>
+
+			<form class="board" method="post" action="/api/board">
+				<input type="hidden" name="action" value={onBoard ? "unsave" : "save"} />
+				<input type="hidden" name="slug" value={p.slug} />
+				<input type="hidden" name="board" value={DEFAULT_BOARD} />
+				<input type="hidden" name="back" value={back} />
+				<button type="submit" aria-pressed={onBoard ? "true" : "false"}>
+					{onBoard ? "On your shortlist — remove" : "Keep on your shortlist"}
+				</button>
+				<span class="board__note">
+					A shortlist is a list you keep while deciding, not a licence. It stores the entry,
+					nothing about the asset.
+				</span>
+			</form>
+		</header>
+
+		<section class="summary shell" aria-labelledby="summary-title">
+			<h2 id="summary-title" class="tag tag-rule">This selection</h2>
+			<p class="summary__line" data-use-summary={summaryLine(summary)}>
+				{summary.total} example{summary.total === 1 ? "" : "s"} · {summaryLine(summary)}
+			</p>
+			<p class="summary__payload" data-payload-count={summary.payloads}>
+				{
+					summary.payloads === 0
+						? "0 retained originals to download. Asset Hunter keeps the licence evidence and the provenance for every example here, and no upstream files, so there is nothing to hand over yet."
+						: `${summary.payloads} retained original${summary.payloads === 1 ? "" : "s"} to download. Each is served unmodified, and its SHA-256 is checked against the record before it is sent.`
+				}
+			</p>
+			{
+				p.rightsStatus && (
+					<p class="summary__status" style={`--c: var(--rights-${p.rightsStatus})`}>
+						<span class="summary__dot" aria-hidden="true" />
+						<strong class="tag">Entry status · {p.rightsStatus === "reference" ? "Reference only" : p.rightsStatus}</strong>
+						{RIGHTS_MEANING[p.rightsStatus as keyof typeof RIGHTS_MEANING]}
+					</p>
+				)
+			}
+			{
+				p.rightsStatus === "reference" && (
+					<p class="summary__warn">
+						An entry can be reference only as a whole and still hold an example you may reuse.
+						The weakest status belongs to the entry, not to every example under it — which is
+						why the states below are read per example.
+					</p>
+				)
+			}
+		</section>
+
+		<section class="picks shell" aria-labelledby="picks-title">
+			<h2 id="picks-title" class="section__title">Example by example</h2>
+			<p class="section__hint">
+				A use state is a statement about one file. Everything above it is a statement about a
+				technique.
+			</p>
+
+			{
+				examples.length === 0 ? (
+					<div class="none">
+						<h3 class="display none__title">No examples are recorded yet</h3>
+						<p class="lede">
+							Which is a real state, not an error: the entry exists and nothing has been
+							attached to it yet. So there is no asset to use, and this page has nothing to
+							claim.
+						</p>
+						<p>
+							<a class="linkish" href={`/possibilities/${p.slug}`}>
+								Back to {p.title}
+							</a>
+						</p>
+					</div>
+				) : (
+					<ul class="picks__list">
+						{examples.map((example) => (
+							<li class="pick" data-example={example.slug}>
+								<div class="pick__head">
+									<img
+										src={mediaSrc(example, mediaSrc(p))}
+										alt={example.title}
+										width="800"
+										height="1000"
+										loading="lazy"
+										decoding="async"
+									/>
+									<div class="pick__ident">
+										<h3 class="pick__title">{example.title}</h3>
+										{example.origin && (
+											<p class="pick__origin">
+												{ORIGIN_MEANING[example.origin as keyof typeof ORIGIN_MEANING]}
+											</p>
+										)}
+										{example.note && <p class="pick__note">{example.note}</p>}
+									</div>
+								</div>
+								<ExampleUse
+									example={example}
+									full
+									plateCaption={
+										example.origin === "generated"
+											? "A plate generated for this catalogue to show the technique. It is not the source asset, and downloading it would not give you one."
+											: "The preview stored on this example. It is a preview: the original is a separate thing, and the use state below is about the original."
+									}
+								/>
+							</li>
+						))}
+					</ul>
+				)
+			}
+		</section>
+
+		{
+			selectionCredit && (
+				<section class="bundle shell" aria-labelledby="bundle-title">
+					<h2 id="bundle-title" class="section__title">Credit for this selection</h2>
+					<p class="section__hint">
+						Every recorded credit in one block, generated from the evidence on the page.
+						Nothing here is written by hand and nothing is filled in — where an example owes
+						you a credit, its use state above says so.
+					</p>
+					<label class="visually-hidden" for="selection-credit">
+						Credits for every example in this selection
+					</label>
+					<textarea id="selection-credit" readonly rows={Math.min(24, selectionCredit.split("\n").length + 1)}>
+						{selectionCredit}
+					</textarea>
+					<p class="bundle__note">
+						Use the whole block, or the per-example credit on each use state. Both are the same
+						recorded text.
+					</p>
+				</section>
+			)
+		}
+
+		<section class="gap shell" aria-labelledby="gap-title">
+			<h2 id="gap-title" class="section__title">What is not here yet</h2>
+			<p>
+				{summary.payloads === 0
+					? "The catalogue holds the evidence and not the files. Every example here is either reference only, or permitted and simply not retained, and there is no third case where a button appears for material nobody has cleared."
+					: "The retained originals are listed above. Anything reference only stays reference only, whatever else in the selection turns out to be reusable."}
+			</p>
+			<p>
+				An example becomes downloadable when a licence was read at a specific commit, a credit
+				was recorded, and the original was retained byte for byte. All three, or none of them —
+				each one on its own is not enough, and the record says which is missing.
+			</p>
+			<p class="gap__links">
+				<a class="linkish" href={`/possibilities/${p.slug}`}>
+					Back to {p.title}
+				</a>
+				<a class="linkish" href="/pages/licensing">
+					How the four rights are classified
+				</a>
+				<a class="linkish" href="/">Back to the catalogue</a>
+			</p>
+		</section>
+	</article>
+</Base>
+
+<style>
+	.use-page {
+		display: grid;
+	}
+
+	.head {
+		display: grid;
+		gap: var(--sp-3);
+		justify-items: start;
+		padding-block: var(--sp-5) var(--sp-6);
+	}
+
+	.crumbs {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.1rem 0.5rem;
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		color: var(--ink-3);
+	}
+
+	/* Padding, not type size, carries the tap target: breadcrumb type is
+	   intentionally small so the hierarchy stays readable. */
+	.crumbs a,
+	.crumbs__here {
+		display: inline-flex;
+		align-items: center;
+		min-height: 1.75rem;
+		padding-inline: 0.15rem;
+	}
+
+	.crumbs a {
+		color: var(--ink-3);
+		transition: color var(--dur-fast) var(--ease-out);
+	}
+
+	.crumbs a:hover {
+		color: var(--ink);
+	}
+
+	.crumbs__here {
+		color: var(--ink-2);
+	}
+
+	.head__title {
+		font-size: var(--step-4);
+		max-width: 26ch;
+	}
+
+	/* --- Board --- */
+
+	.board {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--sp-3);
+		margin-top: var(--sp-2);
+	}
+
+	.board button {
+		min-height: 2.75rem;
+		padding: 0.55rem 1.1rem;
+		background: var(--surface-2);
+		border: 1px solid var(--line-loud);
+		border-radius: var(--radius);
+		color: var(--ink);
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		cursor: pointer;
+	}
+
+	.board button:hover {
+		border-color: var(--ember-line);
+	}
+
+	.board button[aria-pressed="true"] {
+		background: var(--ember);
+		border-color: var(--ember);
+		color: var(--canvas);
+	}
+
+	.board__note {
+		font-size: var(--step--2);
+		color: var(--ink-3);
+		max-width: 44ch;
+	}
+
+	/* --- Summary --- */
+
+	.summary,
+	.picks,
+	.bundle,
+	.gap {
+		display: grid;
+		gap: var(--sp-3);
+		padding-block: var(--sp-6);
+		border-top: 1px solid var(--line);
+	}
+
+	.summary__line,
+	.summary__payload,
+	.summary__warn,
+	.gap p,
+	.bundle__note,
+	.picks p {
+		font-size: var(--step--1);
+		line-height: 1.6;
+		color: var(--ink-2);
+		max-width: var(--measure);
+	}
+
+	.summary__payload {
+		color: var(--ink-3);
+	}
+
+	.summary__status {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		gap: 0.3rem 0.7rem;
+		align-items: baseline;
+		padding: var(--sp-4);
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		font-size: var(--step--1);
+		line-height: 1.55;
+		color: var(--ink-2);
+		max-width: 44rem;
+	}
+
+	.summary__status strong {
+		grid-column: 2;
+	}
+
+	.summary__dot {
+		grid-row: 1 / 3;
+		align-self: center;
+		width: 0.7rem;
+		height: 0.7rem;
+		border-radius: 50%;
+		background: var(--c);
+	}
+
+	.summary__warn {
+		color: var(--ink-3);
+	}
+
+	.section__title {
+		font-family: var(--font-display);
+		font-weight: 600;
+		font-size: var(--step-2);
+		letter-spacing: -0.02em;
+		color: var(--ink);
+	}
+
+	.section__hint {
+		font-size: var(--step--2);
+		color: var(--ink-3);
+		margin-top: calc(var(--sp-2) * -1);
+	}
+
+	/* --- Per-example --- */
+
+	.picks__list {
+		display: grid;
+		gap: var(--sp-5);
+		list-style: none;
+		padding: 0;
+		margin-top: var(--sp-3);
+	}
+
+	.pick {
+		display: grid;
+		gap: var(--sp-3);
+	}
+
+	.pick__head {
+		display: grid;
+		grid-template-columns: 6.5rem minmax(0, 1fr);
+		gap: var(--sp-4);
+		align-items: start;
+	}
+
+	.pick__head img {
+		width: 100%;
+		height: auto;
+		aspect-ratio: 4 / 5;
+		object-fit: cover;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		background: var(--surface);
+	}
+
+	.pick__ident {
+		display: grid;
+		gap: var(--sp-2);
+		align-content: start;
+	}
+
+	.pick__title {
+		font-family: var(--font-display);
+		font-weight: 600;
+		font-size: var(--step-1);
+		letter-spacing: -0.015em;
+		color: var(--ink);
+	}
+
+	.pick__origin,
+	.pick__note {
+		font-size: var(--step--2);
+		line-height: 1.5;
+		color: var(--ink-3);
+	}
+
+	/* --- Bundle --- */
+
+	.bundle textarea {
+		width: 100%;
+		max-width: 40rem;
+		padding: var(--sp-4);
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-left: 2px solid var(--ember-line);
+		border-radius: var(--radius);
+		color: var(--ink-2);
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		line-height: 1.65;
+		resize: vertical;
+	}
+
+	/* --- Gap --- */
+
+	.gap__links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--sp-2) var(--sp-5);
+	}
+
+	.linkish {
+		display: inline-flex;
+		align-items: center;
+		min-height: 2.25rem;
+		color: var(--ink-2);
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		text-decoration: underline;
+		text-decoration-color: var(--ember-line);
+		text-underline-offset: 3px;
+	}
+
+	.linkish:hover {
+		color: var(--ink);
+	}
+
+	.none {
+		display: grid;
+		gap: var(--sp-3);
+		justify-items: start;
+		padding-block: var(--sp-5);
+		max-width: var(--measure);
+	}
+
+	.none__title {
+		font-size: var(--step-1);
+	}
+
+	@media (width <= 560px) {
+		.pick__head {
+			grid-template-columns: 1fr;
+			gap: var(--sp-3);
+		}
+
+		.pick__head img {
+			max-width: 8rem;
+		}
+	}
+</style>

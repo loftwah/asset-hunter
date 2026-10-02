@@ -44,7 +44,7 @@ before(async () => {
  * usable on its own. A server that is up but broken fails every live test rather
  * than skipping them.
  */
-function live(name, fn) {
+function live(name: string, fn: () => Promise<void>) {
 	test(name, async (t) => {
 		if (server === "down") {
 			t.skip(`no server at ${baseUrl} — start with \`npm run dev\``);
@@ -59,7 +59,7 @@ function live(name, fn) {
 	});
 }
 
-const text = (html) => html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+const text = (html: string) => html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 
 describe("the suite itself", () => {
 	test("a reachable server must actually serve", () => {
@@ -499,6 +499,154 @@ describe("the agent interface (#58)", () => {
 			headers: { "if-none-match": etag },
 		});
 		assert.equal(second.status, 304);
+	});
+});
+
+/**
+ * Asset use and handoff (#42).
+ *
+ * The live half of the rules asserted in `tests/asset-use.test.ts`. The unit
+ * tests prove what the decision is; these prove the decision reaches a reader,
+ * and — the assertion that matters most — that nothing downloadable is linked
+ * anywhere on a public page while the catalogue retains no originals.
+ */
+describe("asset use", () => {
+	const detail = "/possibilities/density-gradient";
+	const use = "/use/density-gradient";
+
+	live("the use page resolves for a real entry and 404s for a real nothing", async () => {
+		assert.equal((await fetch(`${baseUrl}${use}`)).status, 200);
+		assert.equal((await fetch(`${baseUrl}/use/not-a-real-possibility`)).status, 404);
+	});
+
+	live("the drill-in states the use state in words, per example", async () => {
+		const html = await (await fetch(`${baseUrl}${detail}`)).text();
+		// The state is a word and a sentence, not a colour and a dot.
+		assert.match(html, /class="use__label"[^>]*>Reference only</);
+		assert.match(text(html), /No licence was found, or reuse is not permitted/);
+		// And the obligation is stated rather than implied.
+		assert.match(text(html), /Do not copy, ship or redistribute/);
+	});
+
+	live("no public page links a download while nothing is downloadable", async () => {
+		// The catalogue is entirely generated plates with `downloadable: false`.
+		// A single `href="/api/payload/` on any of these pages would mean a
+		// control exists for material nobody cleared, which is the exact failure
+		// this flow exists to prevent.
+		for (const route of ["/", detail, use, "/board", "/search?q=seam"]) {
+			const html = await (await fetch(`${baseUrl}${route}`)).text();
+			assert.equal(
+				html.includes('href="/api/payload/'),
+				false,
+				`${route} links a payload download`,
+			);
+		}
+	});
+
+	live("the absence of a download is explained, not left as a gap", async () => {
+		const html = await (await fetch(`${baseUrl}${use}`)).text();
+		assert.match(text(html), /No file is served from this record/);
+		// And the honest zero is on the page rather than only implied by a
+		// missing button.
+		assert.match(text(html), /0 retained originals to download/);
+	});
+
+	live("the preview and the original are named as different things", async () => {
+		const html = await (await fetch(`${baseUrl}${use}`)).text();
+		assert.match(html, /class="use__preview"/);
+		assert.match(text(html), /What is on screen/);
+		assert.match(text(html), /It is not the source asset/);
+	});
+
+	live("the use page and the drill-in read the same records", async () => {
+		// One catalogue, not two: the example ids and the use state on the two
+		// pages have to be the same ones, or the asset half has become a
+		// parallel product.
+		const onDetail = await (await fetch(`${baseUrl}${detail}`)).text();
+		const onUse = await (await fetch(`${baseUrl}${use}`)).text();
+		// `res.json()` is `unknown`; these are the fields the contract promises,
+		// declared once rather than cast at each use.
+		const record = (await (await fetch(`${baseUrl}/api/record/density-gradient`)).json()) as {
+			id: string;
+			title: string;
+		};
+		for (const html of [onDetail, onUse]) {
+			assert.match(html, new RegExp(`/api/record/${record.id}`));
+		}
+		assert.match(onDetail, new RegExp(`href="/use/${record.id}"`));
+		assert.equal(record.title, "Bento layouts with a deliberate density ramp");
+	});
+
+	live("the use page saves to the existing board rather than a new list", async () => {
+		// Reuse, not rebuild: the same endpoint, the same cookie, the same
+			// possibility slug the wall posts.
+		const html = await (await fetch(`${baseUrl}${use}`)).text();
+		assert.match(html, /<form class="board"[^>]*action="\/api\/board"/);
+		assert.match(html, /name="slug" value="density-gradient"/);
+		assert.match(html, /name="board" value="default"/);
+	});
+});
+
+describe("the source and licence record", () => {
+	live("serves the recorded evidence for an example, whatever the rights", async () => {
+		const res = await fetch(`${baseUrl}/api/record/density-gradient`);
+		assert.equal(res.status, 200);
+		assert.match(res.headers.get("content-type") ?? "", /application\/json/);
+		assert.equal(res.headers.get("x-ah-use-state"), "reference-only");
+
+		const body = (await res.json()) as Record<string, unknown>;
+		assert.equal(body.schema, "asset-hunter.record/1");
+		assert.equal(body.useState, "reference-only");
+		// Nothing is invented for a record with no source behind it.
+		for (const field of ["sourceUrl", "sourceRepo", "sourceRef", "licenceEvidence", "credit", "contentHash"]) {
+			assert.equal(body[field], null, `${field} was invented`);
+		}
+		assert.equal(body.payloadRetained, false);
+		assert.equal(body.handoff, "record");
+	});
+
+	live("an unknown example 404s and says where to look", async () => {
+		const res = await fetch(`${baseUrl}/api/record/not-a-real-example`);
+		assert.equal(res.status, 404);
+		// The route says where records are actually reached from, because a bare
+		// 404 on a data endpoint looks like a broken link. Read once: a body can
+		// only be consumed once, and a second read reports a fetch error here
+		// rather than anything about the route.
+		const body = text(await res.text());
+		assert.match(body, /\/possibilities\//);
+		assert.match(body, /the ones recorded against it/);
+	});
+});
+
+describe("the payload route is gated by the record, not by the page", () => {
+	live("refuses a reference-only example with the reason in words", async () => {
+		const res = await fetch(`${baseUrl}/api/payload/density-gradient`);
+		assert.equal(res.status, 403);
+		assert.equal(res.headers.get("x-ah-blocked-by"), "rights");
+		assert.equal(res.headers.get("x-ah-use-state"), "reference-only");
+		// Not a bare status: the body says what the rule is and where the
+		// evidence is.
+		assert.match(text(await res.text()), /Do not copy, ship or redistribute/);
+	});
+
+	live("an unknown example 404s rather than leaking a status", async () => {
+		const res = await fetch(`${baseUrl}/api/payload/not-a-real-example`);
+		assert.equal(res.status, 404);
+	});
+
+	live("no example in the catalogue is currently served as a payload", async () => {
+		// Every seeded example is a generated plate, so the honest answer across
+		// the whole wall is "no", and each one says which rule said it.
+		const catalogue = (await (await fetch(`${baseUrl}/api/catalogue.json`)).json()) as {
+			possibilities: { examples: { id: string }[] }[];
+		};
+		const examples = catalogue.possibilities.flatMap((p) => p.examples);
+		assert.ok(examples.length > 0);
+		for (const e of examples) {
+			const res = await fetch(`${baseUrl}/api/payload/${e.id}`);
+			assert.ok([403, 409].includes(res.status), `${e.id} → ${res.status}`);
+			assert.ok(res.headers.get("x-ah-blocked-by"), `${e.id} served a file with no reason`);
+		}
 	});
 });
 

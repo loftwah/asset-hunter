@@ -274,6 +274,7 @@ allowed to appear.
 | Line / -strong   | Hairlines, tile borders                           | Fills                              |
 | Origin ring      | Representative provenance marker                  | Rights status (different shape)    |
 | Rights dot       | Rights status, legend, drill-in status panel      | Decoration                         |
+| Use-state ring   | The per-example use state on the drill-in and `/use/<slug>` | Origin marker, decoration    |
 
 **Where things live: public catalogue vs EmDash admin.**
 
@@ -306,6 +307,42 @@ clearing cookies clears it. It is per browser and not shareable; a shareable boa
 needs an identity and a server record, which is a different feature at a different
 cost. It is unsigned, and every slug is validated against the catalogue before it
 renders, so an edited cookie can at worst produce an empty board.
+
+## 9.6 Asset use
+
+The wall stays simple. The drill-in has to be unambiguous, and the selection
+page is where the obligations live.
+
+- **The use state leads, in words, with a ring beside it.** Reusable, reusable
+  with attribution, review required, reference only. A ring rather than the
+  filled dot used for origin, so the two encodings stay tellable apart. There is
+  no euphemism and no state whose label is softer than its meaning.
+- **The obligation is stated, not implied.** A licence obligation is something
+  the reader has to do, so it is written out under its own mono label rather
+  than implied by a credit box appearing.
+- **No disabled download.** A control that cannot be used is a claim about the
+  record, and claims about the record are made in words. A download appears only
+  for a retained, hashed, permitted payload — all four conditions, not three.
+  Where there is no download, the reason is the line under the state, so nobody
+  has to guess whether it was missed or withheld.
+- **Honest zero beats a missing control.** A selection with nothing downloadable
+  says `0 retained originals to download` and explains which half of the
+  catalogue that is. DESIGN.md §1.5 again: an absent number has to look
+  deliberate.
+- **A preview is never the asset.** The media on the use page is labelled
+  "What is on screen" and named as a preview, because the plate and the original
+  are different files and conflating them is the easiest dishonesty available
+  here.
+- **The credit is a block, not a field.** The recorded attribution is reproduced
+  exactly, with the licence and the pointer to the file, in a readonly textarea
+  so it copies with a keyboard and a screen reader. There is no author input to
+  fill in later: a credit template with a hole in it is how an asset ships
+  unattributed while everyone believes the obligation was handled.
+- **The evidence is behind a disclosure**, not a hover, and the source record is
+  a link to the data rather than a summary of it.
+
+Every control explains itself in one line. A download is the single accent on a
+page; there is at most one, because two would mean the accent marks nothing.
 
 ## 10. Metadata and social
 

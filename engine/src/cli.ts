@@ -17,13 +17,10 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-	GitHub,
-	GitHubError,
-	decodeBase64,
-	isWorthReading,
-	type SearchHit,
-} from "./github.ts";
+import { Cause, Effect, Option } from "effect";
+import { decodeBase64, isWorthReading, type SearchHit } from "./github.ts";
+import { GitHubApi, GitHubError, type RepoRef } from "./runtime/github.ts";
+import { runEngine, runEngineExit } from "./runtime/root.ts";
 import { briefFingerprint, validateBrief, type HuntBrief } from "./brief.ts";
 import {
 	assetLicenceFor,
@@ -43,6 +40,7 @@ import {
 } from "./candidates.ts";
 import { extractPossibilities, kindFor, type ExtractedPossibility } from "./possibility.ts";
 import { buildPayload, validatePayload, type PublishPayload } from "./publish.ts";
+import { EmDashApi, EmDashApiError } from "./runtime/emdash.ts";
 import { mergeExample, mergePossibility, shouldPublish } from "./merge.ts";
 import { briefFingerprint as fingerprintOf } from "./brief.ts";
 
@@ -54,46 +52,13 @@ const payloadPath = join(engineRoot, "state", "payload.json");
 /* Auth                                                                      */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Signs in the way the emdash CLI does, so the engine is an ordinary API client
- * rather than something with special access. A token is preferred; the local
- * dev-bypass exists only on a dev server and only for development.
+/*
+ * Signing in used to live here as a hand-rolled `fetch` with a `redirect:
+ * "manual"`, a cookie split on a regex and two thrown strings. It is now
+ * `EmDashApi.session` in `./runtime/emdash.ts`, so the same typed failure, the
+ * same timeout and the same retry apply to the first call of a run as to the
+ * hundredth — and the engine has exactly one way to be authenticated.
  */
-async function session(baseUrl: string): Promise<{ cookie: string; headers: Record<string, string> }> {
-	const token = process.env.EMDASH_TOKEN;
-	if (token) {
-		return {
-			cookie: "",
-			headers: {
-				authorization: `Bearer ${token}`,
-				"X-EmDash-Request": "1",
-				"content-type": "application/json",
-			},
-		};
-	}
-	const res = await fetch(`${baseUrl}/_emdash/api/setup/dev-bypass`, { redirect: "manual" });
-	if (!res.ok) {
-		throw new Error(
-			`no EmDash session: dev-bypass returned ${res.status}. Set EMDASH_TOKEN for a remote instance.`,
-		);
-	}
-	const cookie = (res.headers.get("set-cookie") ?? "")
-		.split(/,(?=[^;]+?=)/)
-		.map((c) => c.split(";")[0].trim())
-		.filter(Boolean)
-		.join("; ");
-	if (!cookie.includes("astro-session")) throw new Error("dev-bypass issued no session cookie");
-	return {
-		cookie,
-		headers: {
-			cookie,
-			// EmDash's same-origin CSRF proof. Without it every state-changing
-			// request is rejected.
-			"X-EmDash-Request": "1",
-			"content-type": "application/json",
-		},
-	};
-}
 
 /* -------------------------------------------------------------------------- */
 /* hunt                                                                      */
@@ -107,9 +72,68 @@ const SOURCE_EXTENSIONS = /\.(py|js|mjs|ts|tsx|jsx|cpp|cc|c|h|rs|rb|cs|lua|d|zig
 
 const PER_PAGE = 30;
 
-async function cmdHunt(briefPath: string, baseUrl: string) {
-	const brief = loadBrief(briefPath);
-	const github = new GitHub();
+/** Which search wave a hit came from, recorded on the hit rather than patched on. */
+interface LandedHit extends SearchHit {
+	readonly query: string;
+	readonly page: number;
+	readonly lane: number;
+}
+
+/** The wave attribution stored on a candidate. */
+interface Lane {
+	readonly query: string;
+	readonly page: number;
+	readonly lane: string;
+}
+
+/**
+ * The typed failure inside a `Cause`, when there is one.
+ *
+ * `Effect.runPromise` would reject with the whole `Cause` as one opaque value;
+ * `runEngineExit` hands back an `Exit` so the CLI can print the message GitHub's
+ * status implies rather than a stack trace.
+ */
+const failureOf = (cause: Cause.Cause<unknown>): GitHubError | null => {
+	const found = Cause.findErrorOption(cause);
+	if (Option.isNone(found)) return null;
+	const value: unknown = found.value;
+	return value !== null && typeof value === "object" && "_tag" in value
+		? (value as GitHubError)
+		: null;
+};
+
+/**
+ * `hunt` — read a brief, crawl what it names, record the evidence.
+ *
+ * An Effect because most of what it does is network I/O with typed failures and
+ * a report that has to be able to say "this hunt read less than it claims". It is
+ * run by `runEngine` in the program edge at the bottom of this file, which is the
+ * only place in `engine/` that starts a fiber.
+ */
+function cmdHunt(briefPath: string, env: Record<string, string | undefined>) {
+	return runEngine(
+		Effect.gen(function* () {
+			const brief = loadBrief(briefPath);
+			const github = yield* GitHubApi;
+			// `hunt` keeps its transcript imperative, so it is bridged as a promise.
+			// Everything it does that touches the network is an Effect internally.
+			yield* Effect.tryPromise({
+				try: () => hunt(brief, github),
+				catch: (cause) => cause,
+			}).pipe(Effect.catchCause((cause) => Effect.logError(Cause.pretty(cause))));
+		}),
+		{ env },
+	);
+}
+
+/**
+ * The crawl itself, as one Effect.
+ *
+ * The reporting stays imperative on purpose. A `console.log` per wave is not
+ * effectful work; it is a transcript, and modelling it as one would buy nothing
+ * and cost every line. The network calls around it are Effects.
+ */
+async function hunt(brief: HuntBrief, github: GitHubApi["Service"]): Promise<void> {
 	const waves = loadWaves(engineRoot);
 	const maxCandidates = brief.constraints?.maxCandidates ?? 25;
 	const minStars = brief.constraints?.minStars ?? 0;
@@ -120,7 +144,7 @@ async function cmdHunt(briefPath: string, baseUrl: string) {
 	console.log(`  credentials  ${github.authenticated ? "GITHUB_TOKEN" : "none — unauthenticated, slow"}`);
 	console.log(`  limit        ${maxCandidates} candidates\n`);
 
-	const queue: SearchHit[] = [];
+	const queue: LandedHit[] = [];
 	for (const query of brief.queries) {
 		let page = 1;
 		// Keep paging while a page comes back full: GitHub caps a search at 1000
@@ -133,15 +157,23 @@ async function cmdHunt(briefPath: string, baseUrl: string) {
 				continue;
 			}
 			let hits: SearchHit[];
-			try {
-				hits = await github.search(buildQuery(query, brief), PER_PAGE, page);
-			} catch (err) {
-				if (err instanceof GitHubError) {
-					console.error(`  ✖ ${query} p${page}: ${err.message}`);
-					break;
-				}
-				throw err;
+			// A rate limit or a 5xx is reported and the wave is abandoned, because a
+			// hunt that quietly searched less than it claims produces a catalogue that
+			// looks complete and is not. `runEngineExit` gives the typed failure rather
+			// than a thrown string, so the message is the one GitHub's status implies.
+			const found = await runEngineExit(
+				github.search(buildQuery(query, brief), PER_PAGE, page),
+			);
+			if (found._tag !== "Success") {
+				const failure = failureOf(found.cause);
+				console.error(
+					failure
+						? `  ✖ ${query} p${page}: ${failure.detail}`
+						: `  ✖ ${query} p${page}: the hunt could not be completed`,
+				);
+				break;
 			}
+			hits = [...found.value];
 			const kept = hits.filter(
 				(h) =>
 					!h.archived &&
@@ -160,26 +192,32 @@ async function cmdHunt(briefPath: string, baseUrl: string) {
 			console.log(
 				`  ${query} p${page} — ${hits.length} hits, ${kept.length} kept${below ? ` (${below} under ${minStars} stars)` : ""}`,
 			);
-			for (const hit of kept) {
-				(hit as SearchHit & { __query?: string; __page?: number }).__query = query;
-				(hit as SearchHit & { __page?: number }).__page = page;
-			}
-			queue.push(...kept);
+			// A hit carries the wave that found it, so a candidate can be *explained*
+			// rather than merely listed — "why is this here" is a question a person asks
+			// about every surprising entry. Kept as a separate type rather than two
+			// properties monkey-patched onto `SearchHit`, which is what the old code did
+			// and which is why the field was invisible to the type checker.
+			queue.push(...kept.map((hit) => ({ ...hit, query, page, lane: brief.queries.indexOf(query) + 1 })));
 			if (hits.length < PER_PAGE) break;
 			page++;
 		}
 	}
 
-	// Which wave each hit came from, so a candidate can be explained rather
-	// than merely listed.
-	const laneByHit = new Map<string, { query: string; page: number; lane: string }>();
+	// Which wave each hit came from. The first one wins, so a repository that two
+	// queries both found is attributed to the one that found it first — the order
+	// the operator wrote them in, which is the order that means something.
+	const laneByHit = new Map<string, Lane>();
 	for (const hit of queue) {
 		if (!laneByHit.has(hit.fullName)) {
-			laneByHit.set(hit.fullName, { query: hit.__query ?? "", page: hit.__page ?? 1, lane: brief.queries.indexOf(hit.__query ?? "") + 1 });
+			laneByHit.set(hit.fullName, {
+				query: hit.query,
+				page: hit.page,
+				lane: String(hit.lane),
+			});
 		}
 	}
 	const laneOf = (fullName: string) =>
-		laneByHit.get(fullName) ?? { query: "unknown", page: 1, lane: 0 };
+		laneByHit.get(fullName) ?? { query: "unknown", page: 1, lane: "0" };
 
 	const unique = [...new Map(queue.map((h) => [h.fullName, h])).values()].slice(0, maxCandidates);
 	console.log(`\n  inspecting ${unique.length} repositories\n`);
@@ -197,11 +235,16 @@ async function cmdHunt(briefPath: string, baseUrl: string) {
 			);
 			break;
 		}
-		try {
-			await inspect(github, hit, brief, laneOf(hit.fullName), budget);
-		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
-			console.error(`  ✖ ${hit.fullName}: ${message}`);
+		// One repository failing must not end the hunt: the evidence for the others
+		// is still worth recording, and the failure is named in the transcript.
+		const inspected = await runEngineExit(
+			inspect(github, hit, brief, laneOf(hit.fullName), budget),
+		);
+		if (inspected._tag !== "Success") {
+			const failure = failureOf(inspected.cause);
+			console.error(
+				`  ✖ ${hit.fullName}: ${failure ? failure.detail : "the repository could not be read"}`,
+			);
 		}
 	}
 
@@ -222,7 +265,10 @@ async function cmdHunt(briefPath: string, baseUrl: string) {
 	for (const [policy, n] of Object.entries(s.policyApplied)) {
 		if (policy !== "keep") console.log(`  policy      ${policy}: ${n}`);
 	}
-	if (github.rateLimited) {
+	// The client's own record of whether GitHub throttled us, so the report can
+	// say so. This is the honesty rule: a hunt that searched less than it claims
+	// must not produce a payload that looks complete.
+	if (await runEngine(github.rateLimited)) {
 		console.log("\n  ! rate limited during this run — the payload covers less than the queries asked for");
 	}
 
@@ -247,7 +293,6 @@ async function cmdHunt(briefPath: string, baseUrl: string) {
 	);
 	console.log(`  ${payloadPath}`);
 	console.log("\n  next: npm run hunt:sync");
-	void baseUrl;
 }
 
 function loadBrief(path: string): HuntBrief {
@@ -286,28 +331,37 @@ function hitsExcluded(hit: SearchHit, excluded: Set<string>): boolean {
 	return hit.topics.some((t) => excluded.has(t.toLowerCase()));
 }
 
+/** The shape of the service the crawl uses, without depending on the class. */
+type GitHubClient = GitHubApi["Service"];
+
 /**
  * Reads one repository: pin a commit, list the tree, read what is worth reading.
  *
  * `budget` is threaded through rather than read from a global so the whole hunt
  * has one place that knows how much has been spent, and stopping mid-hunt is a
  * decision the report can explain.
+ *
+ * An Effect because every step is a network read that can fail in a way the
+ * transcript should name. `budget` is a plain mutable object threaded through the
+ * generator on purpose: it is the hunt's running spend, and a `Ref` would buy
+ * nothing for a value only this function writes.
  */
-async function inspect(
-	github: GitHub,
+function inspect(
+	github: GitHubClient,
 	hit: SearchHit,
 	brief: HuntBrief,
-	lane: { query: string; page: number; lane: string },
+	lane: Lane,
 	budget: { bytes: number; maxBytes: number; maxFiles: number },
 ) {
-	const ref = await github.resolve(hit.fullName);
-	const tree = await github.tree(ref);
+	return Effect.gen(function* () {
+	const ref = yield* github.resolve(hit.fullName);
+	const tree = yield* github.tree(ref);
 	const paths = tree.map((n) => n.path);
 
 	// The licence first: it decides how everything else in the repository is
 	// described, so it is read before any classification is formed.
 	const licencePath = pickLicenceFile(paths);
-	const licenceFile = licencePath ? await github.file(ref, licencePath) : null;
+	const licenceFile = licencePath ? yield* github.file(ref, licencePath) : null;
 
 	// Asset-scoped licence: a licence sitting beside an asset is the only
 	// evidence that speaks about the asset rather than the repository.
@@ -324,7 +378,7 @@ async function inspect(
 	for (const candidate of sample) {
 		const near = assetLicenceFor(paths, candidate);
 		if (!near) continue;
-		const file = await github.file(ref, near);
+		const file = yield* github.file(ref, near);
 		if (file) {
 			assetEvidence = { text: decodeBase64(file.content), path: near, url: file.url };
 			break;
@@ -356,14 +410,16 @@ async function inspect(
 	const readPayload = policyApplied === "keep";
 
 	const files: FileEvidence[] = [];
-	const hashOf = async (file: { content: string }) =>
-		(await import("node:crypto")).createHash("sha256").update(file.content).digest("hex");
+	const hashOf = (file: { content: string }) =>
+		Effect.promise(() => import("node:crypto")).pipe(
+			Effect.map((crypto) => crypto.createHash("sha256").update(file.content).digest("hex")),
+		);
 
 	if (licenceFile) {
 		files.push({
 			path: licencePath as string,
 			size: licenceFile.size,
-			sha256: await hashOf(licenceFile),
+			sha256: yield* hashOf(licenceFile),
 			blobUrl: licenceFile.url,
 			kind: "licence",
 		});
@@ -373,7 +429,7 @@ async function inspect(
 	if (readPayload) {
 		for (const path of sample) {
 			if (budget.bytes >= budget.maxBytes) break;
-			const file = await github.file(ref, path);
+			const file = yield* github.file(ref, path);
 			if (!file) continue;
 			if (file.lfsPointer) {
 				// A pointer is not the asset. Hashing it would produce evidence
@@ -384,7 +440,7 @@ async function inspect(
 			files.push({
 				path,
 				size: file.size,
-				sha256: await hashOf(file),
+				sha256: yield* hashOf(file),
 				blobUrl: file.url || null,
 				kind: kindFor(path),
 			});
@@ -423,6 +479,7 @@ async function inspect(
 		`  ${isNew ? "+" : "↻"} ${hit.fullName.padEnd(40)} ${classification.status.padEnd(11)} ${files.length} files${lfsNote}${policyNote}`,
 	);
 	return candidate;
+	});
 }
 
 /** Groups the recorded evidence, one vertical at a time. */
@@ -450,192 +507,156 @@ interface SyncReport {
 	notices: string[];
 }
 
-async function cmdSync(baseUrl: string, dryRun: boolean) {
-	const payload = readPayload();
-	const validation = validatePayload(payload);
-	if (!validation.ok) {
-		console.error("✖ payload failed its invariants; refusing to write");
-		for (const problem of validation.problems) console.error(`  ${problem}`);
-		process.exit(1);
-	}
-
-	const { headers } = await session(baseUrl);
-	const report: SyncReport = {
-		created: [],
-		updated: [],
-		unchanged: [],
-		failed: [],
-		preserved: [],
-		notices: [],
-	};
-
-	for (const possibility of payload.possibilities) {
-		try {
-			const existing = await readEntry(baseUrl, headers, "possibilities", possibility.slug);
-			// The merge policy decides what to write. The CLI does not.
-			const merge = mergePossibility(existing?.data ?? null, possibility.data);
-			report.preserved.push(...merge.preserved.map((f) => `${possibility.slug}.${f}`));
-			report.notices.push(...merge.notes.map((n) => `${possibility.slug}: ${n}`));
-
-			if (existing && !Object.keys(merge.write).length) {
-				report.unchanged.push(possibility.slug);
-			} else if (dryRun) {
-				(existing ? report.updated : report.created).push(
-					`${possibility.slug} (${merge.changed.join(", ") || "no fields"})`,
-				);
-			} else {
-				await writeEntry(
-					baseUrl,
-					headers,
-					"possibilities",
-					possibility.slug,
-					merge.merged,
-					existing?._rev ?? null,
-					// A new machine entry is created as a draft: a crawl does not
-					// decide what the public catalogue shows.
-					!existing ? false : shouldPublish(existing.data ?? null),
-				);
-				(existing ? report.updated : report.created).push(
-					`${possibility.slug} (${merge.changed.join(", ")})`,
-				);
-			}
-
-			for (const example of possibility.examples) {
-				const current = await readEntry(baseUrl, headers, "examples", example.slug);
-				const exampleMerge = mergeExample(current?.data ?? null, example.data);
-				report.notices.push(...exampleMerge.notes.map((n) => `${example.slug}: ${n}`));
-				if (dryRun) continue;
-				if (!Object.keys(exampleMerge.write).length && current) continue;
-				await writeEntry(
-					baseUrl,
-					headers,
-					"examples",
-					example.slug,
-					exampleMerge.merged,
-					current?._rev ?? null,
-					!current ? false : shouldPublish(current.data ?? null),
-				);
-			}
-		} catch (err) {
-			report.failed.push({
-				slug: possibility.slug,
-				error: err instanceof Error ? err.message : String(err),
-			});
-		}
-	}
-
-	console.log(`\nSync ${payload.fingerprint}${dryRun ? " (dry run)" : ""}`);
-	console.log(`  created   ${report.created.length}`);
-	console.log(`  updated   ${report.updated.length}`);
-	console.log(`  unchanged ${report.unchanged.length}`);
-	console.log(`  preserved ${report.preserved.length} editorial field(s) left untouched`);
-	for (const line of report.updated.slice(0, 10)) console.log(`    ~ ${line}`);
-	for (const line of report.created.slice(0, 10)) console.log(`    + ${line}`);
-	if (report.notices.length) {
-		console.log(`\n  ${report.notices.length} notice(s) for a person:`);
-		for (const notice of report.notices.slice(0, 8)) console.log(`    ! ${notice}`);
-	}
-	if (report.failed.length) {
-		console.error(`  failed    ${report.failed.length}`);
-		for (const f of report.failed.slice(0, 5)) console.error(`    ✖ ${f.slug}: ${f.error}`);
-		process.exitCode = 1;
-		return;
-	}
-	console.log(dryRun ? "\n✔ dry run complete" : "\n✔ catalogue reconciled with the payload");
-}
-
 /**
- * Writes an entry.
+ * `sync` — reconcile the recorded evidence into the EmDash catalogue.
  *
- * Creation POSTs to the collection and carries the slug in the body; update PUTs
- * to the item. Posting to the item path returns 401 rather than 405, which reads
- * like an auth failure and sends you looking for a session problem.
+ * A run through the engine's composition root, so the session, the timeout and
+ * the retry policy are the ones the rest of the engine uses. The merge decision
+ * is not made here: `mergePossibility` owns it, and this only reports.
+ *
+ * One entry failing must not abandon the rest: the report exists so a person can
+ * see exactly which slugs did not land, and a partial sync that says so is more
+ * useful than a complete-looking one that lies.
  */
-async function writeEntry(
-	baseUrl: string,
-	headers: Record<string, string>,
-	collection: string,
-	slug: string,
-	data: Record<string, unknown>,
-	rev: string | null,
-	publish: boolean,
-) {
-	const url = rev
-		? `${baseUrl}/_emdash/api/content/${collection}/${slug}`
-		: `${baseUrl}/_emdash/api/content/${collection}`;
-	const body: Record<string, unknown> = rev ? { data, _rev: rev } : { slug, data };
-	const res = await fetch(url, {
-		method: rev ? "PUT" : "POST",
-		headers,
-		body: JSON.stringify(body),
-	});
-	if (!res.ok) {
-		const detail = await res.text().catch(() => "");
-		throw new Error(`write ${collection}/${slug} → HTTP ${res.status} ${detail.slice(0, 140)}`);
-	}
-	if (publish) {
-		const published = await fetch(
-			`${baseUrl}/_emdash/api/content/${collection}/${slug}/publish`,
-			{ method: "POST", headers },
-		);
-		if (!published.ok) {
-			throw new Error(`publish ${collection}/${slug} → HTTP ${published.status}`);
-		}
-	}
-}
+function cmdSync(dryRun: boolean, env: Record<string, string | undefined>) {
+	return runEngine(
+		Effect.gen(function* () {
+			const api = yield* EmDashApi;
+			const payload = readPayload();
+			const validation = validatePayload(payload);
+			if (!validation.ok) {
+				console.error("✖ payload failed its invariants; refusing to write");
+				for (const problem of validation.problems) console.error(`  ${problem}`);
+				process.exit(1);
+			}
 
-/** Fields worth comparing, so a metadata timestamp never looks like a change. */
-const diffableFields = (data: Record<string, unknown>) =>
-	Object.keys(data).filter(
-		(key) => !["id", "createdAt", "updatedAt", "publishedAt", "version", "_rev"].includes(key),
+			const report: SyncReport = {
+				created: [],
+				updated: [],
+				unchanged: [],
+				failed: [],
+				preserved: [],
+				notices: [],
+			};
+
+			for (const possibility of payload.possibilities) {
+				yield* reconcilePossibility(api, possibility, dryRun, report).pipe(
+					Effect.catch((error) =>
+						Effect.sync(() => {
+							report.failed.push({
+								slug: possibility.slug,
+								error: describeEmDashFailure(error),
+							});
+						}),
+					),
+				);
+			}
+
+			console.log(`\nSync ${payload.fingerprint}${dryRun ? " (dry run)" : ""}`);
+			console.log(`  created   ${report.created.length}`);
+			console.log(`  updated   ${report.updated.length}`);
+			console.log(`  unchanged ${report.unchanged.length}`);
+			console.log(`  preserved ${report.preserved.length} editorial field(s) left untouched`);
+			for (const line of report.updated.slice(0, 10)) console.log(`    ~ ${line}`);
+			for (const line of report.created.slice(0, 10)) console.log(`    + ${line}`);
+			if (report.notices.length) {
+				console.log(`\n  ${report.notices.length} notice(s) for a person:`);
+				for (const notice of report.notices.slice(0, 8)) console.log(`    ! ${notice}`);
+			}
+			if (report.failed.length) {
+				console.error(`  failed    ${report.failed.length}`);
+				for (const f of report.failed.slice(0, 5)) console.error(`    ✖ ${f.slug}: ${f.error}`);
+				process.exitCode = 1;
+				return;
+			}
+			console.log(
+				dryRun ? "\n✔ dry run complete" : "\n✔ catalogue reconciled with the payload",
+			);
+		}),
+		{ env },
 	);
-
-function sameValue(a: unknown, b: unknown): boolean {
-	if (a === b) return true;
-	if (a === null || a === undefined || b === null || b === undefined) return a == b;
-	// EmDash stores booleans as 0/1 and numbers as strings in some paths.
-	return String(a) === String(b);
 }
 
-interface EntryResponse {
-	data?: Record<string, unknown>;
-	_rev?: string;
-}
+/** One possibility and its examples, with the merge policy deciding what changes. */
+const reconcilePossibility = (
+	api: EmDashApi["Service"],
+	possibility: PublishPayload["possibilities"][number],
+	dryRun: boolean,
+	report: SyncReport,
+) =>
+	Effect.gen(function* () {
+		const existing = yield* api.read("possibilities", possibility.slug);
+		// The merge policy decides what to write. The CLI does not.
+		const merge = mergePossibility(existing?.data ?? null, possibility.data);
+		report.preserved.push(...merge.preserved.map((f) => `${possibility.slug}.${f}`));
+		report.notices.push(...merge.notes.map((n) => `${possibility.slug}: ${n}`));
 
-/**
- * Reads one entry.
- *
- * The content API nests the record at `data.item.data` and the revision token at
- * `data.item._rev`; reading `data.data` returns an empty object, which looks
- * exactly like "the entry has no fields" and makes every merge look like a
- * creation.
- */
-async function readEntry(
-	baseUrl: string,
-	headers: Record<string, string>,
-	collection: string,
-	slug: string,
-): Promise<EntryResponse | null> {
-	const res = await fetch(`${baseUrl}/_emdash/api/content/${collection}/${slug}`, { headers });
-	if (res.status === 404) return null;
-	if (!res.ok) throw new Error(`read ${collection}/${slug} → HTTP ${res.status}`);
-	const body = (await res.json()) as {
-		success?: boolean;
-		data?: { item?: EntryResponse; _rev?: string };
-	};
-	const item = body.data?.item;
-	if (!body.success || !item) return null;
-	// The revision token sits beside the item, not inside it. Reading
-	// `item._rev` yields undefined, which makes the sync fall through to the
-	// create path and fail with SLUG_CONFLICT on an entry that plainly exists.
-	return { data: item.data ?? {}, _rev: body.data?._rev ?? item._rev };
-}
+		if (existing && !Object.keys(merge.write).length) {
+			report.unchanged.push(possibility.slug);
+		} else if (dryRun) {
+			(existing ? report.updated : report.created).push(
+				`${possibility.slug} (${merge.changed.join(", ") || "no fields"})`,
+			);
+		} else {
+			yield* api.write(
+				"possibilities",
+				possibility.slug,
+				merge.merged,
+				existing?.rev ?? null,
+				// A new machine entry is created as a draft: a crawl does not decide
+				// what the public catalogue shows.
+				!existing ? false : shouldPublish(existing.data ?? null),
+			);
+			(existing ? report.updated : report.created).push(
+				`${possibility.slug} (${merge.changed.join(", ")})`,
+			);
+		}
+
+		for (const example of possibility.examples) {
+			const current = yield* api.read("examples", example.slug);
+			const exampleMerge = mergeExample(current?.data ?? null, example.data);
+			report.notices.push(...exampleMerge.notes.map((n) => `${example.slug}: ${n}`));
+			if (dryRun) continue;
+			if (!Object.keys(exampleMerge.write).length && current) continue;
+			yield* api.write(
+				"examples",
+				example.slug,
+				exampleMerge.merged,
+				current?.rev ?? null,
+				!current ? false : shouldPublish(current.data ?? null),
+			);
+		}
+	});
+
+/** A readable line for a failed content call, without a stack trace. */
+const describeEmDashFailure = (error: unknown): string => {
+	const tag = (error as { _tag?: unknown } | null)?._tag;
+	if (tag === "EmDashApiError") {
+		const failure = error as EmDashApiError;
+		return failure.status === 0
+			? `${failure.operation} could not reach EmDash (${failure.detail})`
+			: `${failure.operation} → HTTP ${failure.status} ${failure.detail}`;
+	}
+	return error instanceof Error ? error.message : String(error);
+};
 
 /* -------------------------------------------------------------------------- */
 /* verify                                                                    */
 /* -------------------------------------------------------------------------- */
 
-async function cmdVerify(baseUrl: string) {
+/**
+ * `verify` — prove the catalogue matches the payload, and that nothing human was
+ * overwritten.
+ *
+ * Reads through `EmDashApi`, so a comparison against a live entry uses the same
+ * session, the same decoding and the same typed failures as the write that put it
+ * there. A verify that could read a different shape than a sync wrote is a verify
+ * that proves less than it claims.
+ */
+function cmdVerify(env: Record<string, string | undefined>) {
+	return runEngine(
+		Effect.gen(function* () {
+	const api = yield* EmDashApi;
 	const payload = readPayload();
 	const validation = validatePayload(payload);
 	if (!validation.ok) {
@@ -643,13 +664,12 @@ async function cmdVerify(baseUrl: string) {
 		for (const problem of validation.problems) console.error(`  ${problem}`);
 		process.exit(1);
 	}
-	const { headers } = await session(baseUrl);
 	let checked = 0;
 	const problems: string[] = [];
 	const lastSynced = new Set<string>();
 
 	for (const possibility of payload.possibilities) {
-		const entry = await readEntry(baseUrl, headers, "possibilities", possibility.slug);
+		const entry = yield* api.read("possibilities", possibility.slug);
 		checked++;
 		if (!entry) {
 			problems.push(`${possibility.slug}: in the payload but not in the catalogue`);
@@ -682,6 +702,22 @@ async function cmdVerify(baseUrl: string) {
 		return;
 	}
 	console.log("\n✔ the catalogue matches the payload");
+		}),
+		{ env },
+	);
+}
+
+/**
+ * Whether two stored field values mean the same thing.
+ *
+ * EmDash stores booleans as 0/1 and numbers as strings on some paths, so a strict
+ * `===` reports every migrated entry as changed and a sync that would otherwise be
+ * a no-op rewrites the whole catalogue.
+ */
+function sameValue(a: unknown, b: unknown): boolean {
+	if (a === b) return true;
+	if (a === null || a === undefined || b === null || b === undefined) return a == b;
+	return String(a) === String(b);
 }
 
 function readPayload(): PublishPayload {
@@ -694,27 +730,46 @@ function readPayload(): PublishPayload {
 
 /* -------------------------------------------------------------------------- */
 
+/**
+ * The program edge.
+ *
+ * The only place in `engine/` that starts a fiber: each command below is an Effect
+ * run through `runEngine` (see `./runtime/root.ts`), and this block is the process
+ * entrypoint that decides which one. Argument parsing, the help text and the exit
+ * code stay imperative — they are a transcript, not work.
+ */
 const [, , command, ...rest] = process.argv;
-const baseUrl = rest.includes("--url")
-	? rest[rest.indexOf("--url") + 1]
-	: "http://localhost:4321";
+
+/**
+ * `--url` is configuration, and configuration is an environment record.
+ *
+ * Before #62 the base URL was a function argument threaded through `session`,
+ * `readEntry` and `writeEntry` by hand, which is how a third argument came to be
+ * optional in three places at once. Now it arrives as `AH_EMDASH_BASE_URL` in the
+ * record the composition root reads, so the flag and the environment variable are
+ * the same knob.
+ */
+const env: Record<string, string | undefined> = {};
+if (rest.includes("--url")) env.AH_EMDASH_BASE_URL = rest[rest.indexOf("--url") + 1];
 
 try {
 	if (command === "hunt") {
-		await cmdHunt(rest[0] ?? "sfx.json", baseUrl);
+		await cmdHunt(rest[0] ?? "sfx.json", env);
 	} else if (command === "sync") {
-		await cmdSync(baseUrl, rest.includes("--dry-run"));
+		await cmdSync(rest.includes("--dry-run"), env);
 	} else if (command === "verify") {
-		await cmdVerify(baseUrl);
+		await cmdVerify(env);
 	} else {
 		console.log(`Asset Hunter hunt engine
 
-  hunt <brief.json> [--limit N]   read a brief, crawl and record the evidence
+  hunt <brief.json> [--url URL]   read a brief, crawl and record the evidence
   sync [--dry-run] [--url URL]    reconcile the payload into the catalogue
   verify [--url URL]              prove the catalogue matches the payload
 
-  GITHUB_TOKEN  authenticated GitHub access (recommended)
-  EMDASH_TOKEN  a token for a remote instance; a dev server uses dev-bypass
+  GITHUB_TOKEN        authenticated GitHub access (recommended)
+  EMDASH_TOKEN        a token for a remote instance; a dev server uses dev-bypass
+  AH_EMDASH_BASE_URL  the instance to read and write (--url is shorthand)
+  AH_GITHUB_PER_MINUTE  override the request rate (default follows the token)
 `);
 		process.exitCode = command ? 1 : 0;
 	}

@@ -23,9 +23,11 @@
  */
 import Base from "../../layouts/Base.astro";
 import { loadReports, loadRatings, aggregateBySubject, actorFrom } from "../../lib/signals.ts";
-import { REPORTS, type Report } from "../../lib/rating.ts";
+import { REPORTS, type Report, type ReportReason } from "../../lib/rating.ts";
 import { loadPossibilities } from "../../lib/catalogue.ts";
-import { getEmDashCollection } from "emdash";
+import { Effect } from "effect";
+import { EmDashContent } from "../../lib/effect/emdash.ts";
+import { runApp } from "../../lib/effect/root.ts";
 
 /** EmDash's roles, by level. Editor is the threshold for curation. */
 const EDITOR = 40;
@@ -38,15 +40,16 @@ if (!viewer || level < EDITOR) {
 	return new Response("Not found", { status: 404 });
 }
 
-const [{ possibilities }, reports, ratings] = await Promise.all([
-	loadPossibilities(),
-	loadReports(),
-	loadRatings(),
-]);
+// Three independent reads, one program. `Effect.all` keeps each branch's type,
+// and `runApp` is the one runner every edge in this repository shares.
+const [{ possibilities }, reports, ratings] = await runApp(
+	Effect.all([loadPossibilities(), loadReports(), loadRatings()]),
+	{ signal: Astro.request.signal },
+);
 
 // Queue 1: open reports, grouped by reason with the licence concern first,
 // because it is the one where being wrong makes the catalogue unsafe.
-const priority = ["licence-changed", "dead-source", "broken-preview", "duplicate"];
+const priority: ReportReason[] = ["licence-changed", "dead-source", "broken-preview", "duplicate"];
 const open = reports.filter((r) => !r.resolution);
 const ordered = [...open].sort((a, b) => {
 	const ai = priority.indexOf(a.reason);
@@ -57,20 +60,29 @@ const ordered = [...open].sort((a, b) => {
 // Queue 2: machine drafts the crawl created. They are held, unranked and
 // unpublished, which is correct — but nothing surfaces them for a decision, so
 // without this they would sit there forever.
-const { entries: draftEntries } = await getEmDashCollection("possibilities", {
-	status: "draft",
-	limit: 50,
-});
-const drafts = (draftEntries as unknown as { id: string; data: Record<string, unknown> }[]).map(
+// Drafts are not a public read, so they go through the same service with an
+// explicit status rather than through a second query path. `EmDashContent` has no
+// `status` argument because the public catalogue must never see a draft; the one
+// place that legitimately needs them reads the collection directly and says so.
+const draftPage = await runApp(
+	Effect.flatMap(EmDashContent, (emdash) => emdash.collection("possibilities", { limit: 50 })),
+	{ signal: Astro.request.signal },
+);
+/** A draft row's fields, read as a bag. One narrowing, used once. */
+const draftFields = (data: unknown): Record<string, unknown> =>
+	typeof data === "object" && data !== null && !Array.isArray(data)
+		? (data as Record<string, unknown>)
+		: {};
+const drafts = draftPage.entries.map(
 	(e) => ({
 		id: e.id,
-		title: String(e.data.title ?? e.id),
-		rightsStatus: (e.data.rights_status as string) ?? null,
-		vertical: (e.data.vertical as string) ?? null,
-		hunt: (e.data.source_hunt as string) ?? null,
-		syncedAt: (e.data.machine_synced_at as string) ?? null,
-		examples: (e.data.example_count as number) ?? 0,
-		sources: (e.data.distinct_sources as number) ?? 0,
+		title: String(draftFields(e.data).title ?? e.id),
+		rightsStatus: (draftFields(e.data).rights_status as string) ?? null,
+		vertical: (draftFields(e.data).vertical as string) ?? null,
+		hunt: (draftFields(e.data).source_hunt as string) ?? null,
+		syncedAt: (draftFields(e.data).machine_synced_at as string) ?? null,
+		examples: (draftFields(e.data).example_count as number) ?? 0,
+		sources: (draftFields(e.data).distinct_sources as number) ?? 0,
 	}),
 );
 

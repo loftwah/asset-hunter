@@ -10,11 +10,14 @@
 import Base from "../layouts/Base.astro";
 import PossibilityTile from "../components/PossibilityTile.astro";
 import { loadPossibilities, tallyVerticals } from "../lib/catalogue";
+import { runApp } from "../lib/effect/root";
 import { COOKIE_NAME, boardTotals, parseBoards } from "../lib/board";
 import { RIGHTS_LABEL, RIGHTS_MEANING, verticalLabel } from "../lib/vocabulary";
 
-const { possibilities, cacheHint } = await loadPossibilities();
-if (Astro.cache?.enabled) Astro.cache.set(cacheHint);
+const { possibilities, cacheHint } = await runApp(loadPossibilities());
+// `cacheHint` is absent when EmDash had nothing to say — a query that failed
+// is now a typed failure rather than an empty page, so there is no hint to set.
+if (Astro.cache?.enabled && cacheHint) Astro.cache.set(cacheHint);
 
 const verticals = tallyVerticals(possibilities);
 const requested = Astro.url.searchParams.get("vertical");

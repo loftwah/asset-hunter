@@ -8,8 +8,26 @@
  * `Cache-Control: no-store` matters more than it looks: a redirect carrying a
  * Set-Cookie is exactly the kind of response a cache will helpfully serve to the
  * next person.
+ *
+ * ## The Effect boundary (#62)
+ *
+ * This handler is a framework edge, and it is one of the few places allowed to
+ * call a runner. `runAppExit` lives in `../../lib/effect/root.ts` and is not
+ * called from anywhere else in `src/`, so every route gets the same layer graph,
+ * the same timeouts and the same cancellation wiring.
+ *
+ * `runAppExit` rather than `runApp` so a CMS failure answers 503 instead of
+ * throwing out of the handler. A board cannot be written without validating its
+ * slugs against the catalogue, and silently writing an unvalidated cookie is the
+ * one thing this endpoint must not do.
+ *
+ * The board *rules* are untouched and still pure: `parseBoards`,
+ * `normaliseBoardName`, `applyAction` and `serialiseBoards` are synchronous
+ * functions over strings, and `tests/board.test.ts` exercises them with no server
+ * and no Effect runtime. Only the catalogue read is effectful.
  */
 import type { APIRoute } from "astro";
+import { Exit } from "effect";
 import {
 	COOKIE_NAME,
 	COOKIE_OPTIONS,
@@ -20,6 +38,7 @@ import {
 	type BoardAction,
 } from "../../lib/board";
 import { loadPossibilities } from "../../lib/catalogue";
+import { runAppExit } from "../../lib/effect/root.ts";
 
 const ACTIONS: BoardAction[] = ["save", "unsave", "remove", "clear", "rename"];
 
@@ -40,8 +59,11 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
 
 	// Every slug is checked against the catalogue. This is what makes an
 	// unsigned cookie safe: a value that names nothing simply disappears.
-	const { possibilities } = await loadPossibilities();
-	const known = new Set(possibilities.map((p) => p.slug));
+	const loaded = await runAppExit(loadPossibilities(), { signal: request.signal });
+	if (!Exit.isSuccess(loaded)) {
+		return new Response("Catalogue unavailable", { status: 503 });
+	}
+	const known = new Set(loaded.value.possibilities.map((p) => p.slug));
 
 	const current = parseBoards(cookies.get(COOKIE_NAME)?.value);
 	const next = applyAction(current, action, { slug, board, to, known });

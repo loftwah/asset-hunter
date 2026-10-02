@@ -20,6 +20,7 @@ once and this file exists so it cannot happen twice.
 | Permission with an obligation | **attribution** | credited, with credit                                | "With credit" understates a licence obligation. |
 | Found but not understood | **review** | unclear, risky, needs a lawyer, unverified licence    | "Unverified licence" is a claim about evidence; `review` is a status with a defined meaning. |
 | No permission established | **reference only** | unlicensed, illegal, stolen, no-licence, forbidden    | "Unlicensed" reads as an accusation about the author. "Forbidden" overstates it — most of it is just unstated. |
+| What you may do with one example | **use state**, with the four values **reusable**, **reusable with attribution**, **review required**, **reference only** | downloadable, get it, free, allowed, cleared (used for the use state) | A rights status is a fact about the licence; a use state is the answer to "what may I do with this file". "Downloadable" is a property of a deployment, not a permission, so it is never a use state. |
 | Grouping by area | **vertical** | category, genre, tag, topic                           | A vertical answers "what area is this". |
 | Overlapping grouping by purpose | **collection** | playlist, board (except the reader's own), set        | Collections overlap by design; a partition would collapse the second axis into the first. |
 | A reader's saved list | **board** / **shortlist** | collection (used for an editor-made one)          | The reader's board is theirs and local; an editorial collection belongs to the catalogue. |
@@ -65,6 +66,7 @@ homepage is the wall, and the wall is the product.
 | keep candidates                 | `+` on any tile, then `/board`              | Works without JavaScript                                  |
 | see what a possibility is       | `/possibilities/<slug>`                    | A page, never a modal: linkable, shareable, in history   |
 | understand the rights           | the drill-in, or `/pages/licensing`         | Rights are never behind a hover                           |
+| see what may be reused          | `/use/<slug>`, from any drill-in            | The selection, with the obligations and the honest zero    |
 | see the state of the catalogue  | `/verticals`                               | Coverage map, deliberately labelled partial               |
 | change the catalogue            | `/_emdash/admin`                           | EmDash's own interface, deliberately not themed like the public site |
 
@@ -110,6 +112,8 @@ missing and what to do next.
 | Empty board            | "This board is empty", plus the wall and the verticals.                                         |
 | Unsupported reference  | "Preview failed to load. The entry and its rights are unaffected."                             |
 | No reusable asset, but a useful reference exists | The entry stands at **reference only**, with the extent of that permission stated: that *is* the permission. |
+| Nothing is downloadable yet   | "0 retained originals to download", and the reason — the licence evidence and the provenance are kept, the files are not. There is no greyed-out Download button to imply otherwise. |
+| Reusable, but no credit recorded | The obligation is named as unmet, and the asset is not handed over. A permission whose condition cannot be met is not a permission. |
 | Rights uncertainty     | **review**, with "read before use" and what was found that was not understood well enough to rely on. |
 | Dead upstream source   | "The upstream source is no longer reachable. The evidence recorded here is what was read at the time." — never a silent blank plate. |
 | No plate yet           | The hatched `NO PLATE` placeholder, which says on its face that nothing has been generated.      |
@@ -138,6 +142,7 @@ Ranking may use all three. The raw values stay inspectable.
 | Place                                       | Role                                              |
 | ------------------------------------------- | ------------------------------------------------- |
 | `src/lib/vocabulary.ts`                     | The implementation. Components look terms up here. |
+| `src/lib/asset-use.ts`                      | The rights status → use state decision, the credit, and the handoff gate. |
 | `seed/atlas.json`                           | The content that uses them.                        |
 | `/pages/licensing`                          | The four statuses in full sentences, for readers. |
 | `DESIGN.md`                                 | How the terms are presented.                       |

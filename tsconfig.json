@@ -8,6 +8,13 @@
 	},
 	"include": [
 		"src",
+		// The hunt engine is a separate process with its own composition root
+		// (`engine/src/runtime/root.ts`), but it is still TypeScript in this
+		// repository and it still has to typecheck. It was only being checked by
+		// accident, through `tests/engine.test.ts` importing the pure modules —
+		// which meant `engine/src/cli.ts`, the program's only edge, was compiled by
+		// Node and never by a type checker. #62 made that omission expensive.
+		"engine/src",
 		".astro/types.d.ts",
 		"emdash-env.d.ts",
 		"worker-configuration.d.ts",

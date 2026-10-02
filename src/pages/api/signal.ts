@@ -13,10 +13,42 @@
  * — which is worse than uncomfortable, because it looks like a bug. The UI now
  * says so before the reader tries, and the licensing page carries the contact
  * route for someone with no account at all.
+ *
+ * ## What #62 changed here
+ *
+ * This handler used to be the sharpest edge in the repository. It called
+ * `saveRating` / `createReport`, caught a thrown `Error`, and pasted
+ * `err.message` into a redirect note:
+ *
+ * ```ts
+ * } catch (err) {
+ *   return finish(`Could not save the rating: ${err instanceof Error ? err.message : "unknown error"}`, false)
+ * }
+ * ```
+ *
+ * and the thrown message was `create rating → HTTP 409 <EmDash's body>`. So an
+ * HTTP status and a slice of a CMS error page were on their way to a public URL.
+ *
+ * Now the write returns a typed `EmDashWriteError` (with the status) or a typed
+ * `EmDashTransportError` (no status at all), and `describeError` turns either
+ * into a sentence that says what happened without quoting the CMS at a reader.
+ * The status is still logged, and it is still exactly as diagnosable.
+ *
+ * The runner lives in `../../lib/effect/root.ts` and nowhere else, so this
+ * handler is an adapter: it owns HTTP, the session cookie and the redirect, and
+ * nothing about how the Effect application is built or run.
  */
 import type { APIRoute } from "astro";
+import { Cause, Exit, Option } from "effect";
 import { parseReason, parseStars, parseSubjectType } from "../../lib/rating.ts";
 import { actorFrom, createReport, saveRating } from "../../lib/signals.ts";
+import {
+	describeDetail,
+	describeError,
+	type EmDashTransportError,
+	type EmDashWriteError,
+} from "../../lib/effect/errors.ts";
+import { runAppExit, type EmDashRequest } from "../../lib/effect/root.ts";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -31,14 +63,22 @@ export const POST: APIRoute = async ({ request, redirect, locals, url }) => {
 	// EmDash puts the authenticated user here; it is the only identity this app
 	// has, and it did not invent one.
 	const actor = actorFrom(locals?.user);
-	const headers: Record<string, string> = {
-		"X-EmDash-Request": "1",
-		"content-type": "application/json",
+	// The public session cookie is what the CMS API needs; the reader's browser
+	// already has it, so it is forwarded rather than re-issued. `X-EmDash-Request`
+	// is EmDash's same-origin CSRF proof — without it every state-changing
+	// request is rejected.
+	const emdash: EmDashRequest = {
+		endpoint: new URL("/", request.url).origin,
+		headers: {
+			"X-EmDash-Request": "1",
+			"content-type": "application/json",
+			cookie: request.headers.get("cookie") ?? "",
+		},
 	};
 
 	const finish = (note: string, ok: boolean) => {
 		const target = new URL(returnTo, request.url);
-		target.searchParams.set(note === "" ? "note" : "note", note);
+		target.searchParams.set("note", note);
 		if (!ok) target.searchParams.set("problem", "1");
 		return redirect(target.pathname + target.search, 303);
 	};
@@ -56,24 +96,20 @@ export const POST: APIRoute = async ({ request, redirect, locals, url }) => {
 		if (!actor) {
 			return finish("Sign in to rate — an unattributed rating cannot be revised or withdrawn", false);
 		}
-		try {
-			const endpoint = new URL("/", request.url).origin;
-			// The public session cookie is what the CMS API needs; the reader's
-			// browser already has it, so it is forwarded rather than re-issued.
-			const cookie = request.headers.get("cookie") ?? "";
-			await saveRating(endpoint, { ...headers, cookie }, {
-				subjectType,
-				subjectSlug,
-				stars,
-				actor,
-			});
-		} catch (err) {
-			return finish(
-				`Could not save the rating: ${err instanceof Error ? err.message : "unknown error"}`,
-				false,
-			);
+		const saved = await runAppExit(
+			saveRating(emdash, { subjectType, subjectSlug, stars, actor }),
+			{ signal: request.signal },
+		);
+		if (!Exit.isSuccess(saved)) {
+			// The detail goes to the log; the reader gets the sentence. This split is
+			// the whole point of the typed failure: before #62 both went to the reader.
+			console.error("signal: rating write failed", reportCause(saved.cause));
+			return finish(`Could not save the rating: ${describeCause(saved.cause)}`, false);
 		}
-		return finish(stars === 1 ? "Recorded — 1 star, which is a rating, not a report" : "Rating recorded", true);
+		return finish(
+			stars === 1 ? "Recorded — 1 star, which is a rating, not a report" : "Rating recorded",
+			true,
+		);
 	}
 
 	if (intent === "report") {
@@ -85,33 +121,25 @@ export const POST: APIRoute = async ({ request, redirect, locals, url }) => {
 		// A report with no detail and no account is anonymous and unactionable,
 		// so it asks for one line rather than accepting an empty queue entry.
 		if (!actor) {
-			// EmDash's content API is RBAC-protected, so a report has nowhere to
-			// live without a session. That is the constraint, and it is stated
-			// plainly rather than hidden behind a 401: the alternative — an
-			// anonymous store beside the CMS — is the parallel-store thing this
-			// project's architecture forbids.
+			// EmDash's content API is RBAC-protected, so a report has nowhere to live
+			// without a session. That is the constraint, and it is stated plainly
+			// rather than hidden behind a 401: the alternative — an anonymous store
+			// beside the CMS — is the parallel-store thing this project's architecture
+			// forbids.
 			return finish("Sign in to file a report, so it can be answered and closed", false);
 		}
 		if (!detail) return finish("Add a line about what is wrong", false);
-		// A detail that looks like markup is stored as text and never rendered as
-		// HTML anywhere, but it is stripped here so it cannot be copied into a
-		// future email notification verbatim.
+		// A detail that looks like markup is stored as text and never rendered as HTML
+		// anywhere, but it is stripped here so it cannot be copied into a future email
+		// notification verbatim.
 		const safeDetail = detail.replace(/[<>]/g, "").slice(0, 2000) || null;
-		try {
-			const endpoint = new URL("/", request.url).origin;
-			const cookie = request.headers.get("cookie") ?? "";
-			await createReport(endpoint, { ...headers, cookie }, {
-				subjectType,
-				subjectSlug,
-				reason,
-				detail: safeDetail,
-				actor,
-			});
-		} catch (err) {
-			return finish(
-				`Could not file the report: ${err instanceof Error ? err.message : "unknown error"}`,
-				false,
-			);
+		const filed = await runAppExit(
+			createReport(emdash, { subjectType, subjectSlug, reason, detail: safeDetail, actor }),
+			{ signal: request.signal },
+		);
+		if (!Exit.isSuccess(filed)) {
+			console.error("signal: report write failed", reportCause(filed.cause));
+			return finish(`Could not file the report: ${describeCause(filed.cause)}`, false);
 		}
 		return finish(
 			reason === "licence-changed"
@@ -123,5 +151,36 @@ export const POST: APIRoute = async ({ request, redirect, locals, url }) => {
 
 	return finish("Unknown request", false);
 };
+
+/** The typed write failure inside a `Cause`, if there is one. */
+const writeFailure = (cause: Cause.Cause<unknown>) => {
+	const found = Cause.findErrorOption(cause);
+	if (Option.isNone(found)) return null;
+	const value: unknown = found.value;
+	if (value === null || typeof value !== "object" || !("_tag" in value)) return null;
+	const tag = (value as { _tag: unknown })._tag;
+	return tag === "EmDashWriteError" || tag === "EmDashTransportError"
+		? (value as EmDashWriteError | EmDashTransportError)
+		: null;
+};
+
+/**
+ * A reader-facing sentence for a failed write.
+ *
+ * `describeError` covers the two typed write failures. Anything else here is a
+ * defect, and a defect has no business being described to a reader as though it
+ * were a CMS refusal — so it gets a flat sentence and the log gets the cause.
+ */
+function describeCause(cause: Cause.Cause<unknown>): string {
+	const failure = writeFailure(cause);
+	return failure ? describeError(failure) : "EmDash could not be reached";
+}
+
+/** The same cause, with the truncated detail, for the log. */
+function reportCause(cause: Cause.Cause<unknown>): unknown {
+	const failure = writeFailure(cause);
+	if (!failure) return Cause.pretty(cause);
+	return { summary: describeError(failure), detail: describeDetail(failure) };
+}
 
 export { EMAIL };

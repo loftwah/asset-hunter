@@ -4,13 +4,31 @@
  * A discovery catalogue is worth subscribing to: someone can follow entries
  * without checking the wall. Served from the same CMS data as the public site,
  * so there is no separate feed store to fall out of sync.
+ *
+ * ## The Effect boundary (#62)
+ *
+ * The read is an Effect and the runner lives in `../lib/effect/root.ts` — one
+ * composition root, one place that decides how a program is run. The feed's own
+ * serialisation stays plain TypeScript: it is pure, synchronous and completely
+ * deterministic, which is the case the house style says not to wrap.
  */
 import type { APIRoute } from "astro";
+import { Exit } from "effect";
 import { loadPossibilities } from "../lib/catalogue";
+import { runAppExit } from "../lib/effect/root.ts";
 import { RIGHTS_LABEL, VERTICAL_LABEL } from "../lib/vocabulary";
 
 export const GET: APIRoute = async () => {
-	const { possibilities } = await loadPossibilities();
+	// `runAppExit` so a CMS failure is an empty feed rather than an unhandled
+	// rejection: a feed that cannot be built is not a feed anyone can read.
+	const loaded = await runAppExit(loadPossibilities());
+	if (!Exit.isSuccess(loaded)) {
+		return new Response(
+			'<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>Asset Hunter</title><description>Catalogue temporarily unavailable</description></channel></rss>',
+			{ status: 503, headers: { "content-type": "application/rss+xml; charset=utf-8" } },
+		);
+	}
+	const { possibilities } = loaded.value;
 	// Editorial rank is not a date, so order by slug for a stable, reproducible
 	// feed rather than inventing a "newest" ordering the data does not carry.
 	const items = [...possibilities].sort((a, b) => b.slug.localeCompare(a.slug)).slice(0, 50);

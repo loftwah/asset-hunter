@@ -18,8 +18,10 @@
  */
 import Base from "../layouts/Base.astro";
 import PossibilityTile from "../components/PossibilityTile.astro";
-import { LAB_SECTIONS, allFixtures } from "../lib/fixtures.ts";
-import { RIGHTS_MEANING, ORIGIN_MEANING } from "../lib/vocabulary.ts";
+import ExampleUse from "../components/ExampleUse.astro";
+import { LAB_SECTIONS, USE_FIXTURES, allFixtures } from "../lib/fixtures.ts";
+import { RIGHTS_MEANING, ORIGIN_MEANING, USE_STATE_MEANING } from "../lib/vocabulary.ts";
+import { useStateFor } from "../lib/asset-use.ts";
 
 if (!import.meta.env.DEV) {
 	// A lab on the public site would be both a lie and an invitation to break
@@ -59,6 +61,8 @@ const origins = [...new Set(fixtures.map((f) => f.possibility.representativeOrig
 					<a href={`#${section.id}`}>{section.title}</a>
 				))
 			}
+			<a href="#asset-use">Asset use states</a>
+			<a href="#vocabulary">Wording the marks promise</a>
 		</nav>
 	</header>
 
@@ -67,6 +71,7 @@ const origins = [...new Set(fixtures.map((f) => f.possibility.representativeOrig
 			<li class="tag">Media kinds: {new Set(fixtures.map((f) => f.possibility.mediaKind).filter(Boolean)).size}</li>
 			<li class="tag">Rights: {rights.length}</li>
 			<li class="tag">Origins: {origins.length}</li>
+			<li class="tag">Use states: {USE_FIXTURES.length}</li>
 			<li class="tag">Fixtures: {fixtures.length}</li>
 		</ul>
 	</nav>
@@ -101,6 +106,31 @@ const origins = [...new Set(fixtures.map((f) => f.possibility.representativeOrig
 		))
 	}
 
+	{/*
+		Asset use states (#42), rendered by the same component the drill-in and
+		`/use/<slug>` use. They live here because the catalogue currently holds
+		only the reference-only state: without fixtures, the three reuse states
+		would have been shipped having only ever existed in a unit test.
+	*/}
+	<section class="section shell" id="asset-use" aria-labelledby="asset-use-title">
+		<h2 class="display section__title" id="asset-use-title">
+			Asset use states
+		</h2>
+		<p class="section__why">
+			One block per use state, and one per handoff outcome, so the four rights never have to be
+			told apart by reading. The only accent on the page is a download control, and at most one
+			fixture has one — two would mean the accent is not marking anything.
+		</p>
+		<div class="uses">
+			{USE_FIXTURES.map((fixture) => (
+				<figure class="use-case" data-use-state={useStateFor(fixture.example)}>
+					<figcaption class="tag use-case__note">{fixture.note}</figcaption>
+					<ExampleUse example={fixture.example} />
+				</figure>
+			))}
+		</div>
+	</section>
+
 	<section class="section shell" id="vocabulary" aria-labelledby="vocabulary-title">
 		<h2 class="display section__title" id="vocabulary-title">Wording the marks promise</h2>
 		<p class="section__why">
@@ -115,6 +145,17 @@ const origins = [...new Set(fixtures.map((f) => f.possibility.representativeOrig
 						<strong>{status}</strong> — {RIGHTS_MEANING[status as keyof typeof RIGHTS_MEANING]}
 					</li>
 				))}
+			</ul>
+			<h3>Use state</h3>
+			<ul>
+				{USE_FIXTURES.map((fixture) => {
+					const state = useStateFor(fixture.example);
+					return (
+						<li>
+							<strong>{state}</strong> — {USE_STATE_MEANING[state]}
+						</li>
+					);
+				})}
 			</ul>
 			<h3>Origin</h3>
 			<ul>
@@ -234,5 +275,25 @@ const origins = [...new Set(fixtures.map((f) => f.possibility.representativeOrig
 
 	.case__note {
 		color: var(--ink-4);
+	}
+
+	/* Two columns rather than the tile grid: a use block is a stack of sentences
+	   and it needs width to be judged, not a 15rem cell. */
+	.uses {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+		gap: var(--sp-5);
+		align-items: start;
+		margin-top: var(--sp-5);
+	}
+
+	.use-case {
+		display: grid;
+		gap: var(--sp-2);
+		margin: 0;
+	}
+
+	.use-case__note {
+		color: var(--ink-3);
 	}
 </style>
