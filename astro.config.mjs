@@ -19,6 +19,21 @@ export default defineConfig({
 		emdash({
 			database: d1({ binding: "DB", session: "auto" }),
 			storage: r2({ binding: "MEDIA" }),
+			/**
+			 * The public origin users type, with no path.
+			 *
+			 * Declared here rather than left to `EMDASH_SITE_URL` because this is
+			 * what production setup reads before it will run at all: the setup
+			 * route refuses with `SITE_URL_REQUIRED` when it cannot resolve a
+			 * configured origin, and a secret set with `wrangler secret put` is
+			 * not visible through the `process.env` path EmDash reads on Workers.
+			 * Config is read at build time, so it is present on the first request
+			 * to a fresh deployment rather than one deploy later.
+			 *
+			 * Without it the catalogue deploys and then renders an empty wall,
+			 * because the seed's content is only applied by the setup step.
+			 */
+			siteUrl: "https://assets.loftwah.com",
 		}),
 	],
 	devToolbar: { enabled: false },

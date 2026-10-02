@@ -10,13 +10,14 @@
 	// that does not exist would make `wrangler d1 migrations apply` look
 	// configured while having nothing to apply.
 	//
-	// `database_id` is filled in by `wrangler d1 create asset-hunter` and is
-	// deliberately not committed with a placeholder: a placeholder would fail
-	// at deploy time instead of failing here.
+	// The real production database, created by `wrangler d1 create asset-hunter`.
+	// A placeholder would have failed at deploy time instead of failing here,
+	// which is why `npm run doctor` checks this field is set and not "local".
 	"d1_databases": [
 		{
 			"binding": "DB",
-			"database_name": "asset-hunter"
+			"database_name": "asset-hunter",
+			"database_id": "b86b8b0d-bd3a-4331-856b-84e841370bc4"
 		}
 	],
 	"r2_buckets": [

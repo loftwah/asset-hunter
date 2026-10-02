@@ -210,7 +210,11 @@ describe("a withdrawn entry disappears from every public surface", () => {
 		const feed = await (await get("/rss.xml")).text();
 		assert.equal(feed.includes(SLUG), false, "still in the feed");
 
-		const json = (await (await get("/api/catalogue.json")).json()) as {
+		// `?fresh=1` because the endpoint caches per isolate. A test that hides an
+		// entry and then reads a cached catalogue is asserting about the cache, not
+		// about `visibility` — which is exactly the flake this was: it passed most
+		// runs and failed when a previous run had warmed the TTL.
+		const json = (await (await get("/api/catalogue.json?fresh=1")).json()) as {
 			possibilities: { id: string }[];
 			counts: { possibilities: number };
 		};

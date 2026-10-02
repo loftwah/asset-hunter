@@ -61,8 +61,13 @@ const ROUTES = [
 	{ path: "/pages/about", name: "page-about", expect: { ".prose p": 5 } },
 	{ path: "/pages/licensing", name: "page-licensing", expect: { ".prose h2": 3 } },
 	// The lab (#45) is development-only but audited like a real route: a state
-	// that exists only in a screenshot is a state nobody has checked.
-	{ path: "/lab", name: "lab", expect: { ".case": 30, "#vocabulary": 1 } },
+	// that exists only in a screenshot is a state nobody has checked. It 404s in
+	// production by design, so it is skipped rather than reported there — a
+	// matrix that fails because a deliberately-absent route is absent would train
+	// people to ignore the matrix.
+	...(baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1")
+		? [{ path: "/lab", name: "lab", expect: { ".case": 30, "#vocabulary": 1 } }]
+		: []),
 	{ path: "/board", name: "board", expect: { ".empty__title": 1 } },
 	{ path: "/search?q=seam", name: "search", expect: { ".count": 1 } },
 	{ path: "/nope-does-not-exist", name: "404", expect: {}, allow404: true },
