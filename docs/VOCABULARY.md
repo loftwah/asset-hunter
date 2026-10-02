@@ -164,15 +164,11 @@ Ranking may use all three. The raw values stay inspectable.
 | Place                                       | Role                                              |
 | ------------------------------------------- | ------------------------------------------------- |
 | `src/lib/vocabulary.ts`                     | The implementation. Components look terms up here. |
-<<<<<<< HEAD
-| `src/lib/asset-use.ts`                      | The rights status → use state decision, the credit, and the gate on handing an asset over. |
-| `src/lib/handoff.ts`                         | The implementation handoff, as a versioned document and a Markdown rendering of it. |
-=======
 | `src/lib/asset-use.ts`                      | The rights status → use state decision, the credit, and the handoff gate. |
+| `src/lib/handoff.ts`                         | The implementation handoff, as a versioned document and a Markdown rendering of it. |
 | `src/lib/disputes.ts`                       | Dispute states, exclusion scopes, the audit actions, and the possibility recompute. Pure. |
 | `src/lib/takedown.ts`                       | The same rules as Effects: reads and writes to EmDash content. |
 | `engine/src/exclusions.ts`                  | The engine's half of an exclusion, and the only thing that decides what a crawl ingests. |
->>>>>>> lane/54
 | `seed/atlas.json`                           | The content that uses them.                        |
 | `/pages/licensing`                          | The four statuses in full sentences, for readers. |
 | `DESIGN.md`                                 | How the terms are presented.                       |
