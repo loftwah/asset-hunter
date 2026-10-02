@@ -26,6 +26,12 @@
 			"bucket_name": "asset-hunter-media"
 		}
 	],
+	// The canonical product URL, matching the subdomain pattern every other
+	// project on this zone uses (fighter., bubbles., shoalshot., woodhouse.).
+	// Without this the Worker is only reachable at its `workers.dev` name and
+	// `assets.loftwah.com` — the URL in `astro.config.mjs`, the seed and every
+	// canonical link the site emits — answers 522.
+	"routes": [{ "pattern": "assets.loftwah.com", "custom_domain": true }],
 	"observability": {
 		"enabled": true
 	}
