@@ -45,6 +45,7 @@ import {
 	type RightsStatus,
 	type UseState,
 } from "./vocabulary.ts";
+import { safeContentType, safeHttpUrl } from "./security.ts";
 
 /**
  * Rights status → use state.
@@ -787,6 +788,28 @@ function refusalText(decision: UseDecision): string {
 }
 
 /**
+ * The header set on every response this module produces, bytes or refusal.
+ *
+ * `nosniff` and a sandboxing `Content-Security-Policy` are what make
+ * `content-disposition: attachment` a *second* line of defence rather than the
+ * only one. EmDash's own media route sets exactly this pair on R2 objects
+ * (`node_modules/emdash/src/astro/routes/api/media/file/[...key].ts`), so a file
+ * this app hands over is inert by the same rules as one uploaded through the CMS
+ * — including the case where the recorded content type is `text/html`, which
+ * `attachment` alone would be trusting the browser to honour.
+ *
+ * `object-src 'none'` and `base-uri 'none'` are inside the sandbox for the same
+ * reason: an HTML payload with `<base href>` or a `<object>` should not get to
+ * rewrite where its own relative URLs point even if a future client ignored the
+ * disposition.
+ */
+const PAYLOAD_HEADERS = {
+	...NO_STORE,
+	"x-content-type-options": "nosniff",
+	"content-security-policy":
+		"sandbox; default-src 'none'; style-src 'unsafe-inline'; object-src 'none'; base-uri 'none'",
+} as const;
+/**
  * What `/api/payload/<example>` serves.
  *
  * The gate is `useDecision`, recomputed here from the record rather than taken
@@ -818,7 +841,7 @@ export async function payloadResult(input: {
 	const { example, retained } = input;
 	const decision = useDecision(example);
 	const headers: Record<string, string> = {
-		...NO_STORE,
+		...PAYLOAD_HEADERS,
 		"x-ah-use-state": decision.state,
 		"x-ah-record": assetUsePaths.record(example.slug),
 	};
@@ -877,11 +900,13 @@ export async function payloadResult(input: {
 			"x-ah-sha256": digest,
 			// No Content-Type is invented: `application/octet-stream` plus an
 			// attachment disposition makes the browser save it rather than try to
-			// render it, which is the safe answer for an unknown asset type.
-			"content-type": retained.contentType || "application/octet-stream",
+			// render it, which is the safe answer for an unknown asset type. A
+			// recorded type is used when it is a well-formed MIME type, and the
+			// sandbox above holds even if that type turns out to be one a browser
+			// would render.
+			"content-type": safeContentType(retained.contentType) ?? "application/octet-stream",
 			"content-length": String(retained.bytes.byteLength),
 			"content-disposition": `attachment; filename="${payloadFilename(example)}"`,
-			"x-content-type-options": "nosniff",
 		},
 		body: null,
 		bytes: retained.bytes,

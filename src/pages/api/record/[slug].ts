@@ -25,6 +25,11 @@ const text = (body: string, status: number) =>
 		headers: {
 			"content-type": "text/plain; charset=utf-8",
 			"cache-control": "public, max-age=300",
+			// The 404 body echoes the id the caller asked for, so it is served with
+			// the same `nosniff` + sandbox pair as every other refusal on the
+			// asset-use paths. See `src/lib/asset-use.ts`.
+			"x-content-type-options": "nosniff",
+			"content-security-policy": "sandbox; default-src 'none'; object-src 'none'",
 		},
 	});
 
@@ -38,7 +43,7 @@ export const GET: APIRoute = async ({ params }) => {
 		// Says what happened and where the record would be found, rather than
 		// returning a bare 404 the way a database miss would.
 		return text(
-			`No example named "${id}" is in the catalogue.\n\n` +
+			`No example named "${id.slice(0, 120)}" is in the catalogue.\n\n` +
 				"Examples are reached from the possibility they belong to: /possibilities/<slug> lists the\n" +
 				"ones recorded against it, and each links to its own record.\n",
 			404,
@@ -51,6 +56,12 @@ export const GET: APIRoute = async ({ params }) => {
 		headers: {
 			"content-type": "application/json; charset=utf-8",
 			"cache-control": "public, max-age=300",
+			// The document is made of recorded provenance strings — repository
+			// names, licence quotes, `source_url` — so it gets the same treatment as
+			// the text refusals above rather than being the one JSON response that
+			// trusts its declared type alone.
+			"x-content-type-options": "nosniff",
+			"content-security-policy": "sandbox; default-src 'none'; object-src 'none'",
 			// The evidence is stable for a given record, and a validator keeps a
 			// re-fetch cheap without inventing a freshness claim we cannot make.
 			etag: `W/"${document.contentHash ?? document.id}"`,

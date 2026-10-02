@@ -25,9 +25,19 @@
  * `normaliseBoardName`, `applyAction` and `serialiseBoards` are synchronous
  * functions over strings, and `tests/board.test.ts` exercises them with no server
  * and no Effect runtime. Only the catalogue read is effectful.
+ *
+ * ## What #53 added here
+ *
+ * A board cookie is `httpOnly` and per-browser, so the worst a cross-origin
+ * write can do is overwrite one reader's own shortlist. It is still a
+ * state-changing endpoint backed by a CMS read per request, so it now makes the
+ * three checks the signal endpoint makes — {@link sameOrigin}, a resolved
+ * {@link safeReturnPath}, and the {@link RateLimits} window — rather than being
+ * the one write path that has none of them. The board's window is deliberately
+ * much looser than a rating's: it writes a cookie and no row.
  */
 import type { APIRoute } from "astro";
-import { Exit } from "effect";
+import { Effect, Exit } from "effect";
 import {
 	COOKIE_NAME,
 	COOKIE_OPTIONS,
@@ -39,23 +49,59 @@ import {
 	type BoardAction,
 } from "../../lib/board";
 import { loadPossibilities } from "../../lib/catalogue";
+import { BOARD_LIMIT, RateLimits } from "../../lib/effect/limits.ts";
 import { runAppExit } from "../../lib/effect/root.ts";
+import { crossOriginResponse, safeReturnPath, sameOrigin } from "../../lib/security.ts";
 
 const ACTIONS: BoardAction[] = ["save", "unsave", "remove", "clear", "rename"];
 
 export const POST: APIRoute = async ({ request, redirect, cookies }) => {
+	const origin = new URL("/", request.url).origin;
+	const verdict = sameOrigin({ headers: request.headers, origin });
+	if (!verdict.sameOrigin) {
+		console.warn(`board: refused a cross-origin write (${verdict.why})`);
+		return crossOriginResponse();
+	}
+
 	const form = await request.formData();
 	const action = String(form.get("action") ?? "") as BoardAction;
 	const slug = String(form.get("slug") ?? "");
 	const board = normaliseBoardName(String(form.get("board") ?? ""));
 	const to = String(form.get("to") ?? "");
-	// Where to return to. Only same-origin paths, so the endpoint cannot be used
-	// as an open redirect.
+	// Where to return to. Only same-origin paths, proved by resolving rather than
+	// by a prefix test — see `safeReturnPath` for the `/\evil.com` form that a
+	// `startsWith("/")` check waves through.
 	const back = String(form.get("back") ?? "/board");
-	const returnTo = back.startsWith("/") && !back.startsWith("//") ? back : "/board";
+	const returnTo = safeReturnPath(back, origin, "/board");
 
 	if (!ACTIONS.includes(action)) {
 		return new Response("Unknown action", { status: 400 });
+	}
+
+	// A short window over the reader (or their address), because every board POST
+	// costs a catalogue read below. See `src/lib/effect/limits.ts` for why this is
+	// the second layer under a Cloudflare rate-limiting rule rather than the only one.
+	const limited = await runAppExit(
+		Effect.flatMap(RateLimits, (limits) =>
+			limits.take({
+				identity: `ip:${request.headers.get("cf-connecting-ip") ?? "unknown"}`,
+				limit: BOARD_LIMIT.limit,
+				windowMs: BOARD_LIMIT.windowMs,
+				subject: "shortlist",
+			}),
+		),
+		{ signal: request.signal },
+	);
+	if (Exit.isSuccess(limited) && !limited.value.allowed) {
+		return new Response(limited.value.reason, {
+			status: 429,
+			headers: {
+				"content-type": "text/plain; charset=utf-8",
+				"cache-control": "no-store",
+				"x-content-type-options": "nosniff",
+				"retry-after": String(limited.value.retryAfterSeconds),
+			},
+		});
 	}
 
 	// Every slug is checked against the catalogue. This is what makes an
@@ -83,6 +129,10 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
 	const hasAnything = Object.values(next).some((slugs) => slugs.length > 0);
 	cookies.set(COOKIE_NAME, serialiseBoards(next), {
 		...COOKIE_OPTIONS,
+		// `Secure` only where the request itself is secure. Set unconditionally it
+		// would be silently dropped over plain HTTP — including on localhost in
+		// Safari, which is a confusing way to lose a reader's shortlist.
+		secure: new URL(request.url).protocol === "https:",
 		maxAge: hasAnything ? COOKIE_OPTIONS.maxAge : 0,
 	});
 

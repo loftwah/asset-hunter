@@ -20,7 +20,7 @@ import {
 import { verticalLabel } from "../lib/vocabulary";
 import { Effect } from "effect";
 import { runApp } from "../lib/effect/root";
-import { excerpt, facetLabels } from "../lib/search-text";
+import { excerpt, facetLabels, safeSnippet } from "../lib/search-text";
 
 const query = (Astro.url.searchParams.get("q") ?? "").trim();
 const all = query.length > 0 ? await search(query, { limit: 60 }) : { items: [] };
@@ -311,7 +311,9 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 							<li>
 								<a href={`/pages/${p.slug}`}>
 									<span class="pages-found__title">{p.title}</span>
-									{p.snippet && <span class="pages-found__snippet" set:html={p.snippet} />}
+									{p.snippet && (
+										<span class="pages-found__snippet" set:html={safeSnippet(p.snippet)} />
+									)}
 								</a>
 							</li>
 						))}

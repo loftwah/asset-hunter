@@ -106,6 +106,32 @@ npx wrangler deploy
 
 `npm run deploy` does the build and the deploy in one step.
 
+### The first administrator, and `EMDASH_ALLOW_SETUP` (#53)
+
+EmDash's first-run wizard is **unauthenticated**. `POST /_emdash/api/setup`,
+`/_emdash/api/setup/admin` and `/_emdash/api/setup/admin/verify` walk any
+anonymous visitor through creating the first administrator account, and each
+step's only guard is "does a user exist yet". That is right for a site that was
+created a minute ago and catastrophic for one whose first account has not been
+made yet — and the CMS session is a same-origin `httpOnly` cookie, so whoever
+walks it owns the content, the media and the users.
+
+`src/middleware.ts` therefore **refuses the wizard in a production build unless
+the build opts in**:
+
+```bash
+# First deploy of a brand-new site: opt in, deploy, create the admin, then rebuild without the flag.
+EMDASH_ALLOW_SETUP=1 npm run deploy
+# …create the administrator at https://<your-host>/_emdash/admin/setup, from a machine you control…
+npm run deploy          # the wizard is closed again
+```
+
+If you deploy and never create the account, the site stays **unclaimed**, which
+is why the flag defaults off. `GET /_emdash/api/setup/status` tells you where you
+stand; `{"needsSetup":true}` means nobody has created the first account yet.
+
+See `docs/SECURITY.md` §1 for the measurement.
+
 Then point the hostname at the Worker. Either in the Cloudflare dashboard under
 Workers & Pages → `asset-hunter` → Settings → Domains & Routes, or as a route in
 `wrangler.jsonc`:

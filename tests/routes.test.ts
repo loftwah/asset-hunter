@@ -9,6 +9,7 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { SIGNAL_FIXTURES } from "../src/lib/fixtures.ts";
+import { SAME_ORIGIN_POST } from "./helpers.ts";
 
 const baseUrl = process.env.AH_URL ?? "http://localhost:4321";
 
@@ -380,7 +381,7 @@ describe("shortlist board", () => {
 		const res = await fetch(`${baseUrl}/api/board`, {
 			method: "POST",
 			redirect: "manual",
-			headers: { "content-type": "application/x-www-form-urlencoded" },
+			headers: { ...SAME_ORIGIN_POST, "content-type": "application/x-www-form-urlencoded" },
 			body: new URLSearchParams({ action: "rename", board: "default", to: "Pirates" }),
 		});
 		assert.equal(res.status, 303);
@@ -395,7 +396,7 @@ describe("shortlist board", () => {
 		const res = await fetch(`${baseUrl}/api/board`, {
 			method: "POST",
 			redirect: "manual",
-			headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+			headers: { ...SAME_ORIGIN_POST, "content-type": "application/x-www-form-urlencoded", cookie },
 			body: new URLSearchParams({ action: "rename", board: "default", to: "Pirates" }),
 		});
 		assert.equal(res.status, 303);
@@ -453,7 +454,7 @@ describe("shortlist board", () => {
 		const res = await fetch(`${baseUrl}/api/board`, {
 			method: "POST",
 			redirect: "manual",
-			headers: { "content-type": "application/x-www-form-urlencoded" },
+			headers: { ...SAME_ORIGIN_POST, "content-type": "application/x-www-form-urlencoded" },
 			body,
 		});
 		assert.equal(res.status, 303);
@@ -504,7 +505,7 @@ describe("signals: ratings and reports", () => {
 		const res = await fetch(`${baseUrl}/api/signal`, {
 			method: "POST",
 			redirect: "manual",
-			headers: { "content-type": "application/x-www-form-urlencoded" },
+			headers: { ...SAME_ORIGIN_POST, "content-type": "application/x-www-form-urlencoded" },
 			body: new URLSearchParams({
 				intent: "rate",
 				subject_type: "possibility",
@@ -520,7 +521,7 @@ describe("signals: ratings and reports", () => {
 		const res = await fetch(`${baseUrl}/api/signal`, {
 			method: "POST",
 			redirect: "manual",
-			headers: { "content-type": "application/x-www-form-urlencoded" },
+			headers: { ...SAME_ORIGIN_POST, "content-type": "application/x-www-form-urlencoded" },
 			body: new URLSearchParams({
 				intent: "rate",
 				subject_type: "possibility",
@@ -538,7 +539,7 @@ describe("signals: ratings and reports", () => {
 		const res = await fetch(`${baseUrl}/api/signal`, {
 			method: "POST",
 			redirect: "manual",
-			headers: { "content-type": "application/x-www-form-urlencoded" },
+			headers: { ...SAME_ORIGIN_POST, "content-type": "application/x-www-form-urlencoded" },
 			body: new URLSearchParams({ intent: "report", back: "https://example.com/evil" }),
 		});
 		assert.equal(res.status, 303);

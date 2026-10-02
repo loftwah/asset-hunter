@@ -53,15 +53,22 @@ export const GET: APIRoute = async ({ params }) => {
 	const example = await runRead(loadExample(id));
 
 	if (!example) {
+		// The id is echoed back, so the response carries the same headers every
+		// other refusal here does: `nosniff` plus a sandboxing CSP. Echoing an
+		// untrusted string into a body is only safe if the body cannot be
+		// re-interpreted as a document, and this is the one place where the id
+		// reaches the response with no schema behind it.
 		return new Response(
-			`No example named "${id}" is in the catalogue, so there is nothing to hand over.\n` +
+			`No example named "${id.slice(0, 120)}" is in the catalogue, so there is nothing to hand over.\n` +
 				"Examples are reached from the possibility they belong to: /possibilities/<slug>.\n",
 			{
 				status: 404,
 				headers: {
 					"content-type": "text/plain; charset=utf-8",
 					"cache-control": "no-store",
-					"x-ah-record": `${assetUsePaths.record(id)}`,
+					"x-content-type-options": "nosniff",
+					"content-security-policy": "sandbox; default-src 'none'; object-src 'none'",
+					"x-ah-record": `/api/record/${encodeURIComponent(id.slice(0, 120))}`,
 				},
 			},
 		);

@@ -90,6 +90,28 @@ export default defineConfig({
 	devToolbar: { enabled: false },
 	site: "https://assets.loftwah.com",
 	/**
+	 * `security.checkOrigin` is **not** set here, and that is a finding rather
+	 * than an omission (#53).
+	 *
+	 * Writing `security: { checkOrigin: true }` here does nothing: EmDash's
+	 * integration sets it to `false` in `astro:config:setup`
+	 * (`node_modules/emdash/src/astro/integration/index.ts`, `securityConfig`),
+	 * deliberately, because EmDash supplies its own origin check that also accepts
+	 * the runtime-configured public origin. Config is applied in integration
+	 * order, so EmDash's `updateConfig` wins over whatever this file says.
+	 *
+	 * The consequence is worth stating plainly: **Astro's CSRF middleware is off
+	 * on this site**, and EmDash's replacement only covers `/_emdash/api/*`
+	 * public routes. `src/pages/api/signal.ts` and `src/pages/api/board.ts` are
+	 * application routes outside both, so before #53 they checked nothing. They
+	 * now call `sameOrigin` from `src/lib/security.ts` themselves.
+	 *
+	 * (A dev server also refuses `Sec-Fetch-Site: cross-site` subresource
+	 * requests — `astro/dist/vite-plugin-astro-server/sec-fetch.js`. That is a
+	 * local hardening measure and does not exist in production, so it is not
+	 * evidence that the endpoint is protected.)
+	 */
+	/**
 	 * Vite's dependency optimiser cannot pre-bundle a few of this app's runtime
 	 * dependencies, and when it tries, every route 500s with a confusing
 	 * "optimize deps" error until `node_modules/.vite` is deleted by hand.

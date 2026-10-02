@@ -41,6 +41,17 @@ const emptyBoards = (): Boards => ({ [DEFAULT_BOARD]: [] });
 /**
  * Parses the cookie. Anything unrecognisable becomes an empty board rather than
  * an error: a corrupted cookie should cost you your board, not the page.
+ *
+ * ## Names go through `normaliseBoardName` here too (#53)
+ *
+ * The write path sanitised board names and the read path did not, which meant a
+ * hand-edited cookie could carry a name `applyAction` would never have produced
+ * — up to 40 characters of anything. The values are rendered through Astro's
+ * escaping, so it was never markup; it was a name the app had agreed never to
+ * accept, being rendered because nobody re-checked it on the way out.
+ *
+ * The fix is one call, and it makes the cookie's own parser the place where the
+ * invariant lives rather than the place that happens to enforce it.
  */
 export function parseBoards(raw: string | null | undefined): Boards {
 	if (!raw) return emptyBoards();
@@ -54,9 +65,10 @@ export function parseBoards(raw: string | null | undefined): Boards {
 		return emptyBoards();
 	}
 	const boards: Boards = {};
-	for (const [name, value] of Object.entries(decoded as Record<string, unknown>)) {
-		if (!name || name.length > MAX_BOARD_NAME) continue;
+	for (const [rawName, value] of Object.entries(decoded as Record<string, unknown>)) {
 		if (!Array.isArray(value)) continue;
+		const name = normaliseBoardName(rawName);
+		if (!name || name.length > MAX_BOARD_NAME) continue;
 		const slugs = [...new Set(value.filter((s): s is string => typeof s === "string"))].slice(
 			0,
 			MAX_PER_BOARD,
@@ -102,6 +114,16 @@ export const COOKIE_OPTIONS = {
 	maxAge: 60 * 60 * 24 * 90,
 	sameSite: "lax",
 	httpOnly: true,
+	/**
+	 * `secure` is **not** set here, and that is deliberate.
+	 *
+	 * `/api/board` adds it per request, because a cookie written `Secure` over
+	 * plain HTTP is dropped by the browser rather than stored insecurely — so
+	 * hard-coding it would silently lose a reader's shortlist on any
+	 * non-localhost HTTP origin, and Safari drops it on `http://localhost` too.
+	 * Setting it exactly when the request is HTTPS gives the flag where it
+	 * protects and nowhere it breaks.
+	 */
 } as const;
 
 /** A board name a person can read, derived from what they typed. */

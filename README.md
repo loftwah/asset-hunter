@@ -264,6 +264,17 @@ components.
 Cloudflare Workers + D1 + R2. See [docs/DEPLOY.md](docs/DEPLOY.md) for the
 required resources, secrets, migrations and first-deploy procedure.
 
+**If this site has never had an administrator account created, do that before
+anything else.** The first-run wizard is unauthenticated and the session it
+creates is a same-origin cookie; see [docs/SECURITY.md](docs/SECURITY.md) §1.
+
+## Security
+
+[docs/SECURITY.md](docs/SECURITY.md) is the review of the public catalogue: what
+was attacked, what was found, what was fixed, what is accepted and what is open.
+The parts worth knowing before you touch the code are §4 (hostile content — the
+whole product is other people's text) and §11 (what is still open).
+
 ## Licence
 
 Code: MIT (see [LICENSE](LICENSE)).
