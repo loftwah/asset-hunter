@@ -161,8 +161,6 @@ export function planRefresh(
 		inspect.push({ kind: "inspect", reason: "new-source", fullName: seen.fullName });
 	}
 
-	void vanished;
-	void now;
 	return { inspect, skip, vanished, unchanged };
 }
 

@@ -1370,20 +1370,36 @@ async function main() {
 				issues.push(...(await attempt(() => auditAnchor(page, route.anchor), page)));
 			}
 
+			// Screenshot before the keyboard probe: focusing the skip link leaves
+			// it on screen, and every capture in the matrix would carry the same
+			// artefact over the masthead.
+			//
+			// This is also before the scroll below, deliberately. A `fullPage`
+			// capture of a scrolled document renders sticky chrome at its scrolled
+			// offset — so capturing after the scroll silently removed the masthead
+			// from every screenshot of every route that has one. The evidence is
+			// worthless if the harness is what moved the thing it is photographing.
+			if (!auditOnly) {
+				await page.screenshot({
+					path: `${outDir}${route.name}--${viewport.name}.png`,
+					fullPage: viewport.width >= 768,
+				});
+				captured++;
+			}
+
 			/*
-			 * Sticky chrome, measured after a scroll.
-			 *
-			 * Two things force this to run here, before the capture and the Tab
-			 * probe:
+			 * Sticky chrome, measured on a scrolled frame.
 			 *
 			 * 1. **A `fullPage` screenshot does not simulate sticky positioning.**
 			 *    Chromium lays sticky and fixed elements out at their unscrolled
 			 *    position, so a rail sliding under the masthead captured
 			 *    perfectly and was broken in the browser. That is how the first
-			 *    version of this check came to exist.
+			 *    version of this check came to exist, and it is why the second
+			 *    capture here is viewport-sized rather than full-page.
 			 * 2. **The screenshot moves the page.** Capturing re-lays-out the
 			 *    document and focusing the skip link scrolls to it, so measuring
-			 *    afterwards reads a scroll offset the harness itself produced.
+			 *    before the capture reads a scroll offset the harness itself
+			 *    produced.
 			 */
 			if (route.scroll) {
 				await page.evaluate((y) => scrollTo({ top: y, behavior: "instant" }), route.scroll);
@@ -1395,17 +1411,10 @@ async function main() {
 					});
 					captured++;
 				}
-			}
-
-			// Screenshot before the keyboard probe: focusing the skip link leaves
-			// it on screen, and every capture in the matrix would carry the same
-			// artefact over the masthead.
-			if (!auditOnly) {
-				await page.screenshot({
-					path: `${outDir}${route.name}--${viewport.name}.png`,
-					fullPage: viewport.width >= 768,
-				});
-				captured++;
+				// Back to the top, so the `pageAuditScript` measurements that follow
+				// see the document as it loads rather than as this check left it.
+				await page.evaluate(() => scrollTo({ top: 0, behavior: "instant" }));
+				await page.waitForTimeout(80);
 			}
 
 			// Keyboard reachability: focus must be able to enter the page from the
@@ -1447,9 +1456,9 @@ async function main() {
 				// A route where the aspect-ratio check found nothing to measure has
 				// not been checked, not passed. Saying so is the difference between
 				// a green run and a green run that means nothing.
-				if (auditResult.ratioContainers === 0) {
+				if (auditResult.ratioContainers === 0 && route.media) {
 					warnings.push(
-						`${viewport.name} ${route.name}: no aspect-ratio containers on this page, so the crop check had nothing to measure`,
+						`${viewport.name} ${route.name}: a media route has no aspect-ratio containers, so the crop check had nothing to measure`,
 					);
 				}
 			} catch (err) {
