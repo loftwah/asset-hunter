@@ -1,55 +1,45 @@
 /**
  * The hunt engine CLI.
  *
- * Three commands, in the order they are normally run:
+ * Four commands, in the order they are normally run:
  *
- *   hunt    read a brief, crawl what it names, record the evidence
- *   sync    reconcile the recorded evidence into the EmDash catalogue
- *   verify  prove the catalogue matches the payload, and that nothing human
- *           was overwritten
+ *   hunt     read a brief, discover what it names, record the evidence
+ *   refresh  re-read what is already known, and nothing else (#41)
+ *   sync     reconcile the recorded evidence into the EmDash catalogue
+ *   verify   prove the catalogue matches the payload, and that nothing human
+ *            was overwritten
  *
  * The engine is a separate process from the app and talks to EmDash over the
  * same authenticated HTTP API the admin uses. It does not touch the CMS
  * database and it does not import app code, so the boundary in
  * `docs/ARCHITECTURE.md` is a real one rather than a naming convention.
+ *
+ * This file is the program edge and nothing else. Argument parsing, the help
+ * text, `process.exitCode` and the transcript are imperative on purpose, and the
+ * crawl itself lives in `./crawl.ts` so it can be run against a substituted
+ * GitHub service with no network at all. Every command below is exactly one
+ * `runEngine` call — see `./runtime/root.ts` — so a runner is never reached from
+ * inside a loop.
  */
 
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Cause, Effect, Option } from "effect";
-import { decodeBase64, isWorthReading, type SearchHit } from "./github.ts";
-import { GitHubApi, GitHubError, type RepoRef } from "./runtime/github.ts";
-import { runEngine, runEngineExit } from "./runtime/root.ts";
-import { briefFingerprint, validateBrief, type HuntBrief } from "./brief.ts";
-import {
-	assetLicenceFor,
-	classify,
-	pickLicenceFile,
-} from "./licence.ts";
-import {
-	candidateId,
-	loadCandidates,
-	loadWaves,
-	recordCandidate,
-	recordWave,
-	rightsSummaryFrom,
-	summarise,
-	type Candidate,
-	type FileEvidence,
-} from "./candidates.ts";
-import { extractPossibilities, kindFor, type ExtractedPossibility } from "./possibility.ts";
-import { buildPayload, validatePayload, type PublishPayload } from "./publish.ts";
-import { EmDashApi, EmDashApiError } from "./runtime/emdash.ts";
+import { Effect, Option } from "effect";
+import { GitHubApi } from "./runtime/github.ts";
+import { runEngine } from "./runtime/root.ts";
+import { validateBrief, type HuntBrief } from "./brief.ts";
+import { crawl, type CrawlMode } from "./crawl.ts";
+import { validatePayload, type PublishPayload } from "./publish.ts";
+import { EmDashApi, type EmDashApiError } from "./runtime/emdash.ts";
 import { mergeExample, mergePossibility, shouldPublish } from "./merge.ts";
-import { briefFingerprint as fingerprintOf } from "./brief.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const engineRoot = resolve(here, "..");
 const payloadPath = join(engineRoot, "state", "payload.json");
 
 /* -------------------------------------------------------------------------- */
-/* Auth                                                                      */
+/* Auth                                                                        */
 /* -------------------------------------------------------------------------- */
 
 /*
@@ -61,238 +51,58 @@ const payloadPath = join(engineRoot, "state", "payload.json");
  */
 
 /* -------------------------------------------------------------------------- */
-/* hunt                                                                      */
+/* hunt / refresh                                                             */
 /* -------------------------------------------------------------------------- */
 
-const ASSET_EXTENSIONS =
-	/\.(png|jpe?g|gif|webp|avif|svg|webm|mp4|mov|glb|gltf|blend|wav|mp3|ogg|flac|ttf|otf|woff2?|glsl|frag|vert|hlsl|shader)$/i;
-
-/** Source files count as evidence: a procedural-audio repo shows its technique in code. */
-const SOURCE_EXTENSIONS = /\.(py|js|mjs|ts|tsx|jsx|cpp|cc|c|h|rs|rb|cs|lua|d|zig)$/i;
-
-const PER_PAGE = 30;
-
-/** Which search wave a hit came from, recorded on the hit rather than patched on. */
-interface LandedHit extends SearchHit {
-	readonly query: string;
-	readonly page: number;
-	readonly lane: number;
-}
-
-/** The wave attribution stored on a candidate. */
-interface Lane {
-	readonly query: string;
-	readonly page: number;
-	readonly lane: string;
-}
-
 /**
- * The typed failure inside a `Cause`, when there is one.
+ * `hunt` and `refresh` — the two crawl modes, over the same code path.
  *
- * `Effect.runPromise` would reject with the whole `Cause` as one opaque value;
- * `runEngineExit` hands back an `Exit` so the CLI can print the message GitHub's
- * status implies rather than a stack trace.
+ * The mode is a parameter rather than a second command implementation, so the
+ * rule that decides what a run is allowed to do is one `if` in `./crawl.ts` and
+ * not two crawls that drift. `hunt` discovers; `refresh` only re-reads what is
+ * already on record, and `--force` re-reads that with the plan ignored.
  */
-const failureOf = (cause: Cause.Cause<unknown>): GitHubError | null => {
-	const found = Cause.findErrorOption(cause);
-	if (Option.isNone(found)) return null;
-	const value: unknown = found.value;
-	return value !== null && typeof value === "object" && "_tag" in value
-		? (value as GitHubError)
-		: null;
-};
+type EngineEnv = Record<string, string | undefined> | undefined;
 
-/**
- * `hunt` — read a brief, crawl what it names, record the evidence.
- *
- * An Effect because most of what it does is network I/O with typed failures and
- * a report that has to be able to say "this hunt read less than it claims". It is
- * run by `runEngine` in the program edge at the bottom of this file, which is the
- * only place in `engine/` that starts a fiber.
- */
-function cmdHunt(briefPath: string, env: Record<string, string | undefined>) {
+function cmdCrawl(mode: CrawlMode, briefPath: string, force: boolean, env: EngineEnv) {
 	return runEngine(
 		Effect.gen(function* () {
 			const brief = loadBrief(briefPath);
 			const github = yield* GitHubApi;
-			// `hunt` keeps its transcript imperative, so it is bridged as a promise.
-			// Everything it does that touches the network is an Effect internally.
-			yield* Effect.tryPromise({
-				try: () => hunt(brief, github),
-				catch: (cause) => cause,
-			}).pipe(Effect.catchCause((cause) => Effect.logError(Cause.pretty(cause))));
+			const outcome = yield* crawl({
+				mode,
+				root: engineRoot,
+				brief,
+				github,
+				force,
+				payloadExists: existsSync(payloadPath),
+			});
+
+			if (!outcome.writePayload) {
+				// The crawl has already said why. All that is left is what to do about
+				// it, and the honest answer is that there is nothing.
+				console.log("  next: nothing — a no-op run needs no sync");
+				return;
+			}
+
+			const validation = validatePayload(outcome.payload);
+			if (!validation.ok) {
+				console.error("\n✖ payload failed its own invariants; nothing was written");
+				for (const problem of validation.problems) console.error(`  ${problem}`);
+				process.exitCode = 1;
+				return;
+			}
+			mkdirSync(dirname(payloadPath), { recursive: true });
+			writeFileSync(payloadPath, `${JSON.stringify(outcome.payload, null, "\t")}\n`);
+			const examples = outcome.payload.possibilities.reduce((n, p) => n + p.examples.length, 0);
+			console.log(
+				`\n✔ payload ${outcome.payload.fingerprint} — ${outcome.payload.possibilities.length} possibilities, ${examples} examples`,
+			);
+			console.log(`  ${payloadPath}`);
+			console.log("\n  next: npm run hunt:sync");
 		}),
 		{ env },
 	);
-}
-
-/**
- * The crawl itself, as one Effect.
- *
- * The reporting stays imperative on purpose. A `console.log` per wave is not
- * effectful work; it is a transcript, and modelling it as one would buy nothing
- * and cost every line. The network calls around it are Effects.
- */
-async function hunt(brief: HuntBrief, github: GitHubApi["Service"]): Promise<void> {
-	const waves = loadWaves(engineRoot);
-	const maxCandidates = brief.constraints?.maxCandidates ?? 25;
-	const minStars = brief.constraints?.minStars ?? 0;
-	const excluded = new Set((brief.constraints?.excludeTopics ?? []).map((t) => t.toLowerCase()));
-
-	console.log(`\nHunt — ${brief.intent}`);
-	console.log(`  brief        ${briefFingerprint(brief)}  (${brief.verticals.join(", ")})`);
-	console.log(`  credentials  ${github.authenticated ? "GITHUB_TOKEN" : "none — unauthenticated, slow"}`);
-	console.log(`  limit        ${maxCandidates} candidates\n`);
-
-	const queue: LandedHit[] = [];
-	for (const query of brief.queries) {
-		let page = 1;
-		// Keep paging while a page comes back full: GitHub caps a search at 1000
-		// results, and stopping at the first short page is what turns a 12
-		// candidate limit into an accidental 3.
-		while (queue.length < maxCandidates && page <= 5) {
-			if (waves.has(`${query}::${page}`)) {
-				console.log(`  ↩ ${query} p${page} already crawled`);
-				page++;
-				continue;
-			}
-			let hits: SearchHit[];
-			// A rate limit or a 5xx is reported and the wave is abandoned, because a
-			// hunt that quietly searched less than it claims produces a catalogue that
-			// looks complete and is not. `runEngineExit` gives the typed failure rather
-			// than a thrown string, so the message is the one GitHub's status implies.
-			const found = await runEngineExit(
-				github.search(buildQuery(query, brief), PER_PAGE, page),
-			);
-			if (found._tag !== "Success") {
-				const failure = failureOf(found.cause);
-				console.error(
-					failure
-						? `  ✖ ${query} p${page}: ${failure.detail}`
-						: `  ✖ ${query} p${page}: the hunt could not be completed`,
-				);
-				break;
-			}
-			hits = [...found.value];
-			const kept = hits.filter(
-				(h) =>
-					!h.archived &&
-					!h.fork &&
-					h.stars >= minStars &&
-					!hitsExcluded(h, excluded),
-			);
-			recordWave(engineRoot, {
-				query,
-				page,
-				found: hits.length,
-				kept: kept.length,
-				completedAt: new Date().toISOString(),
-			});
-			const below = hits.filter((h) => h.stars < minStars).length;
-			console.log(
-				`  ${query} p${page} — ${hits.length} hits, ${kept.length} kept${below ? ` (${below} under ${minStars} stars)` : ""}`,
-			);
-			// A hit carries the wave that found it, so a candidate can be *explained*
-			// rather than merely listed — "why is this here" is a question a person asks
-			// about every surprising entry. Kept as a separate type rather than two
-			// properties monkey-patched onto `SearchHit`, which is what the old code did
-			// and which is why the field was invisible to the type checker.
-			queue.push(...kept.map((hit) => ({ ...hit, query, page, lane: brief.queries.indexOf(query) + 1 })));
-			if (hits.length < PER_PAGE) break;
-			page++;
-		}
-	}
-
-	// Which wave each hit came from. The first one wins, so a repository that two
-	// queries both found is attributed to the one that found it first — the order
-	// the operator wrote them in, which is the order that means something.
-	const laneByHit = new Map<string, Lane>();
-	for (const hit of queue) {
-		if (!laneByHit.has(hit.fullName)) {
-			laneByHit.set(hit.fullName, {
-				query: hit.query,
-				page: hit.page,
-				lane: String(hit.lane),
-			});
-		}
-	}
-	const laneOf = (fullName: string) =>
-		laneByHit.get(fullName) ?? { query: "unknown", page: 1, lane: "0" };
-
-	const unique = [...new Map(queue.map((h) => [h.fullName, h])).values()].slice(0, maxCandidates);
-	console.log(`\n  inspecting ${unique.length} repositories\n`);
-
-	const budget = {
-		bytes: 0,
-		maxBytes: brief.constraints?.budgets?.maxBytes ?? 20 * 1024 * 1024,
-		maxFiles: maxCandidates,
-	};
-
-	for (const hit of unique) {
-		if (budget.bytes >= budget.maxBytes) {
-			console.log(
-				`\n  ! byte budget reached (${budget.bytes} of ${budget.maxBytes}); ${unique.length - unique.indexOf(hit)} candidate(s) left uninspected`,
-			);
-			break;
-		}
-		// One repository failing must not end the hunt: the evidence for the others
-		// is still worth recording, and the failure is named in the transcript.
-		const inspected = await runEngineExit(
-			inspect(github, hit, brief, laneOf(hit.fullName), budget),
-		);
-		if (inspected._tag !== "Success") {
-			const failure = failureOf(inspected.cause);
-			console.error(
-				`  ✖ ${hit.fullName}: ${failure ? failure.detail : "the repository could not be read"}`,
-			);
-		}
-	}
-
-	const candidates = [...loadCandidates(engineRoot).values()];
-	const s = summarise(candidates);
-	console.log("\nRecorded");
-	console.log(`  candidates   ${s.total}`);
-	console.log(`  files read   ${s.readFiles}`);
-	console.log(`  asset-scoped ${s.assetScoped} (a licence beside the asset, not just the repo)`);
-	for (const [status, n] of Object.entries(s.byStatus)) {
-		console.log(`  ${status.padEnd(12)}${n}`);
-	}
-	console.log(`  bytes read  ${(s.readBytes / 1024).toFixed(0)}kB`);
-	const lanes = Object.entries(s.byLane).filter(([lane]) => lane !== "(recorded before lanes)");
-	if (lanes.length) {
-		console.log(`  lanes       ${lanes.map(([lane, n]) => `${lane}→${n}`).join(" ")}`);
-	}
-	for (const [policy, n] of Object.entries(s.policyApplied)) {
-		if (policy !== "keep") console.log(`  policy      ${policy}: ${n}`);
-	}
-	// The client's own record of whether GitHub throttled us, so the report can
-	// say so. This is the honesty rule: a hunt that searched less than it claims
-	// must not produce a payload that looks complete.
-	if (await runEngine(github.rateLimited)) {
-		console.log("\n  ! rate limited during this run — the payload covers less than the queries asked for");
-	}
-
-	const payload = buildPayload(toPossibilities(candidates, brief), [], {
-		huntId: `${fingerprintOf(brief)}:${brief.queries[0] ?? "hunt"}`,
-		// A real timestamp here is the one thing that makes two payloads differ,
-		// so it is the only non-deterministic input and it is recorded in a
-		// field the merge policy treats as bookkeeping.
-		syncedAt: new Date().toISOString(),
-	});
-	const validation = validatePayload(payload);
-	if (!validation.ok) {
-		console.error("\n✖ payload failed its own invariants; nothing was written");
-		for (const problem of validation.problems) console.error(`  ${problem}`);
-		process.exitCode = 1;
-		return;
-	}
-	mkdirSync(dirname(payloadPath), { recursive: true });
-	writeFileSync(payloadPath, `${JSON.stringify(payload, null, "\t")}\n`);
-	console.log(
-		`\n✔ payload ${payload.fingerprint} — ${payload.possibilities.length} possibilities, ${payload.possibilities.reduce((n, p) => n + p.examples.length, 0)} examples`,
-	);
-	console.log(`  ${payloadPath}`);
-	console.log("\n  next: npm run hunt:sync");
 }
 
 function loadBrief(path: string): HuntBrief {
@@ -305,191 +115,6 @@ function loadBrief(path: string): HuntBrief {
 		process.exit(1);
 	}
 	return brief;
-}
-
-/**
- * Builds the GitHub search string.
- *
- * Two things are deliberately *not* injected:
- *
- * - `topic:<vertical>`. A vertical is where a result is filed in our taxonomy,
- *   not a claim about how a repository is tagged on GitHub. Adding
- *   `topic:audio-music` to a sound query returns zero results, which is how the
- *   first run of this engine reported a successful hunt that found nothing.
- * - `stars:>=N`. GitHub ANDs every qualifier into the text match, and
- *   `"granular sound texture stars:>=40"` matches nothing while the phrase alone
- *   matches nine. Stars are filtered client-side instead, where the threshold is
- *   visible in the report.
- */
-function buildQuery(query: string, brief: HuntBrief): string {
-	const parts = [query];
-	for (const topic of brief.constraints?.topicHints ?? []) parts.push(`topic:${topic}`);
-	return parts.join(" ");
-}
-
-function hitsExcluded(hit: SearchHit, excluded: Set<string>): boolean {
-	return hit.topics.some((t) => excluded.has(t.toLowerCase()));
-}
-
-/** The shape of the service the crawl uses, without depending on the class. */
-type GitHubClient = GitHubApi["Service"];
-
-/**
- * Reads one repository: pin a commit, list the tree, read what is worth reading.
- *
- * `budget` is threaded through rather than read from a global so the whole hunt
- * has one place that knows how much has been spent, and stopping mid-hunt is a
- * decision the report can explain.
- *
- * An Effect because every step is a network read that can fail in a way the
- * transcript should name. `budget` is a plain mutable object threaded through the
- * generator on purpose: it is the hunt's running spend, and a `Ref` would buy
- * nothing for a value only this function writes.
- */
-function inspect(
-	github: GitHubClient,
-	hit: SearchHit,
-	brief: HuntBrief,
-	lane: Lane,
-	budget: { bytes: number; maxBytes: number; maxFiles: number },
-) {
-	return Effect.gen(function* () {
-	const ref = yield* github.resolve(hit.fullName);
-	const tree = yield* github.tree(ref);
-	const paths = tree.map((n) => n.path);
-
-	// The licence first: it decides how everything else in the repository is
-	// described, so it is read before any classification is formed.
-	const licencePath = pickLicenceFile(paths);
-	const licenceFile = licencePath ? yield* github.file(ref, licencePath) : null;
-
-	// Asset-scoped licence: a licence sitting beside an asset is the only
-	// evidence that speaks about the asset rather than the repository.
-	const assetPaths = paths.filter((p) => ASSET_EXTENSIONS.test(p) && isWorthReading(p, 0));
-	const sourcePaths = paths.filter(
-		(p) => SOURCE_EXTENSIONS.test(p) && !/\.(test|spec)\./i.test(p) && isWorthReading(p, 0),
-	);
-	// Media first, then source: a repository that ships both demonstrates the
-	// technique twice, and the media is the more direct evidence of it.
-	const perRepo = brief.constraints?.budgets?.maxFilesPerRepo ?? 5;
-	const sample = [...assetPaths.slice(0, 3), ...sourcePaths.slice(0, 2)].slice(0, perRepo);
-
-	let assetEvidence: { text: string; path: string; url: string | null } | null = null;
-	for (const candidate of sample) {
-		const near = assetLicenceFor(paths, candidate);
-		if (!near) continue;
-		const file = yield* github.file(ref, near);
-		if (file) {
-			assetEvidence = { text: decodeBase64(file.content), path: near, url: file.url };
-			break;
-		}
-	}
-
-	const classification = classify({
-		licenceText: licenceFile ? decodeBase64(licenceFile.content) : null,
-		licencePath,
-		licenceUrl: licenceFile?.url ?? null,
-		githubSpdxHint: hit.license?.spdxId ?? null,
-		assetLicenceText: assetEvidence?.text ?? null,
-		assetLicencePath: assetEvidence?.path ?? null,
-		assetLicenceUrl: assetEvidence?.url ?? null,
-	});
-
-	// The unlicensed policy, applied before any payload is read rather than
-	// after. `reject` and `metadata-only` mean the bytes never arrive; keeping
-	// them and then refusing to publish them would be theatre.
-	const unlicensed = !["cleared", "attribution"].includes(classification.status);
-	const policy = brief.constraints?.unlicensedPolicy ?? "keep";
-	const policyApplied: Candidate["policyApplied"] = !unlicensed
-		? "keep"
-		: policy === "reject"
-			? "rejected"
-			: policy === "metadata-only"
-				? "metadata-only"
-				: "keep";
-	const readPayload = policyApplied === "keep";
-
-	const files: FileEvidence[] = [];
-	const hashOf = (file: { content: string }) =>
-		Effect.promise(() => import("node:crypto")).pipe(
-			Effect.map((crypto) => crypto.createHash("sha256").update(file.content).digest("hex")),
-		);
-
-	if (licenceFile) {
-		files.push({
-			path: licencePath as string,
-			size: licenceFile.size,
-			sha256: yield* hashOf(licenceFile),
-			blobUrl: licenceFile.url,
-			kind: "licence",
-		});
-	}
-
-	let lfsPointers = 0;
-	if (readPayload) {
-		for (const path of sample) {
-			if (budget.bytes >= budget.maxBytes) break;
-			const file = yield* github.file(ref, path);
-			if (!file) continue;
-			if (file.lfsPointer) {
-				// A pointer is not the asset. Hashing it would produce evidence
-				// that looks real and proves nothing.
-				lfsPointers++;
-				continue;
-			}
-			files.push({
-				path,
-				size: file.size,
-				sha256: yield* hashOf(file),
-				blobUrl: file.url || null,
-				kind: kindFor(path),
-			});
-			budget.bytes += file.size;
-		}
-	}
-
-	const now = new Date().toISOString();
-	const candidate: Candidate = {
-		id: candidateId({ fullName: hit.fullName, ref: ref.ref, stars: hit.stars }),
-		fullName: hit.fullName,
-		owner: ref.owner,
-		repo: ref.repo,
-		ref: ref.ref,
-		stars: hit.stars,
-		description: hit.description,
-		topics: hit.topics,
-		htmlUrl: hit.htmlUrl,
-		defaultBranch: hit.defaultBranch,
-		archived: hit.archived,
-		fork: hit.fork,
-		pushedAt: hit.pushedAt,
-		rights: rightsSummaryFrom(classification),
-		files,
-		interesting: [...assetPaths, ...sourcePaths].slice(0, 25),
-		discoveredBy: lane,
-		policyApplied,
-		firstSeen: now,
-		lastSeen: now,
-		observations: 1,
-	};
-	const { isNew } = recordCandidate(engineRoot, candidate);
-	const lfsNote = lfsPointers ? ` (${lfsPointers} LFS pointer skipped)` : "";
-	const policyNote = policyApplied === "keep" ? "" : ` [${policyApplied}]`;
-	console.log(
-		`  ${isNew ? "+" : "↻"} ${hit.fullName.padEnd(40)} ${classification.status.padEnd(11)} ${files.length} files${lfsNote}${policyNote}`,
-	);
-	return candidate;
-	});
-}
-
-/** Groups the recorded evidence, one vertical at a time. */
-function toPossibilities(candidates: Candidate[], brief: HuntBrief): ExtractedPossibility[] {
-	const relevant = candidates.filter((c) => c.files.some((f) => f.kind !== "licence"));
-	const out: ExtractedPossibility[] = [];
-	for (const vertical of brief.verticals) {
-		out.push(...extractPossibilities(relevant, { vertical, intent: brief.intent }));
-	}
-	return out;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -518,7 +143,7 @@ interface SyncReport {
  * see exactly which slugs did not land, and a partial sync that says so is more
  * useful than a complete-looking one that lies.
  */
-function cmdSync(dryRun: boolean, env: Record<string, string | undefined>) {
+function cmdSync(dryRun: boolean, env: EngineEnv) {
 	return runEngine(
 		Effect.gen(function* () {
 			const api = yield* EmDashApi;
@@ -653,7 +278,7 @@ const describeEmDashFailure = (error: unknown): string => {
  * there. A verify that could read a different shape than a sync wrote is a verify
  * that proves less than it claims.
  */
-function cmdVerify(env: Record<string, string | undefined>) {
+function cmdVerify(env: EngineEnv) {
 	return runEngine(
 		Effect.gen(function* () {
 	const api = yield* EmDashApi;
@@ -748,13 +373,25 @@ const [, , command, ...rest] = process.argv;
  * optional in three places at once. Now it arrives as `AH_EMDASH_BASE_URL` in the
  * record the composition root reads, so the flag and the environment variable are
  * the same knob.
+ *
+ * `undefined` rather than `{}` when there is nothing to override, and that is load
+ * bearing. `runEngine` reads `options.env ?? process.env`, so an empty record is
+ * not "no overrides" — it is "an environment containing no variables at all", and
+ * a `GITHUB_TOKEN` exported in the shell would be discarded. The symptom was a
+ * hunt that announced `credentials  none — unauthenticated, slow` while a token
+ * sat in `process.env`, and then spent its whole budget inside the anonymous 10
+ * requests a minute: a real run lost eleven of eighteen repositories to a rate
+ * limit it never needed to be subject to.
  */
-const env: Record<string, string | undefined> = {};
-if (rest.includes("--url")) env.AH_EMDASH_BASE_URL = rest[rest.indexOf("--url") + 1];
+const env: Record<string, string | undefined> | undefined = rest.includes("--url")
+	? { AH_EMDASH_BASE_URL: rest[rest.indexOf("--url") + 1] }
+	: undefined;
 
 try {
 	if (command === "hunt") {
-		await cmdHunt(rest[0] ?? "sfx.json", env);
+		await cmdCrawl("hunt", rest[0] ?? "sfx.json", rest.includes("--force"), env);
+	} else if (command === "refresh") {
+		await cmdCrawl("refresh", rest[0] ?? "sfx.json", rest.includes("--force"), env);
 	} else if (command === "sync") {
 		await cmdSync(rest.includes("--dry-run"), env);
 	} else if (command === "verify") {
@@ -762,9 +399,16 @@ try {
 	} else {
 		console.log(`Asset Hunter hunt engine
 
-  hunt <brief.json> [--url URL]   read a brief, crawl and record the evidence
+  hunt <brief.json> [--force]     discover from a brief, then re-read what it
+                                  already knows that has actually moved
+  refresh <brief.json> [--force]  re-read known sources only — no discovery,
+                                  no search; this is the mode to schedule
   sync [--dry-run] [--url URL]    reconcile the payload into the catalogue
   verify [--url URL]              prove the catalogue matches the payload
+
+  --force  ignore the refresh plan and re-read everything the brief allows,
+           still within maxBytes and maxCandidates. For a change in the
+           engine's own rules rather than in anything upstream.
 
   GITHUB_TOKEN        authenticated GitHub access (recommended)
   EMDASH_TOKEN        a token for a remote instance; a dev server uses dev-bypass

@@ -196,7 +196,29 @@ export class EmDashApi extends Context.Service<
 				const session = yield* signIn;
 				const operation = `read ${collection}/${slug}`;
 				const path = `/_emdash/api/content/${collection}/${encodeURIComponent(slug)}`;
-				const response = yield* call(operation, path, { method: "GET", headers: { ...session.headers } }, session);
+				const response = yield* call(
+					operation,
+					path,
+					{ method: "GET", headers: { ...session.headers } },
+					session,
+				).pipe(
+					// A 404 is `null`, which is the normal state of a first sync and the
+					// whole reason `read` is nullable. The point 2 note above describes
+					// this and the code did not do it: `call` rejects a 404 like any other
+					// non-2xx, so the failure escaped `read` and every caller read "not
+					// there" as "the CMS is broken". `sync` then reported every missing
+					// entry as a failure and created nothing — a first sync could not work
+					// at all — and `verify` aborted with an unreadable error instead of
+					// reporting the one thing it exists to report.
+					//
+					// Only a 404 is absorbed. A 401 is a session problem and a 5xx is a
+					// broken one; both stay failures, because a catalogue that silently
+					// reads as empty is the failure this project refuses.
+					Effect.catchTag("EmDashApiError", (error) =>
+						error.status === 404 ? Effect.succeed(null) : Effect.fail(error),
+					),
+				);
+				if (!response) return null;
 				const raw = yield* Effect.tryPromise({
 					async try() {
 						return (await response.json()) as unknown;

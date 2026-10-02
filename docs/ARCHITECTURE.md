@@ -321,6 +321,12 @@ src/lib/effect/          services, schemas, config, cancellation  (the app)
 engine/src/runtime/       the same shape, separately              (the engine)
 ```
 
+Inside the engine, `src/crawl.ts` is one Effect and `src/cli.ts` is the program
+edge that runs it. Every call is captured with `Effect.result` rather than allowed
+to escape, because one repository failing must not abandon the repositories after
+it — a crawl that only works when nothing goes wrong is not resumable in any
+useful sense.
+
 The two roots are separate on purpose: this document's engine/app boundary is a
 constraint, and a shared runner would make it a suggestion. Within each, the
 composition root is the only place a `run*` function is called, and a reader is
@@ -357,6 +363,12 @@ response, which is a documented HTTP contract rather than a shared module.
   two API routes gate, and `/use/<slug>` shows. A payload is only offered when
   a licence permits it, a credit is recorded, the original is retained and a
   digest exists; the route then verifies the digest before serving.
-- #41 resumable crawling — the candidate store is content-addressed and records
-  completed search waves, so an interrupted hunt resumes. A cheap metadata
-  re-check before any file read is the remaining half.
+- #41 resumable crawling — the crawl runs cheap metadata → plan → bytes, so a
+  source that has not moved costs two requests instead of a tree listing and a
+  download. `engine/src/refresh.ts` decides what a run owes as a pure function;
+  `engine/src/crawl.ts` obeys it. `refresh` re-reads known sources only and cannot
+  grow the universe, so it is the mode a schedule invokes; `hunt` keeps full
+  discovery. A completed search lane is checked against the store rather than
+  trusted, so a hunt interrupted between searching and inspecting finishes on the
+  next run instead of reporting that it had nothing to do. A source that 404s is
+  recorded with the commit it was last read at, never dropped.

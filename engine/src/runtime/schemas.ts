@@ -70,6 +70,30 @@ export const RepoResponse = Schema.Struct({
 });
 
 /**
+ * The repository document a cheap pre-check reads (#41).
+ *
+ * Six fields, and each one is a signal `planRefresh` acts on. Declared
+ * separately from `RepoResponse` rather than widened into it because the two are
+ * read for different jobs: `RepoResponse` answers "which commit do I pin the
+ * evidence to", and this one answers "is there any reason to spend a download".
+ * A schema that grew both would make a pre-check look like a full inspection.
+ *
+ * `full_name` is in the list for a reason that is not cosmetic: GitHub follows a
+ * renamed repository's old path with a redirect, so this is the only place the
+ * canonical name is visible. Reading it is what lets a refresh notice that
+ * `owner/old-name` is now `owner/new-name` instead of recording a 404 for a
+ * repository that plainly exists.
+ */
+export const ObservationResponse = Schema.Struct({
+	full_name: Schema.String,
+	pushed_at: Text,
+	archived: Schema.optional(Schema.NullOr(Schema.Boolean)),
+	fork: Schema.optional(Schema.NullOr(Schema.Boolean)),
+	default_branch: Text,
+	stargazers_count: Count,
+});
+
+/**
  * `GET /repos/{owner}/{repo}/commits/{ref}`.
  *
  * `/commits/{ref}` returns `sha` at the top level; `/git/ref/{ref}` returns it
