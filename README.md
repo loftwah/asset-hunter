@@ -107,19 +107,21 @@ idempotent.
 | `possibilities` | The catalogue entries. Grouped by a `vertical` taxonomy.      |
 | `examples`     | Evidence for a possibility, with origin and rights fields.    |
 | `collections`  | Overlapping curated groupings, distinct from the taxonomy.    |
-| `pages`        | Editorial content (About, Licensing).                          |
+| `pages`        | Editorial content (About, Licensing, Quick start).             |
 
-Editing content normally happens in the EmDash admin. `seed.json` schema and
-structure are applied once per database and are not re-applied, so a schema
-change in the seed needs a fresh database or a migration.
+Editing content normally happens in the EmDash admin — including the primary
+navigation, which is what the masthead renders. `seed.json` schema, content and
+menus are applied once per database and are not re-applied, so a change in the
+seed needs a fresh database or an edit in the admin.
 
 ## Verifying
 
 ```bash
 npm run verify            # typecheck + seed + plates + tests (no server needed)
-npm run verify:full       # verify + smoke + admin-edit + visual (needs dev server)
+npm run verify:full       # verify + smoke + admin-edit + nav + visual (needs dev server)
 npm run smoke             # proves the public catalogue is served by EmDash
 npm run check:admin-edit  # writes through the CMS, publishes, reads the public page
+npm run check:nav         # edits the menu through the CMS, reads the public masthead
 npm run check:visual      # screenshot matrix + layout/a11y assertions
 npm run doctor            # environment report
 ```
@@ -132,6 +134,7 @@ local database seeded (`curl "http://localhost:4321/_emdash/api/setup/dev-bypass
 | `verify`                 | Types, seed validity, every plate renders, unit + route tests. Route tests skip with no server and **fail** on a server that answers errors |
 | `smoke`                  | The public catalogue reads EmDash, not a shadow data source          |
 | `check:admin-edit`       | An EmDash edit reaches the public site, then is restored             |
+| `check:nav`              | The masthead is the EmDash menu, and editing it changes the site     |
 | `check:visual`           | Layout, contrast, tap targets, images, headings, focus, fold, crop, gutter |
 | `check:perf`             | Transfer, requests, DOM size, CLS and interaction latency against recorded ceilings |
 | `check:specimens`        | Plates are well-formed XML with usable viewBox and alt text          |
@@ -173,6 +176,7 @@ three were each a real bug found by reading captures rather than source.
 | `npm run hunt:sync`      | Reconcile the payload into the catalogue            |
 | `npm run hunt:verify`    | Prove the catalogue matches the payload             |
 | `npm run generate:og`     | Regenerate social images from the running product |
+| `npm run capture:reference` | Recapture `reference/` and the `/gallery` images |
 | `npm run skills:sync`     | Refresh vendored EmDash agent skills             |
 
 ## The catalogue as an API

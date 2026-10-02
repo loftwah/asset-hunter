@@ -134,6 +134,13 @@ const ROUTES = [
 	{ path: "/verticals#games", name: "verticals-anchor", expect: { ".row": 10 }, anchor: "#games" },
 	{ path: "/collections", name: "collections", expect: { ".collection": 4 } },
 	{ path: "/collections/seams", name: "collection", expect: { ".tile": 4 }, fold: ".tile__plate", media: true },
+	// The gallery (#17). Deliberately **not** `media: true`: that flag asks the
+	// harness to assert that media renders at its container's declared aspect
+	// ratio, which is the specimen-plate rule. A gallery image is a screenshot
+	// of a whole page, and cropping one to a fixed ratio is the exact thing the
+	// page exists to avoid. That each capture loads and is a PNG is asserted
+	// over HTTP in `tests/routes.test.ts` instead.
+	{ path: "/gallery", name: "gallery", expect: { ".shot": 4, ".phone__link img": 1 }, scroll: 900 },
 	{ path: "/pages/about", name: "page-about", expect: { ".prose p": 5 } },
 	{ path: "/pages/licensing", name: "page-licensing", expect: { ".prose h2": 3 }, anchor: "#the-statuses" },
 	// The lab (#45) is development-only but audited like a real route: a state

@@ -22,6 +22,17 @@ node scripts/capture-reference.mjs
 | `licensing--1280.png`       | Rights statuses in full                                          |
 | `404--1280.png`             | Search and verticals rather than a dead end                      |
 
+## The public gallery
+
+Five of these captures are also **served**, as the content of `/gallery`.
+`scripts/capture-reference.mjs` writes them into `public/gallery/` from the
+same pass — the same bytes, not a second screenshot — and `src/lib/gallery.ts`
+names each one with its alt text and the live route it depicts.
+
+That is why the gallery is not a separate capture script and not a mock: there
+is no compositing step between the product and the image, so the page cannot
+show something prettier than the real thing.
+
 ## What to check them against
 
 `DESIGN.md` is the authority and `docs/UNSLOP.md` is the rejection list. Use

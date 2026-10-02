@@ -285,7 +285,8 @@ the two cannot disagree about what exists.
 
 ### Content access
 
-All reads go through `src/lib/catalogue.ts`, and all of them are **Effects**:
+All reads go through `src/lib/catalogue.ts` (the catalogue) or
+`src/lib/site-shell.ts` (the shell), and all of them are **Effects**:
 
 - `loadPossibilities()` — wall, ordered by editorial rank then title.
 - `loadPossibility(slug)` — single entry.
@@ -293,11 +294,63 @@ All reads go through `src/lib/catalogue.ts`, and all of them are **Effects**:
 - `loadExample(id)` — one example by its own id, for the asset-use routes.
 - `loadCollections()` / `loadCollection(slug)` — curated groupings.
 - `mediaSrc(entry)` — CMS image first, then specimen, then placeholder. **Pure.**
+- `loadPrimaryNav()` / `loadIntro()` — the masthead and the wall's opening note.
+  **Pure projections:** `navFromMenu` and `isCurrentLink`.
 
-`mediaSrc` and the domain model stay plain functions; the reads are Effects
-because they are I/O with failure modes. The rule and the reasoning are in
+`mediaSrc`, `navFromMenu` and the domain model stay plain functions; the reads are
+Effects because they are I/O with failure modes. The rule and the reasoning are in
 [`EFFECT_STYLE.md`](EFFECT_STYLE.md); in one line: effectful code is Effect 4 by
 default, deterministic code is plain TypeScript.
+
+#### The shell is CMS content, and its fallback is marked
+
+`menus.primary` decides the masthead and the footer's first column. That was not
+true once: `Base.astro` declared an identical array and nothing connected the two,
+so editing the menu in the admin changed nothing a reader could see. It is now one
+read, through the same `EmDashContent` service as everything else, with the three
+properties that make it real rather than nominal:
+
+| Property      | Where                                                                        | Why it matters                                                                                   |
+| ------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| cache hint    | `getMenuWithCacheHint` in `EmDashContent`                                      | An edit has to purge the rendered route, or a cached page makes the change look like it did nothing |
+| source marker | `data-nav-source="cms" \| "fallback"` on the `<nav>`                           | A fallback is visible to a human, a screenshot and a test                                           |
+| fallbacks     | `FALLBACK_LINKS` (3 links) and `FALLBACK_INTRO_BLOCKS`, both `const` in source | The irreducible minimum, asserted to be a subset of the CMS menu, and not edited as content         |
+
+Two failures are reported rather than hidden: a missing menu and an unreadable
+database both render the fallback and both `console.warn` the reason, and
+`npm run check:nav` fails if the live masthead is ever in that state. The
+distinction from `src/lib/catalogue.ts` is deliberate — a missing *possibility*
+makes the wall empty and says so, so it is a typed failure; a missing *menu* makes
+the masthead short and says so too, so it is not.
+
+`tests/site-shell.test.ts` asserts the layout declares no navigation array, and
+that the footer's structural column never repeats the menu — the two ways this
+duplication came back the first time.
+
+#### A CMS field nothing reads
+
+`seed/atlas.json` declared a `field-guide-intro` section and no page read it,
+which is worse than no field: it looks like the copy is editable. It is read now,
+and the wall's lede renders from it through EmDash's own `PortableText`. The
+remaining exception is the wall's `<h1>`, which is a literal and documented as one
+— it is the document title `Base.astro` needs before the band exists, and an
+`<h1>` that vanished with a database read failure would leave a page with no
+heading at all.
+
+**Seed content is applied once per database.** A new page, a revised sentence or a
+new menu item reaches a *fresh* database, and an existing one only through the
+admin. That is a property of EmDash's seed rather than of this application, and
+it is worth knowing before a change appears not to have landed.
+
+#### Product imagery
+
+`/gallery` shows screenshots of the running product. They are produced by
+`scripts/capture-reference.mjs` and **copied** — the same bytes, not a second
+screenshot — into `public/gallery/`, so there is no compositing step between the
+product and the published image, and the page cannot show something prettier than
+the real thing. That is #48's rule, enforced by construction rather than by
+review. `tests/site-shell.test.ts` asserts the two sets are byte-identical, so a
+re-capture that updated only one of them fails rather than drifts.
 
 Four EmDash-specific constraints are encoded there because each one fails
 silently rather than erroring:

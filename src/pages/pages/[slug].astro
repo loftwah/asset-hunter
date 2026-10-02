@@ -206,4 +206,43 @@ const headingBlocks = { h2: HeadingBlock, h3: HeadingBlock };
 	.prose :global(h3) {
 		scroll-margin-block-start: calc(var(--masthead-h) + var(--sp-4));
 	}
+
+	/*
+	 * Code blocks (the quick start) and inline code.
+	 *
+	 * EmDash's `Code.astro` ships its own colours — `#1e1e1e`, `#e0e0e0`,
+	 * `Fira Code` — which are not tokens, so a `pre` in a page would introduce
+	 * exactly the off-palette colour DESIGN.md §2 rejects, and would not follow
+	 * `--canvas` when a token changes. Restyled here from the design tokens
+	 * rather than overridden case by case, so the rule is in one place.
+	 *
+	 * The label is the point: a copy-pasteable command in a documentation page
+	 * is an interface, and it reads wrong with a serif or a display face.
+	 */
+	.prose :global(.emdash-code) {
+		margin: var(--sp-4) 0;
+	}
+
+	.prose :global(.emdash-code pre) {
+		padding: var(--sp-4);
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		overflow-x: auto;
+		scrollbar-width: thin;
+	}
+
+	.prose :global(.emdash-code code),
+	.prose :global(:not(pre) > code) {
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		color: var(--ink);
+	}
+
+	.prose :global(:not(pre) > code) {
+		padding: 0.1em 0.35em;
+		background: var(--surface-2);
+		border: 1px solid var(--line);
+		border-radius: 2px;
+	}
 </style>

@@ -106,6 +106,52 @@ export const MediaImage = Schema.optional(
 	),
 );
 
+/**
+ * One item of an EmDash menu, as `getMenu` resolves it.
+ *
+ * `url` is the *resolved* destination — a `page`/`taxonomy` item arrives as a
+ * path EmDash has already looked up — so the shell renders it without having to
+ * know which kind of item it is. `children` is decoded as unknown on purpose:
+ * it is a list of the same shape, and this is the one level of recursion the
+ * boundary validates; the projection decides what a nested item means (see
+ * `navFromMenu` in `src/lib/site-shell.ts`).
+ */
+export const MenuItemData = Schema.Struct({
+	id: Schema.String,
+	label: Schema.String,
+	url: Schema.String,
+	target: Schema.optional(Schema.String),
+	titleAttr: Schema.optional(Schema.String),
+	cssClasses: Schema.optional(Schema.String),
+	children: Schema.optional(Schema.Array(Schema.Unknown)),
+});
+
+/** A menu, as `getMenu` returns it. `null` when no such menu exists. */
+export const MenuData = Schema.Struct({
+	id: Schema.String,
+	name: Schema.String,
+	label: Schema.String,
+	locale: Schema.optional(Schema.String),
+	items: Schema.Array(MenuItemData),
+});
+
+/**
+ * A CMS section, as `getSection` returns it.
+ *
+ * `content` stays `unknown` for the same reason `RawEntry.data` does: it is
+ * Portable Text, and EmDash's own `PortableText` component is what interprets
+ * it. Validating block shapes here would duplicate the CMS's renderer and
+ * reject content the renderer handles. What is checked is that it is an array,
+ * because that is the one thing the renderer cannot recover from.
+ */
+export const SectionData = Schema.Struct({
+	id: Schema.String,
+	slug: Schema.String,
+	title: Schema.String,
+	description: Schema.optional(Schema.String),
+	content: Schema.optional(Schema.Array(Schema.Unknown)),
+});
+
 /** A CMS reference field, as `getEmDashEntry`'s `references` option returns it. */
 export const ReferenceEntries = Schema.optional(
 	Schema.NullOr(

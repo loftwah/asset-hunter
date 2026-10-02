@@ -68,6 +68,8 @@ homepage is the wall, and the wall is the product.
 | understand the rights           | the drill-in, or `/pages/licensing`         | Rights are never behind a hover                           |
 | see what may be reused          | `/use/<slug>`, from any drill-in            | The selection, with the obligations and the honest zero    |
 | see the state of the catalogue  | `/verticals`                               | Coverage map, deliberately labelled partial               |
+| see what it looks like         | `/gallery`                                 | Real captures of the routes, each linking to the live page |
+| run it                         | `/pages/quickstart`                        | The local loop, as CMS content an owner can edit          |
 | change the catalogue            | `/_emdash/admin`                           | EmDash's own interface, deliberately not themed like the public site |
 
 **Search results are rows, not tiles.** A search for a known term is a

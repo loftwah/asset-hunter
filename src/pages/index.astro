@@ -10,15 +10,34 @@
 import Base from "../layouts/Base.astro";
 import PossibilityTile from "../components/PossibilityTile.astro";
 import OutcomeFlash from "../components/OutcomeFlash.astro";
+import { PortableText } from "emdash/ui";
 import { loadPossibilities, tallyVerticals } from "../lib/catalogue";
+import { loadIntro } from "../lib/site-shell";
 import { runApp } from "../lib/effect/root";
 import { COOKIE_NAME, boardOutcome, boardTotals, parseBoards } from "../lib/board";
 import { RIGHTS_LABEL, RIGHTS_MEANING, verticalLabel } from "../lib/vocabulary";
 
-const { possibilities, cacheHint } = await runApp(loadPossibilities());
+const { possibilities, cacheHint } = await runApp(loadPossibilities(), { signal: Astro.request.signal });
 // `cacheHint` is absent when EmDash had nothing to say — a query that failed
 // is now a typed failure rather than an empty page, so there is no hint to set.
 if (Astro.cache?.enabled && cacheHint) Astro.cache.set(cacheHint);
+
+/**
+ * The opening sentence is CMS content, not a literal in this file.
+ *
+ * It was one, and `seed/atlas.json` declared a `field-guide-intro` section that
+ * nothing read — which is the arrangement #17 forbids and the one an owner
+ * discovers when they edit the obvious field in the admin and the wall does not
+ * change. The section is read now; see `src/lib/site-shell.ts`.
+ *
+ * Rendering goes through EmDash's own `PortableText`, so an edit in the admin
+ * can carry the marks the CMS supports rather than the two sentences this file
+ * happened to have.
+ */
+const intro = await runApp(loadIntro(), { signal: Astro.request.signal });
+if (intro.source === "fallback") {
+	console.warn(`wall intro: rendering the built-in sentence — ${intro.note}`);
+}
 
 const verticals = tallyVerticals(possibilities);
 const requested = Astro.url.searchParams.get("vertical");
@@ -64,17 +83,29 @@ for (const p of filtered) {
 		The intro is a band, not a hero. Its whole job is to say what this is and
 		get out of the way: DESIGN.md §5 puts one region above the grid, and the
 		fold check in `npm run check:visual` fails if the plates start below it.
+
+		One of the three lines is CMS content: the sentence under the title, from
+		the `field-guide-intro` section. The eyebrow and the `<h1>` stay literals,
+		and both are deliberate. The eyebrow is a mono label — design chrome in the
+		voice the rest of the site uses for one, not prose anybody needs to edit.
+		The `<h1>` is the document's title, which `Base.astro` needs before this
+		band exists, and an `<h1>` that vanished with a database read failure would
+		leave a page with no heading at all. The section can restate the title; it
+		cannot replace it.
+
+		`data-intro-source` says which of the two rendered, for the same reason
+		`data-nav-source` exists on the masthead: a CMS field that silently stops
+		being read is the failure this whole change is about.
 	*/}
 	<section class="intro shell">
-		<div class="intro__body">
+		<div class="intro__body" data-intro-source={intro.source}>
 			<p class="tag tag--ember">Option space, compressed</p>
 			<h1 class="display intro__title">
 				What can be made, and the ways it has already been made
 			</h1>
-			<p class="lede intro__lede">
-				Each plate is one distinct possibility rather than one file. Drill in for the technique,
-				the build notes, a prompt scaffold and the rights.
-			</p>
+			<div class="lede intro__lede">
+				<PortableText value={intro.blocks as never} />
+			</div>
 		</div>
 		<dl class="tally">
 			<div>
