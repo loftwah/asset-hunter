@@ -333,6 +333,9 @@ const seed = {
 				{ type: "custom", label: "Collections", url: "/collections" },
 				{ type: "custom", label: "Licensing", url: "/pages/licensing" },
 				{ type: "custom", label: "About", url: "/pages/about" },
+				// The gallery is a public route, so it belongs in the menu the
+				// admin edits rather than in a list hard-coded in a layout (#17).
+				{ type: "custom", label: "Gallery", url: "/gallery" },
 			],
 		},
 	],

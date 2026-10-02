@@ -606,6 +606,11 @@
 					"type": "custom",
 					"label": "About",
 					"url": "/pages/about"
+				},
+				{
+					"type": "custom",
+					"label": "Gallery",
+					"url": "/gallery"
 				}
 			]
 		}
@@ -615,7 +620,7 @@
 		{
 			"slug": "field-guide-intro",
 			"title": "Field guide",
-			"description": "Opening note shown above the catalogue wall",
+			"description": "Opening sentence shown under the catalogue wall's title. Read by src/pages/index.astro via src/lib/site-shell.ts.",
 			"keywords": [
 				"intro",
 				"home"
@@ -628,7 +633,7 @@
 					"children": [
 						{
 							"_type": "span",
-							"text": "Option space, compressed. Each plate is one distinct possibility; drill in for the technique, the build notes and the rights."
+							"text": "Each plate is one distinct possibility rather than one file. Drill in for the technique, the build notes, a prompt scaffold and the rights."
 						}
 					]
 				}
@@ -2021,6 +2026,161 @@
 									"text": "Corrections are auditable and take effect on the record rather than on the asset. Content addressing means a licence can be corrected without touching the bytes, and the previous classification is kept rather than overwritten."
 								}
 							]
+						}
+					]
+				}
+			},
+			{
+				"id": "quickstart",
+				"slug": "quickstart",
+				"status": "published",
+				"data": {
+					"title": "Run it locally",
+					"summary": "Serve the catalogue locally, publish new possibilities into it with a hunt, and run the checks that tell you whether either worked.",
+					"content": [
+						{
+							"_type": "block",
+							"style": "normal",
+							"children": [
+								{
+									"_type": "span",
+									"text": "The catalogue and the hunt engine are two systems with a documented boundary, and this is the whole of the local loop. The engine crawls, reads licences and groups candidates into possibilities; the catalogue decides what the public sees."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"style": "h2",
+							"children": [
+								{
+									"_type": "span",
+									"text": "Serve the catalogue"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"style": "normal",
+							"children": [
+								{
+									"_type": "span",
+									"text": "Node 22 or newer, then:"
+								}
+							]
+						},
+						{
+							"_type": "code",
+							"code": "npm install\nnpm run dev"
+						},
+						{
+							"_type": "block",
+							"style": "normal",
+							"children": [
+								{
+									"_type": "span",
+									"text": "The wall is on port 4321 and the EmDash admin at /_emdash/admin. The first run applies pending migrations and the seed schema. A fresh database has no content until you ask for the demo catalogue, which is one more request:"
+								}
+							]
+						},
+						{
+							"_type": "code",
+							"code": "curl localhost:4321/_emdash/api/setup/dev-bypass"
+						},
+						{
+							"_type": "block",
+							"style": "normal",
+							"children": [
+								{
+									"_type": "span",
+									"text": "That endpoint creates a local development admin and refuses to run outside the dev server. It is not how production is set up, and it is not an authentication path anyone can reach in public."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"style": "h2",
+							"children": [
+								{
+									"_type": "span",
+									"text": "Publish new possibilities"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"style": "normal",
+							"children": [
+								{
+									"_type": "span",
+									"text": "A hunt takes a brief, crawls permitted sources, reads the licence beside each asset rather than the repository's, and groups candidates into possibilities. It writes a payload to disk; it does not write to the CMS. The four commands below crawl, reconcile into the catalogue, and then prove the catalogue matches the payload. Without a GitHub token the search API allows ten requests a minute, which is enough to try it and slow enough to be unpleasant; gh auth token lifts it."
+								}
+							]
+						},
+						{
+							"_type": "code",
+							"code": "export GITHUB_TOKEN=$(gh auth token)\nnpm run hunt -- sfx.json\nnpm run hunt:sync\nnpm run hunt:verify"
+						},
+						{
+							"_type": "block",
+							"style": "h2",
+							"children": [
+								{
+									"_type": "span",
+									"text": "What a hunt does not do"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"style": "normal",
+							"children": [
+								{
+									"_type": "span",
+									"text": "A crawl never decides what the public catalogue shows. Machine entries arrive as drafts at the bottom of the wall, and promoting one is a person's decision made in the admin. The check below fails if a draft has leaked onto the public wall."
+								}
+							]
+						},
+						{
+							"_type": "code",
+							"code": "npm run doctor"
+						},
+						{
+							"_type": "block",
+							"style": "h2",
+							"children": [
+								{
+									"_type": "span",
+									"text": "Check it honestly"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"style": "normal",
+							"children": [
+								{
+									"_type": "span",
+									"text": "The gate for a change needs no server: it typechecks, validates the seed, measures every plate and runs the tests. The full gate adds the four checks that can only be made against a running site — that the catalogue really is served by EmDash, that an edit made in the admin reaches a reader and is then put back, that the masthead really is the CMS menu, and the visual pass. All of it is local: there are no hosted CI checks, and none are planned."
+								}
+							]
+						},
+						{
+							"_type": "code",
+							"code": "npm run verify\nnpm run verify:full"
+						},
+						{
+							"_type": "block",
+							"style": "normal",
+							"children": [
+								{
+									"_type": "span",
+									"text": "The catalogue is also a read-only JSON contract at /api/catalogue.json, so a script can ask it a question without scraping HTML. It serves published entries only, needs no token, and keeps null distinct from zero."
+								}
+							]
+						},
+						{
+							"_type": "code",
+							"code": "npm run catalogue -- summary\nnpm run catalogue -- search \"seam\"\nnpm run catalogue -- rights"
 						}
 					]
 				}

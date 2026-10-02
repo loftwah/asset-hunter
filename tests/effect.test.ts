@@ -29,7 +29,7 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { Cause, Context, Deferred, Effect, Exit, Fiber, Layer, Option, Schedule, Schema } from "effect";
+import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option, Schedule, Schema } from "effect";
 import { TestClock } from "effect/testing";
 
 import { CatalogueDecodeError, EmDashTransportError, EmDashWriteError } from "../src/lib/effect/errors.ts";
@@ -422,20 +422,25 @@ describe("decoding untrusted EmDash data", () => {
 /* -------------------------------------------------------------------------- */
 
 describe("service substitution", () => {
-	/** A CMS that answers from a fixture, so a projection can be tested with no database. */
-	const stubEmDash = (rows: ReadonlyArray<{ id: string; data: unknown }>) => {
-		class StubEmDash extends Context.Service<StubEmDash, {
-			readonly collection: typeof EmDashContent["Service"]["collection"];
-			readonly entry: typeof EmDashContent["Service"]["entry"];
-		}>()("test/StubEmDash") {}
-		return Layer.succeed(
+	/**
+	 * A CMS that answers from a fixture, so a projection can be tested with no
+	 * database.
+	 *
+	 * `menu` and `section` are stubbed alongside `collection` and `entry` because
+	 * they are the same service (#17) — a stub that omitted them would not
+	 * typecheck, which is the enforcement that matters: the shell's reads cannot
+	 * quietly become a second, separately-substitutable boundary.
+	 */
+	const stubEmDash = (rows: ReadonlyArray<{ id: string; data: unknown }>) =>
+		Layer.succeed(
 			EmDashContent,
 			EmDashContent.of({
 				collection: () => Effect.succeed({ entries: rows, nextCursor: null, cacheHint: undefined }),
 				entry: () => Effect.succeed({ entry: null, cacheHint: undefined }),
+				menu: () => Effect.succeed({ menu: null, cacheHint: undefined }),
+				section: () => Effect.succeed(null),
 			}),
 		) as Layer.Layer<EmDashContent>;
-	};
 
 	test("the catalogue loader runs against a substituted CMS, with no database", async () => {
 		const rows = [
@@ -460,6 +465,8 @@ describe("service substitution", () => {
 				collection: () =>
 					Effect.fail(new EmDashTransportError({ operation: "read possibilities", detail: "D1 is down" })),
 				entry: () => Effect.fail(new EmDashTransportError({ operation: "read", detail: "D1 is down" })),
+				menu: () => Effect.fail(new EmDashTransportError({ operation: "read menu", detail: "D1 is down" })),
+				section: () => Effect.fail(new EmDashTransportError({ operation: "read section", detail: "D1 is down" })),
 			}),
 		);
 		const exit = await Effect.runPromiseExit(Effect.provide(loadPossibilities(), failing));
@@ -605,6 +612,8 @@ describe("the composition root", () => {
 			return [
 				typeof content.collection,
 				typeof content.entry,
+				typeof content.menu,
+				typeof content.section,
 				typeof api.create,
 				typeof api.update,
 				typeof api.publish,
@@ -613,15 +622,11 @@ describe("the composition root", () => {
 			];
 		});
 		const shape = await runApp(program, { env: {} });
-		assert.deepEqual(shape.slice(0, 6), [
-			"function",
-			"function",
-			"function",
-			"function",
-			"function",
-			"function",
-		]);
-		assert.equal(shape[6], 8000);
+		assert.deepEqual(
+			shape.slice(0, 8),
+			Array.from({ length: 8 }, () => "function"),
+		);
+		assert.equal(shape[8], 8000);
 	});
 });
 

@@ -9,7 +9,7 @@
  *
  * Usage: node scripts/capture-reference.mjs [--url http://localhost:4321]
  */
-import { mkdirSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { chromium } from "playwright";
 
 const args = process.argv.slice(2);
@@ -28,6 +28,29 @@ const SHOTS = [
 	{ path: "/", name: "wall-mobile", viewport: { width: 390, height: 844 }, dsf: 2, mobile: true },
 ];
 
+/**
+ * The public `/gallery` page needs four of those eight as served images.
+ *
+ * The alternative — a second capture script, or a hand-picked screenshot — is
+ * the arrangement #48 forbids: marketing media that is not the product. So
+ * these are the *same* captures from the *same* pass, renamed to the names
+ * `src/lib/gallery.ts` declares and written to `public/gallery/`.
+ *
+ * `reference/` keeps its own set because it is a design-review artefact with a
+ * different purpose: this half is a page's content, with alt text and a route
+ * behind every image, and it is served rather than reviewed.
+ */
+const GALLERY = [
+	{ source: "wall", file: "wall" },
+	{ source: "detail", file: "drill-in" },
+	{ source: "search", file: "search" },
+	{ source: "licensing", file: "licensing" },
+	{ source: "wall-mobile", file: "phone" },
+];
+
+/** Where the gallery page's images live. Served, so `public/`, not `reference/`. */
+const galleryDir = new URL("../public/gallery/", import.meta.url).pathname;
+
 try {
 	await fetch(`${baseUrl}/`);
 } catch {
@@ -36,8 +59,12 @@ try {
 }
 
 mkdirSync(outDir, { recursive: true });
+mkdirSync(galleryDir, { recursive: true });
 const browser = await chromium.launch();
 const written = [];
+
+/** `name → capture file`, so the gallery half can reuse this pass's bytes. */
+const captured = new Map();
 
 for (const shot of SHOTS) {
 	const page = await browser.newPage({
@@ -62,9 +89,34 @@ for (const shot of SHOTS) {
 	await page.evaluate(() => document.fonts.ready);
 	await page.waitForTimeout(350);
 	const file = `${shot.name}--${shot.viewport.width}.png`;
-	await page.screenshot({ path: `${outDir}${file}` });
+	const buffer = await page.screenshot({ path: `${outDir}${file}` });
 	written.push(file);
+	captured.set(shot.name, buffer);
 	await page.close();
+}
+
+// The gallery half: the same pixels, at the names the page declares. Written
+// from this pass's buffer rather than re-screenshotted, so a gallery image and
+// the reference capture it came from are byte-identical — a second pass would
+// differ by a webfont that finished loading a frame later, and then the page
+// would be showing something the design reference does not contain.
+for (const { source, file } of GALLERY) {
+	const buffer = captured.get(source);
+	if (!buffer) {
+		console.error(`  ✖ gallery: no capture named "${source}" — nothing captured for it`);
+		process.exitCode = 1;
+		continue;
+	}
+	writeFileSync(`${galleryDir}${file}.png`, buffer);
+}
+
+// A gallery image left over from a previous run is a stale composition, which is
+// worse than no composition — it looks like current evidence and is not.
+for (const existing of readdirSync(galleryDir)) {
+	if (existing.endsWith(".png") && !GALLERY.some((g) => g.file === existing.replace(/\.png$/, ""))) {
+		rmSync(`${galleryDir}${existing}`);
+		console.log(`  removed stale gallery/${existing}`);
+	}
 }
 
 // Anything left over from a previous run is a stale composition, which is worse
@@ -79,3 +131,7 @@ for (const stale of readdirSync(outDir)) {
 await browser.close();
 console.log(`✔ captured ${written.length} reference composition(s) → reference/`);
 for (const file of written) console.log(`  ${file}`);
+// The gallery is a *copy* of five of these, not new captures, and saying so is
+// what keeps "one generator, from the real product" checkable by reading this
+// file rather than by trusting it.
+console.log(`✔ wrote ${GALLERY.length} gallery image(s) → public/gallery/ (copied, not re-shot)`);

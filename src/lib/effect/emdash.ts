@@ -36,6 +36,12 @@
  *   an origin and the reader's session cookie, both of which are per request,
  *   so they are arguments rather than layer construction.
  *
+ * `EmDashContent` also reads the two pieces of *site chrome* — the primary
+ * menu and a CMS section — rather than those being fetched ad hoc from a
+ * layout. The reason is the same as for collections: a read that bypasses this
+ * service has no timeout, no retry and no typed failure, and #17's central
+ * defect was that the masthead was not reading EmDash at all.
+ *
  * ## Why retry is narrow
  *
  * `Effect.retry` here is filtered to `EmDashTransportError` only, and does not
@@ -48,11 +54,25 @@
  * visibly is the better answer.
  */
 import { Context, Effect, Layer, Schedule } from "effect";
-import { getEmDashCollection, getEmDashEntry, type CacheHint } from "emdash";
+import {
+	getEmDashCollection,
+	getEmDashEntry,
+	getMenuWithCacheHint,
+	getSection,
+	type CacheHint,
+} from "emdash";
 import { RuntimeConfig } from "./config.ts";
 import { decodeOr, decodeResponse } from "./decode.ts";
 import { CatalogueDecodeError, EmDashTransportError, EmDashWriteError } from "./errors.ts";
-import { CreatedEntry, EntryResponse, RawEntry, type RawEntryValue } from "./schemas.ts";
+import {
+	CreatedEntry,
+	EntryResponse,
+	MenuData,
+	MenuItemData,
+	RawEntry,
+	SectionData,
+	type RawEntryValue,
+} from "./schemas.ts";
 
 /** Options accepted by `getEmDashCollection`, narrowed to what this app uses. */
 export interface CollectionQuery {
@@ -79,6 +99,17 @@ export interface CollectionPage {
 	readonly cacheHint: CacheHint | undefined;
 }
 
+/** One decoded menu item. `children` is undecoded; see `MenuItemData`. */
+export type MenuItemValue = typeof MenuItemData.Type;
+
+/** A decoded menu. Absent is `null`, which is not a failure. */
+export type MenuValue = Omit<typeof MenuData.Type, "items"> & {
+	readonly items: ReadonlyArray<MenuItemValue>;
+};
+
+/** A decoded section. `content` is Portable Text, passed on to the renderer. */
+export type SectionValue = typeof SectionData.Type;
+
 /** The failure channel of every read. */
 export type EmDashReadError = EmDashTransportError | CatalogueDecodeError;
 
@@ -100,6 +131,18 @@ export class EmDashContent extends Context.Service<
 			slug: string,
 			options?: ReferenceQuery,
 		) => Effect.Effect<{ entry: RawEntryValue | null; cacheHint: CacheHint | undefined }, EmDashReadError>;
+		/**
+		 * A named menu with resolved URLs, plus the edge-cache hint that lets
+		 * EmDash purge a rendered page when somebody edits the menu in the admin.
+		 *
+		 * A menu that does not exist is `null`, not a failure — see `menu` in
+		 * `src/lib/site-shell.ts` for why a missing menu must not 500 the site.
+		 */
+		readonly menu: (
+			name: string,
+		) => Effect.Effect<{ menu: MenuValue | null; cacheHint: CacheHint | undefined }, EmDashReadError>;
+		/** One CMS section. Absent is `null`, for the same reason a menu is. */
+		readonly section: (slug: string) => Effect.Effect<SectionValue | null, EmDashReadError>;
 	}
 >()("asset-hunter/EmDashContent") {
 	static readonly layer: Layer.Layer<EmDashContent, never, RuntimeConfig> = Layer.effect(
@@ -107,6 +150,9 @@ export class EmDashContent extends Context.Service<
 		Effect.gen(function* () {
 			const config = yield* RuntimeConfig;
 			const decodeRow = decodeOr(RawEntry, "EmDash row");
+			const decodeMenu = decodeOr(MenuData, "EmDash menu");
+			const decodeMenuItem = decodeOr(MenuItemData, "EmDash menu item");
+			const decodeSection = decodeOr(SectionData, "EmDash section");
 
 			/**
 			 * The one place an EmDash read becomes an Effect.
@@ -214,7 +260,67 @@ export class EmDashContent extends Context.Service<
 				return { entry: decoded, cacheHint: found.cacheHint };
 			});
 
-			return EmDashContent.of({ collection, entry });
+			/**
+			 * A menu, read the same way a collection is.
+			 *
+			 * `getMenuWithCacheHint` rather than `getMenu` because the whole point
+			 * of the masthead being CMS-managed is that editing it in the admin
+			 * changes the public site — and on a cached route, a change that does
+			 * not invalidate the route is a change that appears to do nothing.
+			 *
+			 * Items are decoded individually rather than as part of the menu
+			 * struct, so one malformed item names *itself* in the failure rather
+			 * than failing the whole menu and taking the navigation with it. A
+			 * menu with four good items and one broken one is still four working
+			 * links, and the fifth is a bug worth seeing in the log.
+			 */
+			const menu = Effect.fn("EmDashContent.menu")(function* (name: string) {
+				const operation = `read menu ${name}`;
+				const found = yield* read(operation, () => getMenuWithCacheHint(name));
+				// `getMenuWithCacheHint` has no `error` field — it rejects on a
+				// database failure, which `read` has already turned into a typed
+				// transport error. A resolved `null` really does mean "no such menu".
+				if (!found.data) return { menu: null, cacheHint: found.cacheHint };
+				const decoded = yield* decodeMenu(found.data).pipe(
+					Effect.mapError(
+						(error) => new CatalogueDecodeError({ subject: `menu ${name}`, detail: error.detail }),
+					),
+				);
+				const items = yield* Effect.forEach(decoded.items, (item) =>
+					decodeMenuItem(item).pipe(
+						Effect.mapError(
+							(error) =>
+								new CatalogueDecodeError({
+									subject: `menu ${name} item ${item.id}`,
+									detail: error.detail,
+								}),
+						),
+					),
+				);
+				return { menu: { ...decoded, items }, cacheHint: found.cacheHint };
+			});
+
+			/**
+			 * One section by slug.
+			 *
+			 * A section is CMS content like any other, so it gets the same
+			 * timeout, retry and decoding. The Portable Text inside it does not
+			 * get re-validated: EmDash's `PortableText` component is the
+			 * authority on that, and a second opinion here would only reject
+			 * content the renderer handles.
+			 */
+			const section = Effect.fn("EmDashContent.section")(function* (slug: string) {
+				const operation = `read section ${slug}`;
+				const found = yield* read(operation, () => getSection(slug));
+				if (!found) return null;
+				return yield* decodeSection(found).pipe(
+					Effect.mapError(
+						(error) => new CatalogueDecodeError({ subject: `section ${slug}`, detail: error.detail }),
+					),
+				);
+			});
+
+			return EmDashContent.of({ collection, entry, menu, section });
 		}),
 	);
 }

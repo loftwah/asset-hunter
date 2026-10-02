@@ -53,6 +53,25 @@ export default defineConfig({
 	 * Excluding them lets Vite serve them through the normal module graph.
 	 */
 	vite: {
+		/**
+		 * The optimiser cache, relocated on request.
+		 *
+		 * The default is `node_modules/.vite`, which is shared by every dev
+		 * server rooted at the same `node_modules` — a worktree whose
+		 * `node_modules` is a symlink, or two checkouts on one machine. Those
+		 * servers then write each other's `_metadata.json`, and the failure is
+		 * the same class as the `optimizeDeps` problem above: a route that 500s
+		 * with
+		 *
+		 *   No cached compile metadata found for …/EmDashImage.astro
+		 *
+		 * until the cache is deleted by hand — which, with a shared directory,
+		 * is somebody else's problem rather than yours.
+		 *
+		 * `AH_VITE_CACHE_DIR` points one server at its own directory. Unset, the
+		 * behaviour is unchanged.
+		 */
+		cacheDir: process.env.AH_VITE_CACHE_DIR,
 		optimizeDeps: {
 			exclude: ["emdash", "@emdash-cms/admin", "@emdash-cms/cloudflare", "effect"],
 			include: [],

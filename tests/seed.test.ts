@@ -233,11 +233,19 @@ describe("seed structure", () => {
 		const internal = menu.items
 			.map((i: { url: string }) => i.url)
 			.filter((u: string) => u.startsWith("/"));
-		// Strip page slugs: /pages/<slug> is resolved from CMS content.
-		const known = ["/", "/verticals", "/collections"];
+		// Routes that exist as files under `src/pages`. `/pages/<slug>` is
+		// resolved from CMS content, so its target is checked as a seeded page
+		// instead — a new page needs no route, only a slug in the atlas.
+		const known = ["/", "/verticals", "/collections", "/gallery"];
 		for (const url of internal) {
 			if (url.startsWith("/pages/")) continue;
 			assert.ok(known.includes(url), `menu points at unimplemented route ${url}`);
+		}
+		// And the page half, which was previously skipped entirely.
+		const slugs = new Set(seed.content.pages.map((p: { slug: string }) => p.slug));
+		for (const url of internal) {
+			if (!url.startsWith("/pages/")) continue;
+			assert.ok(slugs.has(url.slice("/pages/".length)), `menu points at ${url}, which is not a seeded page`);
 		}
 	});
 });

@@ -1085,6 +1085,16 @@ describe("editorial pages", () => {
 		assert.match(html, /Possibilities, not files/);
 	});
 
+	live("the quick start is a CMS page, and its commands render as code", async () => {
+		// Content, not a component: a quick start an owner cannot edit is copy
+		// they discover is stale when it matters. That every command it names
+		// exists is asserted against `package.json` in `tests/site-shell.test.ts`;
+		// what belongs here is that the page resolves and renders.
+		const html = await (await fetch(`${baseUrl}/pages/quickstart`)).text();
+		assert.match(html, /<pre[^>]*><code[^>]*>npm install/);
+		assert.match(text(html), /Machine entries arrive as drafts/);
+	});
+
 	live("licensing renders all four statuses", async () => {
 		const html = await (await fetch(`${baseUrl}/pages/licensing`)).text();
 		for (const status of ["Cleared", "Attribution required", "Review required", "Reference only"]) {
@@ -1107,6 +1117,66 @@ describe("editorial pages", () => {
 	live("an unknown page 404s", async () => {
 		const res = await fetch(`${baseUrl}/pages/not-a-page`);
 		assert.equal(res.status, 404);
+	});
+});
+
+describe("the masthead is the CMS menu (#17)", () => {
+	live("declares that its links came from EmDash, not from a literal", async () => {
+		const html = await (await fetch(`${baseUrl}/`)).text();
+		// The attribute is the whole point of the fallback policy: a masthead
+		// serving three links instead of five has to be visible to a test, a
+		// screenshot and a human, not hidden behind a working page.
+		assert.match(html, /data-nav-source="cms"/);
+	});
+
+	live("every masthead link is a real route on this site", async () => {
+		const html = await (await fetch(`${baseUrl}/`)).text();
+		const block = html.match(/<nav class="nav[^"]*"[^>]*data-nav-source="[^"]*"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
+		assert.ok(block, "the masthead nav is missing or is not marked with data-nav-source");
+		const hrefs = [...new Set([...block.matchAll(/href="([^"]+)"/g)].map((m) => m[1]))];
+		assert.ok(hrefs.length > 0, "the masthead rendered no links");
+		for (const href of hrefs) {
+			if (!href.startsWith("/")) continue;
+			const res = await fetch(`${baseUrl}${href}`);
+			assert.equal(res.status, 200, `masthead points at ${href} → ${res.status}`);
+		}
+	});
+
+	live("the current page is marked in the masthead", async () => {
+		const html = await (await fetch(`${baseUrl}/verticals`)).text();
+		assert.match(html, /href="\/verticals"[^>]*aria-current="page"/);
+	});
+});
+
+describe("the gallery (#17)", () => {
+	live("shows the real product, and every image loads", async () => {
+		const html = await (await fetch(`${baseUrl}/gallery`)).text();
+		const shots = html.match(/class="shot[ "]/g) ?? [];
+		assert.ok(shots.length >= 4, `expected the gallery to show its captures, found ${shots.length}`);
+		const srcs = [...html.matchAll(/<img[^>]*src="(\/gallery\/[^"]+)"/g)].map((m) => m[1]);
+		assert.ok(srcs.length >= 4, "the gallery declares no capture images");
+		for (const src of new Set(srcs)) {
+			const res = await fetch(`${baseUrl}${src}`);
+			assert.equal(res.status, 200, `${src} → ${res.status}`);
+			// A real capture is a PNG. A 200 that serves an HTML error page would
+			// render as a broken image with a green status beside it.
+			assert.match(res.headers.get("content-type") ?? "", /image\/png/);
+		}
+	});
+
+	live("every image has alt text, and every capture links to its live route", async () => {
+		const html = await (await fetch(`${baseUrl}/gallery`)).text();
+		const imgs = [...html.matchAll(/<img\b[^>]*>/g)].map((m) => m[0]);
+		assert.ok(imgs.length > 0, "no images on the gallery");
+		for (const img of imgs) {
+			assert.match(img, /alt="[^"]{20,}"/, `an image has no meaningful alt text: ${img}`);
+			assert.match(img, /width="\d+"/, `an image has no width, so it will shift the page: ${img}`);
+			assert.match(img, /height="\d+"/, `an image has no height: ${img}`);
+		}
+		for (const href of new Set([...html.matchAll(/href="(\/(?:possibilities\/|search\?|pages\/|verticals|collections)[^"]*)"/g)].map((m) => m[1]))) {
+			const res = await fetch(`${baseUrl}${href}`);
+			assert.equal(res.status, 200, `the gallery points at ${href} → ${res.status}`);
+		}
 	});
 });
 

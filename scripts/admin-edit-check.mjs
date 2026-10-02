@@ -18,8 +18,21 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 const args = process.argv.slice(2);
-const baseUrl = args[args.indexOf("--url") + 1] ?? "http://localhost:4321";
-const slug = args[args.indexOf("--slug") + 1] ?? "density-gradient";
+/**
+ * Flag lookup that actually checks the flag is present.
+ *
+ * `args[args.indexOf("--slug") + 1]` reads `args[0]` — the `--url` flag — when
+ * `--slug` is absent, so `npm run check:admin-edit -- --url http://localhost:4399`
+ * asked the CMS for an entry whose slug was the string `--url` and reported
+ * `HTTP 404` on a database that was perfectly healthy. The default only
+ * applied when *no* arguments were passed at all.
+ */
+const value = (flag, fallback) => {
+	const i = args.indexOf(flag);
+	return i === -1 || i + 1 >= args.length ? fallback : args[i + 1];
+};
+const baseUrl = value("--url", "http://localhost:4321");
+const slug = value("--slug", "density-gradient");
 const MARKER = "admin-edit-check";
 
 /**

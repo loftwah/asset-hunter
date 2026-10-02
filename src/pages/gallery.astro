@@ -1,0 +1,381 @@
+---
+/**
+ * The gallery: what the product actually looks like (#17).
+ *
+ * ## Real captures, never a mock
+ *
+ * Every image here is a screenshot of the running product at a real route,
+ * taken by `scripts/capture-reference.mjs` and copied — not re-shot — into
+ * `public/gallery/`. The project's rule (`AGENTS.md`, #48) is that marketing
+ * media comes from the product, and the strongest enforcement available is that
+ * there is no compositing step: what a visitor sees is what `npm run dev`
+ * serves.
+ *
+ * A hand-built "product screenshot" would be prettier and would be a lie. The
+ * gallery is deliberately not that.
+ *
+ * ## Why this page exists at all
+ *
+ * #17 asked for "screenshots/gallery examples" and a "route into the
+ * possibility/asset catalogue experience". The catalogue wall is the product and
+ * is not going anywhere — `docs/VOCABULARY.md` says there is no marketing funnel
+ * in front of it. So this is a *second* route, not a landing page: something a
+ * reader can be sent to, which a crawler can find, and which costs the wall
+ * nothing.
+ *
+ * Every tile links to the live route it depicts, so a capture is never the only
+ * way to reach something.
+ */
+import Base from "../layouts/Base.astro";
+import { GALLERY_PHONE, GALLERY_WIDE } from "../lib/gallery.ts";
+
+/**
+ * Images are declared in `src/lib/gallery.ts` rather than globbed, so their alt
+ * text and the route behind them live beside the file. A glob would make an
+ * image's caption a filename, which is how a capture silently loses its
+ * description and nothing notices.
+ */
+const shots = GALLERY_WIDE;
+const phone = GALLERY_PHONE;
+---
+
+<Base
+	title="Gallery"
+	description="Screenshots of the running Asset Hunter catalogue: the wall, a drill-in, search, licensing and the wall on a phone. Every image is a capture of the real product."
+	path="/gallery"
+>
+	<header class="head shell">
+		<p class="tag tag--ember">The real thing</p>
+		<h1 class="display head__title">Gallery</h1>
+		<p class="lede">
+			Every image below is a screenshot of this site taken by
+			<code>capture-reference.mjs</code> — the same command that captures the design
+			reference. Each one links to the live route it shows.
+		</p>
+	</header>
+
+	{/*
+	 * One region, one grid.
+	 *
+	 * DESIGN.md §5 puts the hero *inside* the grid rather than in a band above
+	 * it, and the previous version of the wall that did otherwise left a hole
+	 * beside a single wide tile. The first capture spans two columns and two rows
+	 * of this same grid for exactly the same reason: it is the widest thing here
+	 * and it is first, so it should read as the lead rather than as a header
+	 * above eight equal things.
+	 */}
+	<section class="shots shell" aria-label="Screenshots of the catalogue">
+		{
+			shots.map((shot, i) => (
+				<article class:list={["shot", { "shot--lead": i === 0 }]}>
+					{/*
+					 * One link per tile, wrapping all of it.
+					 *
+					 * There was a second link here — the route, under the caption —
+					 * and an `<a>` inside an `<a>` is not valid HTML: the parser
+					 * closes the outer one at the inner tag, which left the outer
+					 * anchor with no width and made `npm run check:visual` report
+					 * four collapsed controls on every viewport. The route is still
+					 * on the tile, as text, and it does not need its own hit target:
+					 * the tile already goes there.
+					 */}
+					<a class="shot__link" href={shot.route}>
+						<div class="shot__frame">
+							<img
+								src={shot.file}
+								alt={shot.caption}
+								width={shot.width}
+								height={shot.height}
+								loading={i === 0 ? "eager" : "lazy"}
+								decoding="async"
+							/>
+						</div>
+						<div class="shot__body">
+							<h2 class="shot__label">{shot.label}</h2>
+							<p class="shot__caption">{shot.caption}</p>
+							<p class="shot__route">
+								<code>{shot.route}</code>
+							</p>
+						</div>
+					</a>
+				</article>
+			))
+		}
+	</section>
+
+	{
+		phone && (
+			<section class="phone shell" aria-labelledby="phone-title">
+				<div class="phone__body">
+					<h2 class="tag" id="phone-title">
+						{phone.label}
+					</h2>
+					<p class="lede phone__lede">{phone.caption}</p>
+					<a class="button" href={phone.route}>
+						Open the wall
+					</a>
+				</div>
+				<a class="phone__link" href={phone.route}>
+					<img
+						src={phone.file}
+						alt={phone.caption}
+						width={phone.width}
+						height={phone.height}
+						loading="lazy"
+						decoding="async"
+					/>
+				</a>
+			</section>
+		)
+	}
+
+	<aside class="note shell" aria-labelledby="note-title">
+		<h2 class="tag" id="note-title">
+			About these images
+		</h2>
+		<p>
+			They are captures of this site, not renders of a design that does not exist. Regenerate
+			them with <code>npm run capture:reference</code> against a running dev server; the gallery
+			images are copied from the same pass, so a gallery picture and the reference capture it
+			came from are the same bytes — asserted byte-for-byte in <code>tests/site-shell.test.ts</code>.
+			The share cards in <code>public/og*.png</code> are produced the same way, by
+			<code>npm run generate:og</code>.
+		</p>
+	</aside>
+</Base>
+
+<style>
+	.head {
+		display: grid;
+		gap: var(--sp-4);
+		padding-block: var(--sp-7) var(--sp-6);
+	}
+
+	.head__title {
+		font-size: var(--step-4);
+	}
+
+	/*
+	 * Two columns at desktop, and the lead spans both.
+	 *
+	 * This was `auto-fill` with the lead spanning 2×2, which looked correct in
+	 * the source and left a two-cell hole under the fourth capture at every
+	 * width — the exact failure DESIGN.md §5 records about a hero in a band of
+	 * its own. A fixed two-column grid with a full-width lead fills exactly:
+	 * one lead + three shots = one row of one and two rows of two, with no
+	 * remainder at any width. The ramp is still *inside* the grid, which is the
+	 * part the rule is actually about.
+	 */
+	.shots {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: var(--sp-5);
+		padding-block: var(--sp-6) var(--sp-7);
+	}
+
+	.shot {
+		min-width: 0;
+	}
+
+	/*
+	 * The whole tile is the link, and it is the plate that carries the weight.
+	 * A screenshot is a picture of a page, so the frame keeps the capture's own
+	 * aspect ratio: scaling one to a fixed ratio crops the masthead off the top
+	 * and the point of the image is what it shows.
+	 */
+	.shot__link {
+		display: grid;
+		gap: var(--sp-3);
+		height: 100%;
+		align-content: start;
+		color: inherit;
+	}
+
+	.shot__frame {
+		overflow: hidden;
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		transition: border-color var(--dur-fast) var(--ease-out);
+	}
+
+	.shot__frame img {
+		display: block;
+		width: 100%;
+		height: auto;
+	}
+
+	/* DESIGN.md §7: hover lifts the plate 2px and warms the border. Nothing else. */
+	.shot__link:hover .shot__frame {
+		border-color: var(--ember-line);
+	}
+
+	.shot__link:hover .shot__frame img {
+		transform: scale(1.012);
+		transition: transform 420ms var(--ease-out);
+	}
+
+	.shot__body {
+		display: grid;
+		gap: 0.25rem;
+	}
+
+	.shot__label {
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--ink);
+	}
+
+	.shot__caption {
+		font-size: var(--step--1);
+		color: var(--ink-3);
+		line-height: 1.5;
+		max-width: 52ch;
+	}
+
+	/*
+	 * The route is a caption, not a second link. A reader who wants the live
+	 * page taps the tile, which is the same destination; the path is here so a
+	 * capture is never mistaken for a rendering of something that does not
+	 * exist.
+	 */
+	.shot__route {
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		color: var(--ink-4);
+	}
+
+	.shot__route code {
+		font-family: inherit;
+	}
+
+	/* --- The phone capture -------------------------------------------------- */
+
+	/*
+	 * Set apart from the grid rather than in it, because a 390px capture in a
+	 * 20rem-min column is a letterbox: the grid would letterbox it to about a
+	 * third of its height and the phone would read as a narrow strip rather
+	 * than as a phone.
+	 */
+	.phone {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--sp-5);
+		/*
+		 * Centred, which only works because the capture is small. At 18rem the
+		 * phone is 940px tall and centring a four-line sentence against it left
+		 * half a page of hole; at 14rem it is 480px, so the sentence sits in the
+		 * middle of that, which reads as composed rather than as a fault.
+		 */
+		align-items: center;
+		padding-block: var(--sp-6);
+		border-top: 1px solid var(--line);
+	}
+
+	.phone__body {
+		display: grid;
+		gap: var(--sp-3);
+		justify-items: start;
+	}
+
+	.phone__lede {
+		max-width: 46ch;
+	}
+
+	.phone__link {
+		display: block;
+		justify-self: center;
+		/*
+		 * A capture of a phone, shown as a phone — rounded, hairline, and small
+		 * enough not to become the loudest thing on the page. 14rem is a
+		 * considered number rather than a default: at 18rem the capture is 390
+		 * wide and 844 tall, which is 940px of column against a four-line
+		 * sentence and reads as an empty half-page.
+		 */
+		width: min(14rem, 100%);
+		overflow: hidden;
+		background: var(--surface);
+		border: 1px solid var(--line-loud);
+		border-radius: var(--radius-lg);
+	}
+
+	.phone__link img {
+		display: block;
+		width: 100%;
+		height: auto;
+	}
+
+	.button {
+		display: inline-flex;
+		align-items: center;
+		min-height: 2.75rem;
+		padding: 0.6rem 1.1rem;
+		background: var(--ember);
+		color: var(--canvas);
+		border: 1px solid var(--ember);
+		border-radius: var(--radius);
+		font-family: var(--font-mono);
+		font-size: var(--step--1);
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		transition: background var(--dur-fast) var(--ease-out);
+	}
+
+	.button:hover {
+		background: color-mix(in srgb, var(--ember) 86%, white);
+	}
+
+	/*
+	 * `.shell` centres with `margin-inline: auto`, so a `max-width` on the same
+	 * element narrows the box and re-centres it — which put this note a third of
+	 * the way across the page. The measure belongs on the content, not on the
+	 * shell element that already carries the gutters.
+	 */
+	.note {
+		padding-block: var(--sp-6);
+		border-top: 1px solid var(--line);
+		font-size: var(--step--1);
+		color: var(--ink-3);
+		line-height: 1.6;
+	}
+
+	.note p {
+		max-width: var(--measure);
+		margin-top: var(--sp-3);
+	}
+
+	.note code {
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		color: var(--ink-2);
+	}
+
+	@media (width >= 900px) {
+		.shots {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: var(--sp-6) var(--sp-5);
+		}
+
+		/* The lead is the first cell of this same grid, spanning it. */
+		.shot--lead {
+			grid-column: 1 / -1;
+		}
+
+		.phone {
+			/* Text beside the phone, not above it: the capture is 390 wide and
+			   has a tall aspect, so a one-column layout pushes it a full
+			   viewport down and the sentence is read alone. */
+			grid-template-columns: minmax(0, 1fr) auto;
+			gap: var(--sp-7);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.shot__link:hover .shot__frame img {
+			transform: none;
+			transition: none;
+		}
+	}
+</style>

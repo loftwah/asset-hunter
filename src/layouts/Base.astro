@@ -3,8 +3,18 @@
  * Base layout. Owns the document shell, the masthead, the skip link and the
  * footer. Global tokens are imported here so no page can accidentally render
  * unstyled.
+ *
+ * ## The masthead is CMS content
+ *
+ * The navigation used to be an array literal in this file, duplicating the
+ * `primary` menu that `seed/seed.json` declares and that nothing read — so
+ * editing the menu in the EmDash admin changed nothing a reader could see. It
+ * is read from EmDash now; see `src/lib/site-shell.ts` for the fallback and why
+ * the fallback is marked rather than hidden.
  */
 import Wordmark from "../components/Wordmark.astro";
+import { loadPrimaryNav, isCurrentLink } from "../lib/site-shell";
+import { runApp } from "../lib/effect/root";
 import "../styles/global.css";
 
 interface Props {
@@ -23,16 +33,19 @@ const canonical = new URL(path ?? Astro.url.pathname, Astro.site ?? Astro.url.or
 const ogUrl = new URL(ogImage, Astro.site ?? Astro.url.origin).href;
 const fullTitle = path && path !== "/" ? `${title} — Asset Hunter` : "Asset Hunter — A field guide to what can be made";
 
-const nav = [
-	{ href: "/", label: "Catalogue" },
-	{ href: "/verticals", label: "Verticals" },
-	{ href: "/collections", label: "Collections" },
-	{ href: "/pages/licensing", label: "Licensing" },
-	{ href: "/pages/about", label: "About" },
-];
+const nav = await runApp(loadPrimaryNav(), { signal: Astro.request.signal });
+// Passed straight to Astro so an admin edit purges the rendered route. Without
+// it, a page cached before the edit keeps serving the old navigation and the
+// edit looks like it did nothing — which is what it did, for a while.
+if (Astro.cache?.enabled && nav.cacheHint) Astro.cache.set(nav.cacheHint);
+// Said out loud, on the server, on every request that hits the fallback.
+// A masthead quietly serving three links instead of five is a fact an operator
+// needs and a reader does not; this is where the operator finds out.
+if (nav.source === "fallback") {
+	console.warn(`masthead: falling back to the built-in links — ${nav.note}`);
+}
 const current = Astro.url.pathname;
-const isCurrent = (href: string) =>
-	href === "/" ? current === "/" : current === href || current.startsWith(`${href}/`);
+const isCurrent = (href: string) => isCurrentLink(current, href);
 ---
 
 <!doctype html>
@@ -91,9 +104,9 @@ const isCurrent = (href: string) =>
 							<Wordmark size={20} decorative />
 							<span class="brand__name">Asset Hunter</span>
 						</a>
-						<nav class="nav" aria-label="Primary">
+						<nav class="nav" aria-label="Primary" data-nav-source={nav.source}>
 							<ul data-scroll-strip>
-								{nav.map((item) => (
+								{nav.links.map((item) => (
 									<li>
 										<a
 											href={item.href}
@@ -177,12 +190,19 @@ const isCurrent = (href: string) =>
 							</p>
 						</div>
 						<div class="footer__cols">
+							{/*
+							 * The same CMS menu as the masthead rather than a second
+							 * hand-written copy of it — the duplication #17 was about.
+							 * The one addition is the reader's own board, which is a
+							 * cookie-backed personal surface rather than site
+							 * navigation, so it is deliberately not in the admin's menu.
+							 */}
 							<div>
 								<h2 class="tag">Catalogue</h2>
 								<ul>
-									<li><a href="/">All possibilities</a></li>
-									<li><a href="/verticals">By vertical</a></li>
-									<li><a href="/collections">Collections</a></li>
+									{nav.links.map((item) => (
+										<li><a href={item.href}>{item.label}</a></li>
+									))}
 									<li><a href="/board">Your shortlist</a></li>
 								</ul>
 							</div>
@@ -201,10 +221,30 @@ const isCurrent = (href: string) =>
 									<li><a href="/pages/licensing#the-statuses">The four statuses</a></li>
 								</ul>
 							</div>
+							{/*
+							 * Utility links, deliberately *not* the CMS menu.
+							 *
+							 * The "Catalogue" column above is the menu, so an admin
+							 * edit moves both. These are the links that have to be
+							 * there whatever the menu says — the rights explanation,
+							 * the project pages, the feed and the source — and putting
+							 * an obligation in an editor's list is how a licence page
+							 * goes missing. The quick start lives here rather than in
+							 * the primary menu for the same reason: running a hunt is
+							 * a project activity, not a browsing one, and the primary
+							 * navigation is for browsing.
+							 *
+							 * Nothing in this column may also be in the menu. "What
+							 * this is" and the gallery were both here and in the
+							 * menu at the same time, so the footer listed them
+							 * twice; the menu renders the Catalogue column, and
+							 * repeating it here is the duplication this change
+							 * exists to remove rather than to cause.
+							 */}
 							<div>
 								<h2 class="tag">Project</h2>
 								<ul>
-									<li><a href="/pages/about">What this is</a></li>
+									<li><a href="/pages/quickstart">Run it locally</a></li>
 									<li><a href="/rss.xml">RSS feed</a></li>
 									<li><a href="https://github.com/loftwah/asset-hunter">Source</a></li>
 								</ul>
