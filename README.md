@@ -132,15 +132,20 @@ local database seeded (`curl "http://localhost:4321/_emdash/api/setup/dev-bypass
 | `verify`                 | Types, seed validity, every plate renders, unit + route tests. Route tests skip with no server and **fail** on a server that answers errors |
 | `smoke`                  | The public catalogue reads EmDash, not a shadow data source          |
 | `check:admin-edit`       | An EmDash edit reaches the public site, then is restored             |
-| `check:visual`           | Layout, contrast, tap targets, images, headings, focus, fold, crop, gutter |
+| `check:visual`           | Layout, contrast, tap targets, images, headings, focus, fold, crop, gutter, duplicate ids |
 | `check:perf`             | Transfer, requests, DOM size, CLS and interaction latency against recorded ceilings |
 | `check:specimens`        | Plates are well-formed XML with usable viewBox and alt text          |
 | `check:plates`           | Plates render without text collisions or cropped marks                |
 | `doctor`                 | What is installed versus what is integrated and used                 |
 
-`check:visual` captures every public route at five viewports plus an iPhone
+`check:visual` captures every public route at eleven viewports plus an iPhone
 profile into `screenshots/`, and asserts in the rendered page rather than on the
-source — so it catches what a stylesheet review cannot.
+source — so it catches what a stylesheet review cannot. It also writes
+`screenshots/manifest.json`, which records the commit, the origin, the matrix and
+a digest per file, so a run is identifiable without keeping ~200 PNGs in the
+repository. The artefacts are wiped per run and never committed;
+`docs/VISUAL_QA.md` is the authority on that, on what the matrix covers, and on
+what it deliberately does not.
 
 `check:plates` renders each specimen plate in a browser and measures real glyph
 boxes. Overlapping labels in a plate look fine in source and become gibberish at
@@ -148,8 +153,10 @@ wall size, which is exactly why they are measured rather than reviewed.
 
 `check:visual` also fails if the first plate starts below three quarters of the
 fold, if a tile renders at a shape other than the plate's own 4:5 (which crops
-annotations off a diagram), or if an element has lost the shell gutter. Those
-three were each a real bug found by reading captures rather than source.
+annotations off a diagram), if an element has lost the shell gutter, or if two
+elements share an id — which silently points every `<label for>` at the wrong
+control. Those four were each a real bug found by reading captures rather than
+source.
 
 ## Commands
 

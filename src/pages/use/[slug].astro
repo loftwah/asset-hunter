@@ -20,6 +20,7 @@
 import Base from "../../layouts/Base.astro";
 import ExampleUse from "../../components/ExampleUse.astro";
 import OutcomeFlash from "../../components/OutcomeFlash.astro";
+import Crumbs from "../../components/Crumbs.astro";
 import {
 	loadExamplesFor,
 	loadPossibility,
@@ -35,26 +36,53 @@ import {
 	summaryLine,
 } from "../../lib/asset-use";
 import { COOKIE_NAME, DEFAULT_BOARD, boardOutcome, parseBoards } from "../../lib/board";
+// Type-only, so a production bundle never pulls in the fixtures — or the media
+// they name, which does not exist. The value import below is dynamic and
+// `DEV`-guarded; see the comment on `fixture`.
+import type { UsePageFixture } from "../../lib/fixtures";
 
 const { slug } = Astro.params;
+
+/*
+ * Deterministic selections, in `astro dev` only (#47).
+ *
+ * The catalogue is 24 of 24 `reference` with nothing retained, so this route can
+ * only ever render one of the four use states and always with a payload count of
+ * zero. The other three — and every page that has anything to download — had no
+ * pixels anywhere, which means `npm run check:visual` had never checked the
+ * summary line, the download accent, the selection credit block or the
+ * "N retained originals" copy at any viewport.
+ *
+ * The fixtures resolve *here* rather than in a second page so the captured
+ * pixels are the production page. A lab page that re-implemented the use flow
+ * would prove that the lab page works, which is the mistake #45 was opened to
+ * stop. `src/lib/fixtures.ts` namespaces every slug behind `fixture-`, so a
+ * fixture can never shadow a real entry, and the `DEV` guard means none of this
+ * can exist in a production build.
+ */
+const fixture: UsePageFixture | null = import.meta.env.DEV
+	? (await import("../../lib/fixtures")).usePageFixtureFor(slug)
+	: null;
+
 /*
  * `runRead` is the one bridge from a CMS read to a value, so this route does not
  * need to know how a read is run. The type arguments are inferred from the read
  * itself — naming them here would be a second, drifting claim about the shape.
  */
-const { possibility: p, cacheHint } = await runRead(loadPossibility(slug ?? ""));
+const { possibility: p, cacheHint } = fixture
+	? { possibility: fixture.possibility as Possibility, cacheHint: null }
+	: await runRead(loadPossibility(slug ?? ""));
 if (Astro.cache?.enabled && cacheHint) Astro.cache.set(cacheHint);
 
 if (!p) {
 	return Astro.rewrite("/404");
 }
 
-const [{ examples }, boards] = await Promise.all([
-	runRead(loadExamplesFor(p.slug)),
-	// A cookie read is synchronous, so this is not a promise — the array keeps
-	// the two independent reads next to each other rather than in two statements.
-	Promise.resolve(parseBoards(Astro.cookies.get(COOKIE_NAME)?.value)),
-]);
+// A cookie read is synchronous, so this is not a read worth awaiting.
+const boards = parseBoards(Astro.cookies.get(COOKIE_NAME)?.value);
+const examples: Example[] = fixture
+	? fixture.examples
+	: (await runRead(loadExamplesFor(p.slug))).examples;
 
 const summary = summariseUse(examples);
 const onBoard = (boards[DEFAULT_BOARD] ?? []).includes(p.slug);
@@ -87,14 +115,14 @@ const outcome = boardOutcome(Astro.url.searchParams, (slug) =>
 >
 	<article class="use-page">
 		<header class="head shell">
-			<nav class="crumbs" aria-label="Breadcrumb">
-				<a href="/">Catalogue</a>
-				{vertical && <><span aria-hidden="true">/</span><a href={`/verticals#${p.vertical}`}>{vertical}</a></>}
-				<span aria-hidden="true">/</span>
-				<a href={`/possibilities/${p.slug}`}>{p.title}</a>
-				<span aria-hidden="true">/</span>
-				<span class="crumbs__here">Asset use</span>
-			</nav>
+			<Crumbs
+				steps={[
+					{ label: "Catalogue", href: "/" },
+					...(vertical ? [{ label: vertical, href: `/verticals#${p.vertical}` }] : []),
+					{ label: p.title, href: `/possibilities/${p.slug}` },
+					{ label: "Asset use" },
+				]}
+			/>
 
 			<p class="tag tag--ember">Asset use</p>
 			<h1 class="display head__title">{p.title}</h1>
@@ -275,36 +303,6 @@ const outcome = boardOutcome(Astro.url.searchParams, (slug) =>
 		padding-block: var(--sp-5) var(--sp-6);
 	}
 
-	.crumbs {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 0.1rem 0.5rem;
-		font-family: var(--font-mono);
-		font-size: var(--step--2);
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-	}
-
-	/* Padding, not type size, carries the tap target: breadcrumb type is
-	   intentionally small so the hierarchy stays readable. */
-	.crumbs a {
-		display: inline-flex;
-		align-items: center;
-		min-height: var(--tap);
-		padding-inline: 0.15rem;
-		color: var(--ink-3);
-		transition: color var(--dur-fast) var(--ease-out);
-	}
-
-	.crumbs a:hover {
-		color: var(--ink);
-	}
-
-	.crumbs__here {
-		color: var(--ink-2);
-	}
 
 	.head__title {
 		font-size: var(--step-4);

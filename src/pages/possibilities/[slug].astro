@@ -12,6 +12,7 @@ import ProvenanceMarkers from "../../components/ProvenanceMarkers.astro";
 import ExampleUse from "../../components/ExampleUse.astro";
 import OutcomeFlash from "../../components/OutcomeFlash.astro";
 import SignalPanel from "../../components/SignalPanel.astro";
+import Crumbs from "../../components/Crumbs.astro";
 import {
 	loadExamplesFor,
 	loadPossibilities,
@@ -145,12 +146,13 @@ const outcome = note
 		}
 
 		<header class="head shell">
-			<nav class="crumbs" aria-label="Breadcrumb">
-				<a href="/">Catalogue</a>
-				{vertical && <><span aria-hidden="true">/</span><a href={`/verticals#${p.vertical}`}>{vertical}</a></>}
-				<span aria-hidden="true">/</span>
-				<span class="crumbs__here">{p.title}</span>
-			</nav>
+			<Crumbs
+				steps={[
+					{ label: "Catalogue", href: "/" },
+					...(vertical ? [{ label: vertical, href: `/verticals#${p.vertical}` }] : []),
+					{ label: p.title },
+				]}
+			/>
 
 			<h1 class="display head__title">{p.title}</h1>
 			{p.tagline && <p class="head__tagline">{p.tagline}</p>}
@@ -405,41 +407,6 @@ const outcome = note
 		display: grid;
 		gap: var(--sp-4);
 		padding-block: var(--sp-5) var(--sp-6);
-	}
-
-	.crumbs {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 0.1rem 0.5rem;
-		font-family: var(--font-mono);
-		font-size: var(--step--2);
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-		color: var(--ink-4);
-	}
-
-	/* Padding, not type size, carries the tap target: breadcrumb type is
-	   intentionally small so the hierarchy stays readable. */
-	.crumbs a,
-	.crumbs__here {
-		display: inline-flex;
-		align-items: center;
-		min-height: var(--tap);
-		padding-inline: 0.15rem;
-	}
-
-	.crumbs a {
-		color: var(--ink-3);
-		transition: color var(--dur-fast) var(--ease-out);
-	}
-
-	.crumbs a:hover {
-		color: var(--ink);
-	}
-
-	.crumbs__here {
-		color: var(--ink-2);
 	}
 
 	.head__title {

@@ -93,6 +93,40 @@ for (const h of hits) {
 	if (v) verticalsInResults.set(v, (verticalsInResults.get(v) ?? 0) + 1);
 }
 const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a[1]);
+/**
+ * How many verticals the catalogue actually covers.
+ *
+ * From the loaded possibilities, so the empty state's sentence cannot go stale.
+ * A possibility with no vertical is not one a reader can browse, so it is not
+ * counted; the `""` stands in for it only so it can be excluded below.
+ */
+const verticalCount = new Set(
+	possibilities.map((p) => p.vertical).filter((v): v is string => Boolean(v)),
+).size;
+
+/**
+ * What the results line says, and — just as important — what it does not say.
+ *
+ * Each kind is counted separately and joined with a middle dot, so a mismatch in
+ * one cannot cancel out the other (`DESIGN.md` §9.1). The separator used to be
+ * appended unconditionally, which meant the zero-result page — the one state
+ * where nothing is found — rendered its `role="status"` line as
+ *
+ *     · for zzqqxxwwnothing
+ *
+ * A status line that opens with a separator reads as a rendering fault, and it
+ * only happened on the emptiest state, which is the state nobody looks at twice.
+ * With nothing found the line is just "for *query*", and it is still a status
+ * region, so a screen reader is still told the answer.
+ */
+const parts = [
+	possibilityHits > 0 &&
+		`${possibilityHits} ${possibilityHits === 1 ? "possibility" : "possibilities"}`,
+	collectionHits > 0 &&
+		`${collectionHits} ${collectionHits === 1 ? "collection" : "collections"}`,
+	pages.length > 0 && `${pages.length} ${pages.length === 1 ? "page" : "pages"}`,
+].filter(Boolean);
+const counted = parts.length > 0 ? `${parts.join(" · ")} · ` : "";
 ---
 
 <Base
@@ -109,10 +143,20 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 		<p class="tag tag--ember">Search</p>
 		<h1 class="display head__title">{query ? `“${query}”` : "Find a possibility"}</h1>
 
+		{/*
+		 * `q-page`, not `q`.
+		 *
+		 * The masthead carries a search field with `id="q"` on every page, and the
+		 * page's own field used the same id: two elements with one id, a
+		 * `<label for="q">` that labelled the masthead's input rather than this
+		 * one, and `getElementById("q")` — the `/` shortcut in `Base.astro` —
+		 * resolving to the masthead's field even here, where the reader is already
+		 * looking at the one they want.
+		 */}
 		<form class="finder" action="/search" method="get" role="search">
-			<label class="visually-hidden" for="q">Search possibilities</label>
+			<label class="visually-hidden" for="q-page">Search possibilities</label>
 			<input
-				id="q"
+				id="q-page"
 				type="search"
 				name="q"
 				value={query}
@@ -127,17 +171,7 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 		{
 			query && (
 				<p class="count" role="status">
-					{[
-						possibilityHits > 0 &&
-							`${possibilityHits} ${possibilityHits === 1 ? "possibility" : "possibilities"}`,
-						collectionHits > 0 &&
-							`${collectionHits} ${collectionHits === 1 ? "collection" : "collections"}`,
-						pages.length > 0 &&
-							`${pages.length} ${pages.length === 1 ? "page" : "pages"}`,
-					]
-						.filter(Boolean)
-						.join(" · ")}
-					{" · "}
+					{counted}
 					for <strong>{query}</strong>
 				</p>
 			)
@@ -167,9 +201,9 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 				<div class="none">
 					<h2 class="display none__title">No match for “{query}”</h2>
 					<p class="lede">
-						Nothing in the catalogue matches that. The catalogue covers 13 verticals and is
-						deliberately partial, so the absence of a result is more likely a gap than an
-						error.
+						Nothing in the catalogue matches that. The catalogue covers {verticalCount}{" "}
+						{verticalCount === 1 ? "vertical" : "verticals"} and is deliberately partial, so
+						the absence of a result is more likely a gap than an error.
 					</p>
 					<ul class="tries">
 						<li>Try a shorter phrase — full-text search wants keywords, not sentences.</li>
@@ -343,8 +377,22 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 		max-width: 40rem;
 	}
 
+	/*
+	 * `1 1 20rem`, not `1 1 14rem`.
+	 *
+	 * The hint is the field's own explanation of itself, and a 13px mono sentence
+	 * needs 300–317px. Beside a 120px button on a 360px line the field got 192px and
+	 * the sentence was cut mid-word — "Try a technique, a treatmen" — with no
+	 * ellipsis and no way to see the rest. A 20rem basis means the pair needs 448px,
+	 * so below about 460px the button takes its own row and the field gets the whole
+	 * line; above it, side by side, the field has 600px+.
+	 *
+	 * This is a layout answer rather than a copy one: the words are `DESIGN.md`
+	 * §9.1's, and the alternative — shortening them — would edit the design authority
+	 * to fit a box. The box was the thing that was wrong.
+	 */
 	.finder input {
-		flex: 1 1 16rem;
+		flex: 1 1 20rem;
 		min-height: 3rem;
 		padding: 0.7rem 1rem;
 		background: var(--surface);

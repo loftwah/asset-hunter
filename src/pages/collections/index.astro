@@ -192,11 +192,27 @@ const orphaned = possibilities.filter(
 		color: var(--ember);
 	}
 
+	/*
+	 * `--ink-3`, not the accent.
+	 *
+	 * This was `var(--ember)`, so all four taglines rendered in the accent on a
+	 * page whose only other ember is the one `tag--ember` eyebrow at the top.
+	 * `DESIGN.md` §2: *ember marks action, selection and the single
+	 * highest-priority element on a viewport. It is never decorative.* A tagline is
+	 * not any of those three — it is a caption, and §9.4 gives captions ink-3. Four
+	 * always-on accent lines is an accent marking nothing, and the hover states on
+	 * `.collection__title` and `.collection__cover` below are interaction, which is
+	 * what the token is for.
+	 *
+	 * The drill-in's own tagline is `--ink-2` at `--step-1`; this is mono
+	 * micro-type, which is the label voice, so ink-3 is the right step down rather
+	 * than the same value at a different size.
+	 */
 	.collection__tagline {
 		font-family: var(--font-mono);
 		font-size: var(--step--1);
 		letter-spacing: 0.03em;
-		color: var(--ember);
+		color: var(--ink-3);
 	}
 
 	.collection__summary {
