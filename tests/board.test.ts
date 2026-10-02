@@ -14,6 +14,9 @@ import {
 	MAX_BOARDS,
 	MAX_PER_BOARD,
 	applyAction,
+	boardCanManage,
+	boardOutcome,
+	boardSwitcher,
 	boardTotals,
 	normaliseBoardName,
 	parseBoards,
@@ -138,6 +141,83 @@ describe("shortlist board", () => {
 		assert.equal(totals.boards, 2);
 		assert.equal(totals.items, 2);
 		assert.deepEqual(totals.counts, { default: 1, pirates: 1 });
+	});
+
+	test("the board switcher lists empty boards, so a copy can be followed (#65)", () => {
+		// The state after a copy: the board it came from is empty and the entries
+		// are on the destination. Listing only non-empty boards meant the reader
+	// was told where their entries were and had no control that could take them
+	// there.
+		const copied = { [DEFAULT_BOARD]: [], Pirates: ["density-gradient"] };
+		const switcher = boardSwitcher(copied);
+		assert.ok(switcher, "a copied board left no way back to the entries");
+		assert.deepEqual(
+			switcher.map((b) => [b.label, b.count]),
+			[
+				["Shortlist", 0],
+				["Pirates", 1],
+			],
+			"the honest zero is what makes the empty board reachable",
+		);
+	});
+
+	test("one board is not a switcher, because a switcher with one entry does nothing", () => {
+		assert.equal(boardSwitcher({ [DEFAULT_BOARD]: [] }), null);
+		assert.equal(boardSwitcher({ [DEFAULT_BOARD]: ["density-gradient"] }), null);
+	});
+
+	test("the copy control is refused when the board has nothing on it (#65)", () => {
+		// `boardCanManage` is the one rule both the page and the endpoint use to
+		// decide whether copy/clear/export may be offered, so it is asserted here
+		// as the boundary it is rather than only through the rendered page.
+		assert.equal(boardCanManage(0), false, "nothing to manage");
+		assert.equal(boardCanManage(1), true, "one entry is enough to copy");
+		assert.equal(boardCanManage(MAX_PER_BOARD), true);
+		// A negative count cannot happen, and must not read as manageable.
+		assert.equal(boardCanManage(-1), false);
+	});
+
+	test("a copy of an empty board is answered as a refusal, not as a copy (#65)", () => {
+		// The endpoint's `nocopy` answer: a form posted from a tab that was
+		// rendered before the board was emptied. Reporting a copy that did not
+		// happen is the same class of lie as a live button that copies nothing.
+		const outcome = boardOutcome(new URLSearchParams("nocopy=1"), () => undefined);
+		assert.equal(outcome?.tone, "problem");
+		assert.match(outcome?.message ?? "", /nothing to copy/i);
+		assert.match(outcome?.message ?? "", /empty/i, "says why, not just that it failed");
+	});
+
+	test("a real copy names the board the entries went to (#65)", () => {
+		const outcome = boardOutcome(new URLSearchParams("copied=Pirates"), () => undefined);
+		assert.equal(outcome?.tone, "ok");
+		assert.match(outcome?.message ?? "", /Pirates/);
+		// The old wording claimed *both* boards were empty, which is false: the
+		// board copied from is emptied, the destination holds the entries.
+		assert.doesNotMatch(outcome?.message ?? "", /both are empty/i);
+	});
+
+	test("clearing says where the entries actually are (#65)", () => {
+		// Clearing empties one board only, so the honest sentence needs the count
+		// of what survived on the reader's other boards.
+		const alone = boardOutcome(new URLSearchParams("cleared=1"), () => undefined, {
+			keptElsewhere: 0,
+		});
+		assert.match(alone?.message ?? "", /nothing was kept anywhere else/i);
+
+		const withOthers = boardOutcome(new URLSearchParams("cleared=1"), () => undefined, {
+			keptElsewhere: 3,
+		});
+		assert.match(withOthers?.message ?? "", /3 entries are kept on your other boards/i);
+		assert.doesNotMatch(
+			withOthers?.message ?? "",
+			/nothing was kept anywhere else/i,
+			"the false claim is the one this assertion exists to prevent",
+		);
+
+		const oneElsewhere = boardOutcome(new URLSearchParams("cleared=1"), () => undefined, {
+			keptElsewhere: 1,
+		});
+		assert.match(oneElsewhere?.message ?? "", /1 entry is kept on your other board\b/);
 	});
 
 	test("the cookie is named, and it is not readable by a script", () => {

@@ -47,7 +47,11 @@ const totals = boardTotals(boards);
  * reload and nothing at all.
  */
 const bySlug = new Map(possibilities.map((p) => [p.slug, p.title]));
-const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug));
+const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug), {
+	// The wall is where a reader sees they are on a board at all, so a sentence
+	// claiming their work is gone has to be right here too (#65).
+	keptElsewhere: totals.items,
+});
 
 const rightsTally = new Map<string, number>();
 for (const p of filtered) {

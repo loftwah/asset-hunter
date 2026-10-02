@@ -34,7 +34,7 @@ import {
 	summariseUse,
 	summaryLine,
 } from "../../lib/asset-use";
-import { COOKIE_NAME, DEFAULT_BOARD, boardOutcome, parseBoards } from "../../lib/board";
+import { COOKIE_NAME, DEFAULT_BOARD, boardOutcome, boardTotals, parseBoards } from "../../lib/board";
 
 const { slug } = Astro.params;
 /*
@@ -74,8 +74,13 @@ const selectionCredit = selectionCreditText(
  * Without this the button's own label changed and nothing was announced — the
  * one reader who is not looking at the button learned nothing.
  */
-const outcome = boardOutcome(Astro.url.searchParams, (slug) =>
-	slug === p.slug ? p.title : undefined,
+const outcome = boardOutcome(
+	Astro.url.searchParams,
+	(slug) => (slug === p.slug ? p.title : undefined),
+	// A `cleared` outcome cannot originate from this page — its only form saves
+	// or unsaves — but the count is here so the sentence is right if one ever
+	// arrives rather than wrong in a way nobody would notice (#65).
+	{ keptElsewhere: boardTotals(boards).items },
 );
 ---
 
