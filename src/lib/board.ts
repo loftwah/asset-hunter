@@ -194,3 +194,39 @@ export function boardTotals(boards: Boards) {
 /** A display name for a board that is not the default one. */
 export const boardLabel = (name: string) =>
 	name === DEFAULT_BOARD ? "Shortlist" : name;
+
+/**
+ * What a board POST did, read back out of the query string the endpoint
+ * redirects to.
+ *
+ * The endpoint is a form POST, so its answer arrives as a new page load. Without
+ * this, every board action was silent: the tile's own `+`/`✓` told you the
+ * result, but clearing a board told you nothing at all, and the only page that
+ * said anything inferred "you saved this" from the entry still being present —
+ * which is exactly why unsaving said nothing.
+ *
+ * `titleFor` is supplied by the caller so the message can name the entry in the
+ * reader's words and stay pure: the slugs stay strings here.
+ */
+export function boardOutcome(
+	params: URLSearchParams,
+	titleFor: (slug: string) => string | undefined,
+): { tone: "ok" | "problem"; message: string } | null {
+	const saved = params.get("saved");
+	if (saved) {
+		const name = titleFor(saved);
+		return { tone: "ok", message: `Kept on your shortlist: ${name ?? saved}.` };
+	}
+	const unsaved = params.get("unsaved");
+	if (unsaved) {
+		const name = titleFor(unsaved);
+		return { tone: "ok", message: `Removed from your shortlist: ${name ?? unsaved}.` };
+	}
+	if (params.get("cleared")) {
+		return { tone: "ok", message: "This board is empty. Nothing was kept anywhere else." };
+	}
+	if (params.get("copied")) {
+		return { tone: "ok", message: "Copied to a new board. Both are empty now." };
+	}
+	return null;
+}

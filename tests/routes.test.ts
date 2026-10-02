@@ -8,6 +8,7 @@
  */
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { SIGNAL_FIXTURES } from "../src/lib/fixtures.ts";
 
 const baseUrl = process.env.AH_URL ?? "http://localhost:4321";
 
@@ -779,6 +780,88 @@ describe("metadata", () => {
 			const html = await (await fetch(`${baseUrl}${route}`)).text();
 			// Astro adds a scoping attribute, so match the attribute not the tag.
 			assert.match(html, /<html [^>]*lang="en"/, `no lang on ${route}`);
+		}
+	});
+});
+
+/*
+ * The lab (#45) and the rating states added for #47.
+ *
+ * The interesting assertion here is not that the page renders — it does — but
+ * that each state renders *through the production component*. A fixture that
+ * duplicated the markup would satisfy every structural test below while proving
+ * nothing about the component the catalogue actually ships, which is the whole
+ * reason `SignalPanel.astro` was extracted rather than copied.
+ */
+describe("the visual lab renders every state through the real components", () => {
+	live("the lab is refused outside dev", async () => {
+		const res = await fetch(`${baseUrl}/lab`);
+		// It answers in dev and must answer 404 in production; either way the
+		// route exists as a deliberate decision rather than a 500.
+		assert.ok(res.status === 200 || res.status === 404, `unexpected status ${res.status}`);
+	});
+
+	live("every fixture group the page declares is actually on it", async () => {
+		const html = await (await fetch(`${baseUrl}/lab`)).text();
+		for (const id of ["media", "rights", "origin", "evidence", "state", "asset-use", "signals"]) {
+			assert.ok(html.includes(`id="${id}"`), `the lab has no "${id}" section`);
+		}
+		// And the jump nav reaches the two sections added for #47.
+		assert.match(html, /href="#signals"/);
+	});
+
+	live("all seven rating states render, and both sides of authentication appear", async () => {
+		const html = await (await fetch(`${baseUrl}/lab`)).text();
+		const cases = html.match(/class="signal-case"/g) ?? [];
+		assert.equal(cases.length, SIGNAL_FIXTURES.length, "a rating state is missing from the lab");
+		assert.match(html, /data-viewer="signed-out"/);
+		assert.match(html, /data-viewer="signed-in"/);
+
+		// The states that only exist once somebody interacts, proved by their copy:
+		// the honest zero, the count of one, the distribution, "Change" rather
+		// than "Rate", and the open-report warning.
+		assert.match(html, /No ratings yet/);
+		// `ratingSummary`'s wording is asserted in `signals.test.ts`; what matters
+		// here is that the count of one actually reaches the page, because a
+		// single opinion presented without its count is the one that reads as a
+		// score.
+		assert.match(html, /from 1 rating\b/);
+		assert.match(html, /Rating distribution/);
+		assert.match(html, />Change</);
+		assert.match(html, /open reports? on this fixture/);
+		assert.match(html, /licence/i);
+	});
+
+	live("the lab's rating states use the production panel, not a copy", async () => {
+		const lab = await (await fetch(`${baseUrl}/lab`)).text();
+		const detail = await (await fetch(`${baseUrl}/possibilities/density-gradient`)).text();
+		// One component, two pages: the same form action and the same field names
+		// have to be present in both, because they are the same component.
+		for (const marker of [
+			'action="/api/signal"',
+			'name="intent" value="rate"',
+			'name="intent" value="report"',
+			'class="rate__star"',
+			'class="report__form"',
+		]) {
+			assert.ok(lab.includes(marker), `the lab is missing ${marker}`);
+			assert.ok(detail.includes(marker), `the drill-in is missing ${marker}`);
+		}
+	});
+
+	live("the fixtures never leak a real account or a real catalogue slug", async () => {
+		const html = await (await fetch(`${baseUrl}/lab`)).text();
+		// No address of any shape: the panel never renders one, and a fixture that
+		// started rendering one would put a plausible-looking reader on the page.
+		assert.doesNotMatch(html, /[\w.+-]+@[\w-]+\.[a-z]{2,}/i, "an address reached the lab");
+		// Every fixture slug is namespaced, so a fixture link cannot resolve to a
+		// real entry and quietly become a claim about it.
+		assert.equal((html.match(/href="\/possibilities\/fixture-/g) ?? []).length, 0);
+		// And the fixture data itself uses a reserved domain, asserted in
+		// `fixtures.test.ts` so it holds even with no server running.
+		for (const fixture of SIGNAL_FIXTURES) {
+			if (!fixture.viewer) continue;
+			assert.match(fixture.viewer.email ?? "", /@example\.invalid$/);
 		}
 	});
 });

@@ -135,15 +135,11 @@ const headingBlocks = { h2: HeadingBlock, h3: HeadingBlock };
 		color: var(--ink-4);
 	}
 
-	.crumbs a,
-	.crumbs__here {
+	.crumbs a {
 		display: inline-flex;
 		align-items: center;
-		min-height: 1.75rem;
+		min-height: var(--tap);
 		padding-inline: 0.15rem;
-	}
-
-	.crumbs a {
 		color: var(--ink-3);
 		transition: color var(--dur-fast) var(--ease-out);
 	}
@@ -184,7 +180,7 @@ const headingBlocks = { h2: HeadingBlock, h3: HeadingBlock };
 	.toc a {
 		display: flex;
 		align-items: center;
-		min-height: 2.25rem;
+		min-height: var(--tap);
 		padding-block: 0.25rem;
 		font-family: var(--font-mono);
 		font-size: var(--step--1);
@@ -201,13 +197,13 @@ const headingBlocks = { h2: HeadingBlock, h3: HeadingBlock };
 	}
 
 	/* EmDash renders Portable Text as block children; style them through here so
-	   headings and paragraphs match the rest of the site. */
+	   headings and paragraphs match the rest of the site. Their in-page anchors
+	   clear the masthead through the global `:where(:target, [id])` rule. */
 	.prose :global(h2) {
-		scroll-margin-top: 5rem;
 		margin-top: var(--sp-7);
 	}
 
 	.prose :global(h3) {
-		scroll-margin-top: 5rem;
+		scroll-margin-block-start: calc(var(--masthead-h) + var(--sp-4));
 	}
 </style>

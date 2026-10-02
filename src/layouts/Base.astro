@@ -119,6 +119,43 @@ const isCurrent = (href: string) =>
 			)
 		}
 
+		{/*
+		 * Right here, immediately after the masthead, and inline.
+		 *
+		 * The masthead's height is a measurement — the nav drops to its own row
+		 * below 860px, and at 200% text the header is 113px — so the offsets that
+		 * depend on it cannot be a number in the stylesheet. `--masthead-h` is read
+		 * by the wall's sticky filter rail and by every in-page anchor's
+		 * `scroll-margin`.
+		 *
+		 * It has to run *synchronously during parsing*, before the browser performs
+		 * the fragment scroll on load, which is why it is here and why it is
+		 * `is:inline`: Astro bundles a module script and defers it to after the
+		 * scroll, and the fallback token was in force at the moment the offset was
+		 * needed — measured, `/possibilities/…#signals` landed 74px under the
+		 * masthead on an 844×390 phone. `ResizeObserver` then keeps it right for
+		 * zoom, rotation and font swaps.
+		 *
+		 * Nothing depends on this having run: every consumer has a token default,
+		 * so a reader without script gets the design's own number.
+		 */}
+		<script is:inline>
+			(function () {
+				var masthead = document.querySelector(".masthead");
+				if (!masthead) return;
+				var publish = function () {
+					var height = Math.round(masthead.getBoundingClientRect().height);
+					if (height > 0) {
+						document.documentElement.style.setProperty("--masthead-h", height + "px");
+					}
+				};
+				publish();
+				if ("ResizeObserver" in window) new ResizeObserver(publish).observe(masthead);
+				if (document.fonts && document.fonts.ready) document.fonts.ready.then(publish);
+				addEventListener("resize", publish, { passive: true });
+			})();
+		</script>
+
 		<main id="main">
 			<slot />
 		</main>
@@ -147,7 +184,15 @@ const isCurrent = (href: string) =>
 								<h2 class="tag">Rights</h2>
 								<ul>
 									<li><a href="/pages/licensing">How we classify</a></li>
-									<li><a href="/pages/licensing#statuses">The four statuses</a></li>
+									{/*
+									 * `#the-statuses`, not `#statuses`. `pages/[slug].astro`
+									 * derives heading ids from the heading *text*, and the section
+									 * reads "The statuses", so the short form was a link to an id
+									 * that does not exist — on every page, in the footer. Found by the
+									 * in-page-anchor check in `scripts/visual-qa.mjs`, which
+									 * asserts the target exists rather than trusting the href.
+									 */}
+									<li><a href="/pages/licensing#the-statuses">The four statuses</a></li>
 								</ul>
 							</div>
 							<div>
@@ -243,6 +288,19 @@ const isCurrent = (href: string) =>
 		min-height: 3.5rem;
 	}
 
+	/*
+	 * `min-width: 0` on both the nav and its list is the whole reason the primary
+	 * navigation scrolls instead of widening the page. A grid item's default
+	 * `min-width: auto` refuses to shrink below the content, so at 200% text —
+	 * where the five links need more than the column has — the column grew, the
+	 * page gained 114px of horizontal scroll, and the strip's own
+	 * `overflow-x: auto` never engaged. Zero specificity here means a component
+	 * can still override it deliberately.
+	 */
+	.nav {
+		min-width: 0;
+	}
+
 	.brand {
 		display: inline-flex;
 		align-items: center;
@@ -265,8 +323,12 @@ const isCurrent = (href: string) =>
 		gap: clamp(0.5rem, 1.4vw, 1.5rem);
 		list-style: none;
 		padding: 0;
+		min-width: 0;
 		overflow-x: auto;
 		scrollbar-width: none;
+		/* A keyboard user scrolling the strip with the arrow keys should land on
+		   links, not on a page scroll: the strip is the thing that scrolls. */
+		overscroll-behavior-inline: contain;
 	}
 
 	.nav ul::-webkit-scrollbar {
@@ -294,7 +356,10 @@ const isCurrent = (href: string) =>
 
 	.nav__link {
 		display: inline-block;
-		padding: 0.5rem 0;
+		/* Padding rather than type size carries the touch target (DESIGN.md §7):
+		   the nav type is intentionally small, and a 37px-high link with five
+		   siblings is five mis-taps on a phone. */
+		padding: 0.85rem 0;
 		font-family: var(--font-mono);
 		font-size: var(--step--1);
 		letter-spacing: 0.06em;
@@ -323,6 +388,7 @@ const isCurrent = (href: string) =>
 
 	.search input {
 		width: clamp(7rem, 14vw, 12rem);
+		min-height: var(--tap);
 		padding: 0.4rem 2rem 0.4rem 0.7rem;
 		background: var(--surface);
 		border: 1px solid var(--line);
@@ -370,8 +436,10 @@ const isCurrent = (href: string) =>
 			order: 3;
 			grid-column: 1 / -1;
 			padding-bottom: 0.35rem;
-			margin-inline: calc(var(--gutter) * -1);
-			padding-inline: var(--gutter);
+			/* Full-bleed to the shell's own edge, so the strip can scroll to the
+			   real edge of the screen. The safe area is part of that edge. */
+			margin-inline: calc(var(--shell-pad-l) * -1) calc(var(--shell-pad-r) * -1);
+			padding-inline: var(--shell-pad-l) var(--shell-pad-r);
 		}
 
 		.search__kbd {
@@ -397,6 +465,28 @@ const isCurrent = (href: string) =>
 
 		.search input {
 			width: 7.5rem;
+		}
+	}
+
+	/*
+	 * A phone in landscape has ~390px of height and the width of a small laptop,
+	 * and the width breakpoint above sends the nav to a second row — 43px of a
+	 * window that is already mostly chrome. Height is the scarce resource here,
+	 * not width, so a short viewport keeps the single row even below 860px. The
+	 * nav column is `minmax(0, 1fr)` and its list scrolls, so it shrinks rather
+	 * than overflowing.
+	 */
+	@media (width <= 860px) and (height <= 30rem) {
+		.masthead__inner {
+			grid-template-columns: auto minmax(0, 1fr) auto;
+		}
+
+		.nav {
+			order: 0;
+			grid-column: auto;
+			padding-bottom: 0;
+			margin-inline: 0;
+			padding-inline: 0;
 		}
 	}
 
@@ -449,7 +539,7 @@ const isCurrent = (href: string) =>
 	.footer__cols a {
 		display: inline-block;
 		padding-block: 0.35rem;
-		min-height: 2rem;
+		min-height: var(--tap);
 		font-size: var(--step--1);
 		color: var(--ink-2);
 		transition: color var(--dur-fast) var(--ease-out);

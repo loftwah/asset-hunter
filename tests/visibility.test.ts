@@ -86,28 +86,42 @@ before(async () => {
 			headers: headers(),
 		});
 	}
-	// The revision token is re-read on every restore rather than captured once.
-	// EmDash returns 409 when the token is stale, and every write here moves it —
-	// so a captured token is guaranteed to be wrong by the second write, which is
-	// how a check that restores its own change ends up leaving the change behind.
+	// The restore retries on a stale revision rather than reading the token once.
+	//
+	// EmDash returns 409 when `_rev` does not match, and the token moves on every
+	// write *and* every publish — so a single read-then-write races against the
+	// publish that the test itself performs, and against any other suite running
+	// against the same local database. Re-reading and retrying is the honest
+	// response: the alternative is a restore that fails and leaves the entry
+	// hidden, which is the exact residue this test exists to avoid.
 	restore = async () => {
-		const fresh = await fetch(`${baseUrl}/_emdash/api/content/possibilities/${SLUG}`, {
-			headers: headers(),
-		});
-		const current = (await fresh.json()) as {
-			data?: { item?: { data?: Record<string, unknown> }; _rev?: string };
-		};
-		const rev = current.data?._rev ?? rev0;
-		const put = await fetch(`${baseUrl}/_emdash/api/content/possibilities/${SLUG}`, {
-			method: "PUT",
-			headers: headers(),
-			body: JSON.stringify({ data: { ...original, visibility: "published" }, _rev: rev }),
-		});
-		await fetch(`${baseUrl}/_emdash/api/content/possibilities/${SLUG}/publish`, {
-			method: "POST",
-			headers: headers(),
-		});
-		if (!put.ok) throw new Error(`restore failed: HTTP ${put.status}`);
+		let last = "no attempt";
+		for (let attempt = 0; attempt < 5; attempt++) {
+			const fresh = await fetch(`${baseUrl}/_emdash/api/content/possibilities/${SLUG}`, {
+				headers: headers(),
+			});
+			const current = (await fresh.json()) as {
+				data?: { item?: { data?: Record<string, unknown> }; _rev?: string };
+			};
+			const put = await fetch(`${baseUrl}/_emdash/api/content/possibilities/${SLUG}`, {
+				method: "PUT",
+				headers: headers(),
+				body: JSON.stringify({
+					data: { ...original, visibility: "published" },
+					_rev: current.data?._rev ?? rev0,
+				}),
+			});
+			if (put.ok) {
+				await fetch(`${baseUrl}/_emdash/api/content/possibilities/${SLUG}/publish`, {
+					method: "POST",
+					headers: headers(),
+				});
+				return;
+			}
+			last = `HTTP ${put.status}`;
+			await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+		}
+		throw new Error(`restore failed after 5 attempts: ${last}`);
 	};
 });
 

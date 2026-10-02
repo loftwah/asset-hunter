@@ -10,6 +10,8 @@ import Base from "../../layouts/Base.astro";
 import PossibilityTile from "../../components/PossibilityTile.astro";
 import ProvenanceMarkers from "../../components/ProvenanceMarkers.astro";
 import ExampleUse from "../../components/ExampleUse.astro";
+import OutcomeFlash from "../../components/OutcomeFlash.astro";
+import SignalPanel from "../../components/SignalPanel.astro";
 import {
 	loadExamplesFor,
 	loadPossibilities,
@@ -27,13 +29,10 @@ import {
 	rightsLabelFor,
 	verticalLabel,
 } from "../../lib/vocabulary";
-import {
-	REPORTS,
-	REPORT_REASONS,
-	SIGNAL_MEANING,
-	aggregateRatings,
-	ratingSummary,
-} from "../../lib/rating";
+// Only `aggregateRatings` is used here: the rendering of the three signals and
+// the report form moved to `SignalPanel.astro` so `/lab` can show the same
+// states against fixtures, and the panel owns its own vocabulary.
+import { aggregateRatings } from "../../lib/rating";
 import {
 	actorFrom,
 	loadRatings,
@@ -100,6 +99,23 @@ const scaffold = promptLines(p.promptScaffold);
  * disagree. The labels themselves live in `src/lib/vocabulary.ts`.
  */
 const useSummary = summariseUse(examples);
+
+/*
+ * The answer to a rating or a report (#46).
+ *
+ * `/api/signal` writes a sentence into `?note=` on every branch — "Rating
+ * recorded", "Sign in to rate", "Could not save the rating: …", "Pick what is
+ * wrong" — and until now nothing read it. The reader was redirected back to a page
+ * that looked exactly as it had before they pressed anything, so a failed rating,
+ * a refused report and a successful one were indistinguishable. The endpoint is
+ * the only place that knows which happened, and this is where that knowledge
+ * finally reaches a person. `problem=1` is what makes it a refusal rather than a
+ * confirmation.
+ */
+const note = Astro.url.searchParams.get("note")?.trim() ?? "";
+const outcome = note
+	? { message: note, tone: Astro.url.searchParams.has("problem") ? ("problem" as const) : ("ok" as const) }
+	: null;
 ---
 
 <Base
@@ -109,6 +125,25 @@ const useSummary = summariseUse(examples);
 	ogImage={src}
 >
 	<article class="detail">
+		{/*
+		 * Above the header, not beside the form and not under the header.
+		 *
+		 * The form POST redirects to a fresh document, so the reader is at the top
+		 * of the page again; an answer they have to scroll for is an answer most
+		 * will never see. And this page's header is ~600px tall on a desktop — a
+		 * flash directly beneath it is already below the fold on arrival, which is
+		 * where it was first put and where a screenshot of the top of the page did
+		 * not show it. `role="alert"` on the refusal case means it is also spoken
+		 * without being found, which is the half that cannot be seen.
+		 */}
+		{
+			outcome && (
+				<div class="outcome shell">
+					<OutcomeFlash message={outcome.message} tone={outcome.tone} />
+				</div>
+			)
+		}
+
 		<header class="head shell">
 			<nav class="crumbs" aria-label="Breadcrumb">
 				<a href="/">Catalogue</a>
@@ -170,12 +205,18 @@ const useSummary = summariseUse(examples);
 					fetchpriority="high"
 				/>
 				<figcaption class="tag">
+					{/*
+					 * One expression, because JSX drops the whitespace at the start of
+					 * the line: the caption was shipping as "Generated specimen· reference
+					 * plate". This is the caption that names the plate as a reference
+					 * rather than as the asset, so its separator should not look like a
+					 * missing space.
+					 */}
 					{
-						p.representativeOrigin
+						(p.representativeOrigin
 							? `${originLabelFor(p.representativeOrigin)} specimen`
-							: "Specimen"
+							: "Specimen") + " · reference plate"
 					}
-					· reference plate
 				</figcaption>
 			</figure>
 
@@ -219,156 +260,34 @@ const useSummary = summariseUse(examples);
 					rather than as one blended score, because a reader's stars, a
 					curator's judgement and an inspection result are three different kinds
 					of claim, and a blend of them cannot be explained to anyone who asks.
+
+					The markup lives in `SignalPanel.astro` so `/lab` can render these
+					same states against fixture data. Inlined here they only existed
+					once somebody signed in to a live CMS and found an entry somebody
+					else had already rated, which is how five states ship having never
+					been looked at.
 				*/}
-				<section aria-labelledby="signals" class="signals">
-					<h2 id="signals" class="section__title">Signals</h2>
-
-					<div class="signal">
-						<p class="signal__head">
-							<span class="tag">Community</span>
-							<span class="signal__value">{ratingSummary(community)}</span>
-						</p>
-						<p class="signal__meaning">{SIGNAL_MEANING.community}</p>
-						{community.count > 0 && (
-							<ul class="dist" aria-label="Rating distribution">
-								{[5, 4, 3, 2, 1].map((star) => {
-									const n = community.distribution[star];
-									const pct = community.count
-										? Math.round((n / community.count) * 100)
-										: 0;
-									return (
-										<li class="dist__row">
-											<span class="tag">{star}★</span>
-											<span class="dist__bar" aria-hidden="true">
-												<span class="dist__fill" style={`width:${pct}%`} />
-											</span>
-											<span class="dist__n">{n}</span>
-										</li>
-									);
-								})}
-							</ul>
-						)}
-						<form class="rate" method="post" action="/api/signal">
-							<input type="hidden" name="intent" value="rate" />
-							<input type="hidden" name="subject_type" value="possibility" />
-							<input type="hidden" name="subject_slug" value={p.slug} />
-							<input type="hidden" name="back" value={`/possibilities/${p.slug}`} />
-							<fieldset>
-								<legend class="tag">Rate it</legend>
-								{[1, 2, 3, 4, 5].map((star) => (
-									<label class="rate__star">
-										<input
-											type="radio"
-											name="stars"
-											value={star}
-											checked={community.mine === star}
-											required={!viewer}
-										/>
-										<span aria-hidden="true">★</span>
-										<span class="visually-hidden">{star} of 5</span>
-									</label>
-								))}
-								<button type="submit" disabled={!viewer}>
-									{community.mine ? "Change" : "Rate"}
-								</button>
-							</fieldset>
-						</form>
-						{!viewer && (
-							<p class="signal__note">
-								A rating you cannot revise or withdraw is not an opinion, it is a vote, so
-								signing in is required.
-							</p>
-						)}
-					</div>
-
-					<div class="signal">
-						<p class="signal__head">
-							<span class="tag">Editorial</span>
-							<span class="signal__value">
-								{p.featured ? "Featured by a curator" : "Not featured"}
-							</span>
-						</p>
-						<p class="signal__meaning">{SIGNAL_MEANING.editorial}</p>
-						<p class="signal__note">
-							A person's decision, made in the admin. It is not popularity, and it does not
-							move when ratings move.
-						</p>
-					</div>
-
-					<div class="signal">
-						<p class="signal__head">
-							<span class="tag">Machine</span>
-							<span class="signal__value">
-								{p.novelty === null && p.coverage === null
-									? "Not measured"
-									: `novelty ${p.novelty ?? "—"} · coverage ${p.coverage ?? "—"}`}
-							</span>
-						</p>
-						<p class="signal__meaning">{SIGNAL_MEANING.machine}</p>
-						<p class="signal__note">
-							{(p.distinctSources ?? 0) === 0
-								? "No source has had its licence read yet, so there is nothing to measure against."
-								: `${p.distinctSources} source licence(s) read at a specific commit.`}
-						</p>
-					</div>
-				</section>
-
-				<section aria-labelledby="report" class="report">
-					<h2 id="report" class="section__title">Report a problem</h2>
-					<p class="report__why">
-						A report is not a low rating. Use it when something here is wrong rather than
-						bad, and a licence concern is read before anything else.
+				<SignalPanel
+					subjectType="possibility"
+					subjectSlug={p.slug}
+					viewer={viewer}
+					community={community}
+					openReports={openReports}
+				>
+					<span slot="editorial" class="signal__value">
+						{p.featured ? "Featured by a curator" : "Not featured"}
+					</span>
+					<span slot="machine" class="signal__value">
+						{p.novelty === null && p.coverage === null
+							? "Not measured"
+							: `novelty ${p.novelty ?? "—"} · coverage ${p.coverage ?? "—"}`}
+					</span>
+					<p slot="machine-note" class="signal__note">
+						{(p.distinctSources ?? 0) === 0
+							? "No source has had its licence read yet, so there is nothing to measure against."
+							: `${p.distinctSources} source licence(s) read at a specific commit.`}
 					</p>
-					<form class="report__form" method="post" action="/api/signal">
-						{/* The disabled state lives on the fieldset, not on the form: a
-						    disabled form cannot be submitted at all, which turns "you need
-						    to sign in" into a button that silently does nothing. */}
-						<fieldset disabled={!viewer}>
-							<legend class="visually-hidden">File a report about this entry</legend>
-							<input type="hidden" name="intent" value="report" />
-							<input type="hidden" name="subject_type" value="possibility" />
-							<input type="hidden" name="subject_slug" value={p.slug} />
-							<input type="hidden" name="back" value={`/possibilities/${p.slug}`} />
-							<label class="report__label tag" for="reason">What is wrong</label>
-							<select id="reason" name="reason">
-								{REPORT_REASONS.map((reason) => (
-									<option value={reason}>{REPORTS[reason].label}</option>
-								))}
-							</select>
-							<p class="report__reason-meaning">
-								{/* About the licence reason specifically, not about whichever option is
-								    selected: without JavaScript there is nothing to switch this, and
-								    a description that does not match the open option is worse than
-								    none. */}
-								A licence concern is read before anything else here. If the status no
-								longer matches what the source says, that is a correction rather than a
-								preference.
-							</p>
-							<label class="report__label tag" for="detail">Details (optional)</label>
-							<textarea
-								id="detail"
-								name="detail"
-								rows="3"
-								maxlength="2000"
-								placeholder="What you saw, and where. One line is enough to act on."
-							/>
-							<button type="submit">File the report</button>
-						</fieldset>
-					</form>
-					{!viewer && (
-						<p class="signal__note">
-							Filing needs a sign-in, because a report nobody can answer is worse than no
-							report. With no account at all, the
-							<a href="/pages/licensing">licensing page</a> carries the contact route.
-						</p>
-					)}
-					{openReports.length > 0 && (
-						<p class="report__open">
-							{openReports.length} open report{openReports.length === 1 ? "" : "s"} on this
-							entry.
-						</p>
-					)}
-				</section>
+				</SignalPanel>
 
 				<section aria-labelledby="rights">
 					<h2 id="rights" class="section__title">Rights</h2>
@@ -469,6 +388,17 @@ const useSummary = summariseUse(examples);
 		display: grid;
 	}
 
+	/* The answer to the rating or report the reader just sent, pinned above the
+	   header so it is on screen when the redirect lands. The header then loses its
+	   top padding, which is where the flash's own padding went. */
+	.outcome {
+		padding-block: var(--sp-4) 0;
+	}
+
+	.outcome + .head {
+		padding-block-start: var(--sp-4);
+	}
+
 	/* --- Header --- */
 
 	.head {
@@ -495,7 +425,7 @@ const useSummary = summariseUse(examples);
 	.crumbs__here {
 		display: inline-flex;
 		align-items: center;
-		min-height: 1.75rem;
+		min-height: var(--tap);
 		padding-inline: 0.15rem;
 	}
 
@@ -559,7 +489,7 @@ const useSummary = summariseUse(examples);
 	.facts dd a {
 		display: inline-flex;
 		align-items: center;
-		min-height: 1.9rem;
+		min-height: var(--tap);
 	}
 
 	.facts a:hover {
@@ -637,272 +567,6 @@ const useSummary = summariseUse(examples);
 		color: var(--ink-2);
 	}
 
-	/* --- Signals (#37) ---------------------------------------------------
-	   Three blocks, never one blended number. Each is labelled by which kind of
-	   claim it is, so a reader is never left thinking a star is a measurement. */
-
-	.signals {
-		display: grid;
-		gap: var(--sp-4);
-		margin-top: var(--sp-2);
-	}
-
-	.signal {
-		display: grid;
-		gap: var(--sp-2);
-		padding: var(--sp-4);
-		border: 1px solid var(--line);
-		border-radius: var(--radius);
-		background: var(--surface);
-	}
-
-	.signal__head {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: var(--sp-2) var(--sp-4);
-	}
-
-	.signal__value {
-		font-family: var(--font-display);
-		font-weight: 600;
-		font-size: var(--step--1);
-		color: var(--ink);
-		text-align: right;
-	}
-
-	.signal__meaning,
-	.signal__note {
-		font-size: var(--step--2);
-		line-height: 1.5;
-		color: var(--ink-3);
-	}
-
-	/* An inline link inside a sentence is still a target: the padding carries the
-	   size, not the type, which is why the rule exists everywhere else too. */
-	.signal__note a,
-	.report__why a {
-		display: inline-block;
-		min-height: 1.5rem;
-		padding-block: 0.2rem;
-		color: var(--ember);
-		text-decoration: underline;
-		text-underline-offset: 3px;
-	}
-
-	.dist {
-		display: grid;
-		gap: 0.2rem;
-		list-style: none;
-		padding: 0;
-		margin-block: var(--sp-2);
-	}
-
-	.dist__row {
-		display: grid;
-		grid-template-columns: 2.25rem 1fr 1.5rem;
-		align-items: center;
-		gap: var(--sp-2);
-	}
-
-	.dist__bar {
-		height: 3px;
-		background: var(--surface-3);
-		border-radius: 2px;
-		overflow: hidden;
-	}
-
-	.dist__fill {
-		display: block;
-		height: 100%;
-		background: var(--ember-dim);
-	}
-
-	.dist__n {
-		font-family: var(--font-mono);
-		font-size: var(--step--2);
-		color: var(--ink-4);
-		font-variant-numeric: tabular-nums;
-		text-align: right;
-	}
-
-	.rate fieldset {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: var(--sp-2);
-		border: 0;
-		padding: 0;
-		margin: 0;
-	}
-
-	.rate legend {
-		padding: 0;
-		margin-bottom: var(--sp-2);
-	}
-
-	.rate__star {
-		position: relative;
-		display: grid;
-		place-items: center;
-		width: 2.25rem;
-		height: 2.25rem;
-		border: 1px solid var(--line);
-		border-radius: var(--radius);
-		color: var(--ink-4);
-		cursor: pointer;
-		transition: color var(--dur-fast) var(--ease-out),
-			border-color var(--dur-fast) var(--ease-out);
-	}
-
-	.rate__star:hover {
-		color: var(--ember);
-		border-color: var(--ember-line);
-	}
-
-	/* The radio covers its label rather than being shrunk to nothing. A 1x1
-	   input is still reachable by keyboard but is not a target a finger can
-	   hit, and it is invisible to the tap-target audit that way. */
-	.rate__star input {
-		position: absolute;
-		inset: 0;
-		width: 100%;
-		height: 100%;
-		margin: 0;
-		opacity: 0;
-		cursor: pointer;
-	}
-
-	.rate__star:has(input:checked) {
-		color: var(--ember);
-		border-color: var(--ember);
-	}
-
-	.rate__star:has(input:focus-visible) {
-		outline: 2px solid var(--ember);
-		outline-offset: 3px;
-	}
-
-	.rate button {
-		min-height: 2.25rem;
-		margin-left: auto;
-		padding: 0.35rem 0.9rem;
-		background: var(--surface-2);
-		border: 1px solid var(--line-loud);
-		border-radius: var(--radius);
-		color: var(--ink-2);
-		font-family: var(--font-mono);
-		font-size: var(--step--2);
-		cursor: pointer;
-	}
-
-	.rate button:hover:not(:disabled) {
-		color: var(--ink);
-		border-color: var(--ember-line);
-	}
-
-	.rate button:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	/* --- Report ---------------------------------------------------------- */
-
-	.report {
-		margin-top: var(--sp-5);
-		padding-top: var(--sp-4);
-		border-top: 1px solid var(--line);
-	}
-
-	.report__why {
-		margin-top: var(--sp-2);
-		font-size: var(--step--1);
-		color: var(--ink-3);
-		max-width: var(--measure);
-	}
-
-	.report__form {
-		display: grid;
-		gap: var(--sp-2);
-		margin-top: var(--sp-3);
-		max-width: 34rem;
-		border: 0;
-		padding: 0;
-	}
-
-	.report__form fieldset {
-		display: grid;
-		gap: var(--sp-2);
-		border: 0;
-		padding: 0;
-		margin: 0;
-	}
-
-	.report__form fieldset:disabled {
-		opacity: 0.55;
-	}
-
-	.report__reason-meaning {
-		font-size: var(--step--2);
-		line-height: 1.5;
-		color: var(--ink-4);
-		max-width: 44ch;
-	}
-
-	.report__label {
-		margin-top: var(--sp-2);
-	}
-
-	.report__form select,
-	.report__form textarea {
-		width: 100%;
-		min-height: 2.75rem;
-		padding: 0.55rem 0.7rem;
-		background: var(--surface);
-		border: 1px solid var(--line);
-		border-radius: var(--radius);
-		color: var(--ink);
-		font-family: var(--font-ui);
-		font-size: var(--step--1);
-	}
-
-	.report__form textarea {
-		font-family: var(--font-mono);
-		line-height: 1.5;
-		resize: vertical;
-	}
-
-	.report__form select:focus-visible,
-	.report__form textarea:focus-visible {
-		border-color: var(--ember-line);
-	}
-
-	.report__form button {
-		justify-self: start;
-		min-height: 2.75rem;
-		margin-top: var(--sp-2);
-		padding: 0.55rem 1.1rem;
-		background: var(--surface-2);
-		border: 1px solid var(--line-loud);
-		border-radius: var(--radius);
-		color: var(--ink);
-		font-family: var(--font-mono);
-		font-size: var(--step--1);
-		cursor: pointer;
-	}
-
-	.report__form button:hover {
-		border-color: var(--ember-line);
-	}
-
-	.report__open {
-		margin-top: var(--sp-3);
-		font-family: var(--font-mono);
-		font-size: var(--step--2);
-		color: var(--rights-review);
-	}
-
 	/* --- Rights --- */
 
 	.rights__status {
@@ -950,6 +614,10 @@ const useSummary = summariseUse(examples);
 		border-top: 1px solid var(--line);
 	}
 
+	/* Inline in a sentence, so it keeps sentence spacing rather than the tap
+	   minimum: WCAG 2.2's inline exception, and the same reason a link in body
+	   copy is never padded to 44px. `npm run check:visual` exempts links inside
+	   prose for exactly this reason. */
 	.rights__disclaimer a {
 		display: inline-flex;
 		align-items: center;
@@ -1023,10 +691,12 @@ const useSummary = summariseUse(examples);
 		color: var(--ink-3);
 	}
 
+	/* A standalone action, not a link inside a sentence, so it carries the full
+	   touch target rather than the inline exemption. */
 	.examples__use-link {
 		display: inline-flex;
 		align-items: center;
-		min-height: 1.75rem;
+		min-height: var(--tap);
 		color: var(--ink-2);
 		text-decoration: underline;
 		text-decoration-color: var(--ember-line);
@@ -1044,7 +714,21 @@ const useSummary = summariseUse(examples);
 		margin-top: var(--sp-5);
 	}
 
-	@media (width >= 860px) {
+	/*
+	 * Two conditions, not one.
+	 *
+	 * `width >= 860px` is the layout switch: below it the plate is a band above
+	 * the prose, and a sticky band is worse than a static one.
+	 *
+	 * `height >= 46rem` is why the drill-in was unusable in landscape. A sticky
+	 * element taller than the viewport parks its top and hides its bottom
+	 * permanently — no scroll offset shows all of it. At 896×414 and 932×430,
+	 * which is where a phone is actually held sideways, the plate measured
+	 * 471–491px in a 414–430px viewport: 129–133px of the specimen, which is the
+	 * content of this page, was off the screen at every offset. Below this height
+	 * the plate scrolls with the prose and every row of the diagram is reachable.
+	 */
+	@media (width >= 860px) and (height >= 46rem) {
 		.body {
 			grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
 			gap: var(--sp-7);
@@ -1052,7 +736,7 @@ const useSummary = summariseUse(examples);
 
 		.plate {
 			position: sticky;
-			top: 4.5rem;
+			top: calc(var(--masthead-h) + var(--sp-4));
 			align-self: start;
 		}
 

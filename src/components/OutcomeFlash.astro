@@ -1,0 +1,50 @@
+---
+/**
+ * The answer to a POST, rendered.
+ *
+ * Every mutating control on the public catalogue is a plain form POST to
+ * `/api/board` or `/api/signal`, which redirect back with the outcome in the
+ * query string. Until this existed, those outcomes were written and thrown away:
+ * `/api/signal` composed a sentence for every branch — "Rating recorded",
+ * "Sign in to rate", "Could not save the rating: …" — and no page read it back,
+ * so a rating that failed and a rating that worked looked identical. A board
+ * being cleared said nothing either.
+ *
+ * One component so the three pages that host a POST cannot disagree about what
+ * "saved" looks like, and so the live-region role is decided once: a `problem`
+ * is announced assertively, because the reader just pressed something and needs
+ * to know it did not work; a success is polite, because they will see it.
+ */
+interface Props {
+	/** `ok` for a completed action, `problem` for a refusal or a failure. */
+	tone?: "ok" | "problem";
+	message: string;
+}
+
+const { tone = "ok", message } = Astro.props;
+---
+
+<p class="flash" data-tone={tone} role={tone === "problem" ? "alert" : "status"}>
+	{message}
+</p>
+
+<style>
+	.flash {
+		display: grid;
+		gap: 0.2rem;
+		padding: var(--sp-3) var(--sp-4);
+		border-left: 2px solid var(--ember-line);
+		background: var(--surface);
+		font-size: var(--step--1);
+		color: var(--ink-2);
+	}
+
+	/* A refusal is not a softer success: the accent is the ember rule, and a
+	   problem carries the review amber the rest of the catalogue uses for
+	   "something needs a decision". Colour is reinforced by the word in the
+	   sentence the endpoint wrote, never by the bar alone. */
+	.flash[data-tone="problem"] {
+		border-left-color: var(--rights-review);
+		color: var(--ink);
+	}
+</style>

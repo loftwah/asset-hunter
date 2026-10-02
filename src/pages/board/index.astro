@@ -17,6 +17,7 @@
  */
 import Base from "../../layouts/Base.astro";
 import PossibilityTile from "../../components/PossibilityTile.astro";
+import OutcomeFlash from "../../components/OutcomeFlash.astro";
 import { loadPossibilities } from "../../lib/catalogue";
 import { runApp } from "../../lib/effect/root";
 import { MEDIA_LABEL, RIGHTS_MEANING, verticalLabel } from "../../lib/vocabulary";
@@ -24,6 +25,7 @@ import {
 	COOKIE_NAME,
 	DEFAULT_BOARD,
 	MAX_PER_BOARD,
+	boardOutcome,
 	boardTotals,
 	normaliseBoardName,
 	parseBoards,
@@ -43,8 +45,13 @@ const bySlug = new Map(possibilities.map((p) => [p.slug, p]));
 const items = slugs.map((slug) => bySlug.get(slug)).filter((p): p is NonNullable<typeof p> => Boolean(p));
 const dropped = slugs.length - items.length;
 
-const saved = Astro.url.searchParams.get("saved");
-const justSaved = saved && items.some((p) => p.slug === saved) ? bySlug.get(saved) : null;
+/*
+ * The answer to the POST that sent the reader here. It used to be inferred from
+ * membership — "did you just save this?" — which is why saving said something and
+ * unsaving, removing and clearing all said nothing at all, including the two
+ * actions that destroy work.
+ */
+const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?.title);
 ---
 
 <Base
@@ -62,7 +69,11 @@ const justSaved = saved && items.some((p) => p.slug === saved) ? bySlug.get(save
 			{
 				items.length > 0
 					? "Plates side by side at the same size. Source, licence and technique are behind each one, because a comparison that starts with metadata is a comparison you have already lost."
-					: "Hover a plate on the wall and press the + to keep it here. The list lives in this browser, so nothing is uploaded and nothing follows you to another machine."
+					: // "Hover" is not an instruction a phone can follow. The `+` is
+					  // revealed on hover where there is a pointer and always shown
+					  // where there is not, so the copy names the control and says
+					  // where it appears instead.
+						"Press the + on any plate to keep it here — it appears when you point at a tile, and is always there on a touch screen or a keyboard. The list lives in this browser, so nothing is uploaded and nothing follows you to another machine."
 			}
 		</p>
 
@@ -108,16 +119,11 @@ const justSaved = saved && items.some((p) => p.slug === saved) ? bySlug.get(save
 
 	<div class="results shell">
 		{
-			justSaved && (
-				<p class="flash" role="status">
-					Saved <strong>{justSaved.title}</strong>.
-					<a href={`/possibilities/${justSaved.slug}`}>Open it</a>
-				</p>
-			)
+			outcome && <OutcomeFlash message={outcome.message} tone={outcome.tone} />
 		}
 		{
 			dropped > 0 && (
-				<p class="flash flash--warn" role="status">
+				<p class="flash" role="status">
 					{dropped} saved {dropped === 1 ? "entry names" : "entries name"} something the
 					catalogue does not have, so {dropped === 1 ? "it was" : "they were"} dropped rather
 					than shown.
@@ -208,7 +214,25 @@ const justSaved = saved && items.some((p) => p.slug === saved) ? bySlug.get(save
 						<input type="hidden" name="action" value="clear" />
 						<input type="hidden" name="board" value={active} />
 						<input type="hidden" name="back" value={back} />
-						<button type="submit" class="linkish">Clear this board</button>
+						{/*
+						 * A disclosure rather than a confirm dialog: clearing is
+						 * irreversible and there is no undo, so one press of a link that
+						 * reads like the other linkish buttons should not do it. A
+						 * `<details>` is the same two-tap shape as every other disclosure
+						 * on the site, works with a keyboard and a screen reader, and
+						 * needs no script.
+						 */}
+						<details>
+							<summary class="linkish">Clear this board</summary>
+							<p class="clear__warn">
+								{items.length === 1 ? "The one entry" : `All ${items.length} entries`} on
+								this board go. Other boards are not touched, and the plates stay on the
+								wall.
+							</p>
+							<button type="submit" class="linkish linkish--danger">
+								Yes, empty this board
+							</button>
+						</details>
 					</form>
 
 					<details class="export">
@@ -338,7 +362,9 @@ const justSaved = saved && items.some((p) => p.slug === saved) ? bySlug.get(save
 		text-underline-offset: 3px;
 	}
 
-	.flash--warn {
+	/* A cookie naming something the catalogue does not have is a correction the
+	   reader needs to hear about, so it carries the review amber. */
+	.flash {
 		border-left-color: var(--rights-review);
 	}
 
@@ -376,7 +402,7 @@ const justSaved = saved && items.some((p) => p.slug === saved) ? bySlug.get(save
 
 	.entry__more summary {
 		cursor: pointer;
-		min-height: 2rem;
+		min-height: var(--tap);
 		padding-block: var(--sp-2);
 		list-style: revert;
 	}
@@ -418,7 +444,7 @@ const justSaved = saved && items.some((p) => p.slug === saved) ? bySlug.get(save
 	.linkish {
 		margin-top: var(--sp-3);
 		padding: var(--sp-2) 0;
-		min-height: 2rem;
+		min-height: var(--tap);
 		background: none;
 		border: 0;
 		color: var(--ink-3);
@@ -433,6 +459,23 @@ const justSaved = saved && items.some((p) => p.slug === saved) ? bySlug.get(save
 		color: var(--ember);
 	}
 
+	/* The one irreversible control on the page, named as such. The ember is the
+	   single accent and this is the highest-priority thing a reader can do to
+	   their own list, so it keeps the accent rather than inventing a danger hue
+	   the palette does not have. */
+	.linkish--danger {
+		color: var(--ember);
+		text-decoration-color: var(--ember);
+	}
+
+	.clear__warn {
+		margin-top: var(--sp-2);
+		max-width: var(--measure);
+		font-size: var(--step--2);
+		line-height: 1.5;
+		color: var(--ink-3);
+	}
+
 	.clear {
 		margin-top: var(--sp-6);
 		padding-top: var(--sp-4);
@@ -445,6 +488,7 @@ const justSaved = saved && items.some((p) => p.slug === saved) ? bySlug.get(save
 
 	.export summary {
 		cursor: pointer;
+		min-height: var(--tap);
 		padding-block: var(--sp-2);
 		list-style: revert;
 	}

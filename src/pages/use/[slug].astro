@@ -19,6 +19,7 @@
  */
 import Base from "../../layouts/Base.astro";
 import ExampleUse from "../../components/ExampleUse.astro";
+import OutcomeFlash from "../../components/OutcomeFlash.astro";
 import {
 	loadExamplesFor,
 	loadPossibility,
@@ -33,7 +34,7 @@ import {
 	summariseUse,
 	summaryLine,
 } from "../../lib/asset-use";
-import { COOKIE_NAME, DEFAULT_BOARD, parseBoards } from "../../lib/board";
+import { COOKIE_NAME, DEFAULT_BOARD, boardOutcome, parseBoards } from "../../lib/board";
 
 const { slug } = Astro.params;
 /*
@@ -66,6 +67,15 @@ const back = `/use/${p.slug}`;
 const selectionCredit = selectionCreditText(
 	examples,
 	(example) => example.title || example.slug,
+);
+
+/*
+ * The shortlist button above is a form POST, so its answer arrives as a redirect.
+ * Without this the button's own label changed and nothing was announced — the
+ * one reader who is not looking at the button learned nothing.
+ */
+const outcome = boardOutcome(Astro.url.searchParams, (slug) =>
+	slug === p.slug ? p.title : undefined,
 );
 ---
 
@@ -106,6 +116,10 @@ const selectionCredit = selectionCreditText(
 					nothing about the asset.
 				</span>
 			</form>
+
+			{
+				outcome && <OutcomeFlash message={outcome.message} tone={outcome.tone} />
+			}
 		</header>
 
 		<section class="summary shell" aria-labelledby="summary-title">
@@ -275,15 +289,11 @@ const selectionCredit = selectionCreditText(
 
 	/* Padding, not type size, carries the tap target: breadcrumb type is
 	   intentionally small so the hierarchy stays readable. */
-	.crumbs a,
-	.crumbs__here {
+	.crumbs a {
 		display: inline-flex;
 		align-items: center;
-		min-height: 1.75rem;
+		min-height: var(--tap);
 		padding-inline: 0.15rem;
-	}
-
-	.crumbs a {
 		color: var(--ink-3);
 		transition: color var(--dur-fast) var(--ease-out);
 	}
@@ -494,7 +504,7 @@ const selectionCredit = selectionCreditText(
 	.linkish {
 		display: inline-flex;
 		align-items: center;
-		min-height: 2.25rem;
+		min-height: var(--tap);
 		color: var(--ink-2);
 		font-family: var(--font-mono);
 		font-size: var(--step--2);

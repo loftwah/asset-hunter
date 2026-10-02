@@ -77,6 +77,20 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
 	});
 
 	const url = new URL(returnTo, request.url);
-	if (slug && action !== "rename") url.searchParams.set("saved", slug);
+	/*
+	 * Say what actually happened, in the vocabulary `boardOutcome` reads back.
+	 *
+	 * One `?saved=` for every action was not a simplification: unsaving and
+	 * removing set it too, so the one page that rendered it had to guess from
+	 * whether the entry was still on the board — which meant unsaving produced no
+	 * message at all, and clearing produced none either. One parameter per
+	 * outcome, each read back by `boardOutcome`, so the answer cannot disagree
+	 * between the wall, the board and the use page.
+	 */
+	if (slug && (action === "save" || action === "unsave" || action === "remove")) {
+		url.searchParams.set(action === "save" ? "saved" : "unsaved", slug);
+	}
+	if (action === "clear") url.searchParams.set("cleared", "1");
+	if (action === "rename") url.searchParams.set("copied", "1");
 	return redirect(url.pathname + url.search, 303);
 };

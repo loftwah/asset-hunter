@@ -18,6 +18,16 @@
 
 import type { Example, Possibility } from "./catalogue.ts";
 import type { RightsStatus } from "./vocabulary.ts";
+import {
+	aggregateRatings,
+	emptyAggregate,
+	type Aggregate,
+	type Report,
+	type ReportReason,
+} from "./rating.ts";
+// Type-only: the lab is rendered with fixtures and must not open a CMS
+// connection, so the reader identity is narrowed to its shape and nothing more.
+import type { Actor } from "./signals.ts";
 
 export interface LabState {
 	/** What the fixture is proving. Shown above it in the lab. */
@@ -380,6 +390,121 @@ export const USE_FIXTURES: UseFixture[] = [
 			contentHash: null,
 			downloadable: true,
 		}),
+	},
+];
+
+/* -------------------------------------------------------------------------- */
+/* Signals: ratings and reports (#37)                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A reader, for the states that require one.
+ *
+ * Only the fields the panel stores are present. It is a literal like every other
+ * fixture here: nothing reads the clock or the database, so the same seven
+ * states render the same pixels in a week.
+ */
+const reader = { id: "fixture-reader", email: "reader@example.invalid", name: "A reader" };
+
+/** A row as `signals.ts` projects one, for the open-reports state. */
+const report = (id: string, reason: ReportReason, detail: string | null): Report => ({
+	id,
+	subjectType: "possibility",
+	subjectSlug: "fixture-signal",
+	reason,
+	detail,
+	userId: reader.id,
+	userEmail: reader.email,
+	resolution: null,
+	createdAt: "2026-01-01T00:00:00.000Z",
+	updatedAt: "2026-01-01T00:00:00.000Z",
+});
+
+/**
+ * The rating and report states the drill-in can be in (#47).
+ *
+ * Until these existed, every one of these states was reachable only by signing
+ * in to a live CMS and finding an entry somebody else had already rated. The
+ * catalogue holds no ratings and no reports at all right now — `24 of 24`
+ * entries are `reference` with `0` verified sources — so the drill-in renders
+ * exactly one of the seven states below and the other six had never been seen.
+ *
+ * A single rating is deliberately included on its own: `ratingSummary` says
+ * "1 rating" rather than hiding it, and the question is whether that still reads
+ * as an opinion rather than a score. Whether it does is not answerable from the
+ * source.
+ */
+export interface SignalFixture {
+	note: string;
+	/** EmDash's authenticated user, or null for the signed-out state. */
+	viewer: Actor | null;
+	community: Aggregate;
+	openReports: Report[];
+}
+
+export const SIGNAL_FIXTURES: SignalFixture[] = [
+	{
+		note: "signed out, never rated — the state the catalogue is actually in",
+		viewer: null,
+		community: emptyAggregate(),
+		openReports: [],
+	},
+	{
+		note: "signed in, never rated — the form is live and nothing is chosen",
+		viewer: reader,
+		community: emptyAggregate(),
+		openReports: [],
+	},
+	{
+		note: "one rating from somebody else — a count, not a score",
+		viewer: reader,
+		community: aggregateRatings([{ stars: 4, userId: "someone-else" }]),
+		openReports: [],
+	},
+	{
+		note: "twelve ratings, spread across every star — the distribution bars",
+		viewer: reader,
+		community: aggregateRatings([
+			...Array.from({ length: 5 }, () => ({ stars: 5, userId: "a" })),
+			...Array.from({ length: 3 }, () => ({ stars: 4, userId: "b" })),
+			...Array.from({ length: 2 }, () => ({ stars: 3, userId: "c" })),
+			{ stars: 2, userId: "d" },
+			{ stars: 1, userId: "e" },
+		]),
+		openReports: [],
+	},
+	{
+		note: "rated by this reader — the control says Change, not Rate",
+		viewer: reader,
+		community: aggregateRatings(
+			[
+				{ stars: 3, userId: "a" },
+				{ stars: 4, userId: "b" },
+				{ stars: 5, userId: "c" },
+				{ stars: 5, userId: reader.id },
+			],
+			reader.id,
+		),
+		openReports: [],
+	},
+	{
+		note: "rated, but signed out — the numbers are public, the control is not",
+		viewer: null,
+		community: aggregateRatings([
+			{ stars: 5, userId: "a" },
+			{ stars: 4, userId: "b" },
+			{ stars: 4, userId: "c" },
+		]),
+		openReports: [],
+	},
+	{
+		note: "report filed and still open — including a licence concern",
+		viewer: reader,
+		community: aggregateRatings([{ stars: 2, userId: "a" }, { stars: 5, userId: reader.id }], reader.id),
+		openReports: [
+			report("fixture-report-1", "licence-changed", "The status no longer matches what the source says."),
+			report("fixture-report-2", "dead-source", null),
+		],
 	},
 ];
 

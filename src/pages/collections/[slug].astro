@@ -124,12 +124,16 @@ for (const m of collection.members) {
 		color: var(--ink-4);
 	}
 
-	.crumbs a,
-	.crumbs__here {
+	.crumbs a {
 		display: inline-flex;
 		align-items: center;
-		min-height: 1.75rem;
+		min-height: var(--tap);
 		padding-inline: 0.15rem;
+	}
+
+	.crumbs a,
+	.crumbs__here {
+		color: var(--ink-2);
 	}
 
 	.crumbs a {
@@ -139,10 +143,6 @@ for (const m of collection.members) {
 
 	.crumbs a:hover {
 		color: var(--ink);
-	}
-
-	.crumbs__here {
-		color: var(--ink-2);
 	}
 
 	.head__title {
@@ -158,11 +158,13 @@ for (const m of collection.members) {
 		border-top: 1px solid var(--line);
 	}
 
+	/* The vertical counts are a filter, so they are targets rather than labels:
+	   the whole line is the tap area. */
 	.spread li,
 	.spread a {
 		display: inline-flex;
 		align-items: center;
-		min-height: 1.9rem;
+		min-height: var(--tap);
 	}
 
 	.spread a {
@@ -247,5 +249,60 @@ for (const m of collection.members) {
 
 	.siblings a:hover .siblings__title {
 		color: var(--ember);
+	}
+
+	/*
+	 * Landscape phone, the same short-window case as the wall.
+	 *
+	 * A collection header is crumbs + tagline + title + summary + a row of
+	 * vertical counts, which is 475px of the 390px window at 844×390 — the
+	 * collection's plates start 122% down the page, so the collection is not
+	 * visible when you arrive on it. The fix is the same shape as the wall's: the
+	 * title takes its size from the height, the prose drops to label size and the
+	 * counts move beside the text. No copy is removed.
+	 */
+	@media (height <= 30rem) {
+		.head {
+			padding-block: var(--sp-3);
+			gap: var(--sp-2);
+		}
+
+		.head__title {
+			font-size: clamp(1.25rem, 6vh, 1.75rem);
+		}
+
+		.head .lede {
+			font-size: var(--step--2);
+			line-height: 1.45;
+			max-width: 76ch;
+		}
+
+		.spread {
+			padding-top: var(--sp-2);
+		}
+
+		.wall {
+			padding-block: var(--sp-4) var(--sp-6);
+		}
+	}
+
+	@media (height <= 30rem) and (width >= 520px) {
+		.head {
+			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+			align-items: end;
+			gap: var(--sp-4) var(--sp-5);
+		}
+
+		.crumbs {
+			grid-column: 1 / -1;
+		}
+
+		.spread {
+			border-top: 0;
+			border-left: 1px solid var(--line);
+			padding-top: 0;
+			padding-left: var(--sp-4);
+			align-content: end;
+		}
 	}
 </style>

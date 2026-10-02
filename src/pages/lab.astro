@@ -19,7 +19,8 @@
 import Base from "../layouts/Base.astro";
 import PossibilityTile from "../components/PossibilityTile.astro";
 import ExampleUse from "../components/ExampleUse.astro";
-import { LAB_SECTIONS, USE_FIXTURES, allFixtures } from "../lib/fixtures.ts";
+import SignalPanel from "../components/SignalPanel.astro";
+import { LAB_SECTIONS, SIGNAL_FIXTURES, USE_FIXTURES, allFixtures } from "../lib/fixtures.ts";
 import { RIGHTS_MEANING, ORIGIN_MEANING, USE_STATE_MEANING } from "../lib/vocabulary.ts";
 import { useStateFor } from "../lib/asset-use.ts";
 
@@ -62,6 +63,7 @@ const origins = [...new Set(fixtures.map((f) => f.possibility.representativeOrig
 				))
 			}
 			<a href="#asset-use">Asset use states</a>
+			<a href="#signals">Rating and report states</a>
 			<a href="#vocabulary">Wording the marks promise</a>
 		</nav>
 	</header>
@@ -72,7 +74,8 @@ const origins = [...new Set(fixtures.map((f) => f.possibility.representativeOrig
 			<li class="tag">Rights: {rights.length}</li>
 			<li class="tag">Origins: {origins.length}</li>
 			<li class="tag">Use states: {USE_FIXTURES.length}</li>
-			<li class="tag">Fixtures: {fixtures.length}</li>
+			<li class="tag">Signal states: {SIGNAL_FIXTURES.length}</li>
+			<li class="tag">Fixtures: {fixtures.length + USE_FIXTURES.length + SIGNAL_FIXTURES.length}</li>
 		</ul>
 	</nav>
 
@@ -126,6 +129,37 @@ const origins = [...new Set(fixtures.map((f) => f.possibility.representativeOrig
 				<figure class="use-case" data-use-state={useStateFor(fixture.example)}>
 					<figcaption class="tag use-case__note">{fixture.note}</figcaption>
 					<ExampleUse example={fixture.example} />
+				</figure>
+			))}
+		</div>
+	</section>
+
+	{/*
+		Rating and report states (#37), rendered by the same `SignalPanel.astro`
+		that the drill-in uses. The catalogue currently holds no ratings and no
+		reports, so the drill-in only ever renders the first of these — six of the
+		seven states a reader can land in had no pixels anywhere until now.
+	*/}
+	<section class="section shell" id="signals" aria-labelledby="signals-title">
+		<h2 class="display section__title" id="signals-title">Rating and report states</h2>
+		<p class="section__why">
+			Seven states: never rated, one rating, a full distribution, rated by this reader, rated
+			but signed out, and a report still open. The distinction the panel has to hold is that
+			people's stars are not a measurement — so the honest zero, the count of one, and the
+			distribution all have to read as opinion rather than as a score.
+		</p>
+		<div class="signals">
+			{SIGNAL_FIXTURES.map((fixture) => (
+				<figure class="signal-case" data-viewer={fixture.viewer ? "signed-in" : "signed-out"}>
+					<figcaption class="tag signal-case__note">{fixture.note}</figcaption>
+					<SignalPanel
+						subjectType="possibility"
+						subjectSlug="fixture-signal"
+						viewer={fixture.viewer}
+						community={fixture.community}
+						openReports={fixture.openReports}
+						subjectLabel="fixture"
+					/>
 				</figure>
 			))}
 		</div>
@@ -294,6 +328,26 @@ const origins = [...new Set(fixtures.map((f) => f.possibility.representativeOrig
 	}
 
 	.use-case__note {
+		color: var(--ink-3);
+	}
+
+	/* Two columns: a signal block is a stack of sentences with a five-star row,
+	   and it needs width to be judged rather than a 15rem cell. */
+	.signals {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+		gap: var(--sp-5);
+		align-items: start;
+		margin-top: var(--sp-5);
+	}
+
+	.signal-case {
+		display: grid;
+		gap: var(--sp-2);
+		margin: 0;
+	}
+
+	.signal-case__note {
 		color: var(--ink-3);
 	}
 </style>

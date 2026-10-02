@@ -164,7 +164,7 @@ const unmapped =
 		display: inline-flex;
 		align-items: center;
 		gap: 0.45rem;
-		min-height: 2rem;
+		min-height: var(--tap);
 		padding: 0.3rem 0.7rem;
 		border: 1px solid var(--line);
 		border-radius: 999px;
@@ -200,7 +200,10 @@ const unmapped =
 	.row {
 		display: grid;
 		gap: var(--sp-3);
-		scroll-margin-top: 5rem;
+		/* The map's own anchors have to land below the sticky masthead; the
+		   `:where(:target, [id])` rule in global.css does this for every anchor on
+		   the site, and was `5rem` here — 80px, against an 88px masthead on a
+		   phone, which put the vertical's own heading behind the header. */
 	}
 
 	.row__head {
@@ -216,6 +219,15 @@ const unmapped =
 		font-weight: 600;
 		font-size: var(--step-2);
 		letter-spacing: -0.02em;
+	}
+
+	/* The heading is the whole target — it is not a link inside a sentence, so
+	   the inline exemption does not apply. Thirteen of these in a column were 27px
+	   tall on a phone, which is the height of the map's primary navigation. */
+	.row__title a {
+		display: inline-flex;
+		align-items: center;
+		min-height: var(--tap);
 	}
 
 	.row__title a:hover {

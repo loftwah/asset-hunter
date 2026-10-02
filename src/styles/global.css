@@ -85,6 +85,35 @@
 	--radius: 3px;
 	--radius-lg: 5px;
 
+	/*
+	 * Touch target floor. WCAG 2.2's AA minimum is 24px, but this is a
+	 * media catalogue people scroll with a thumb while holding something else, and
+	 * DESIGN.md §7 asks for 44px. It is a token rather than a number scattered
+	 * through every component because almost every fix for it is padding, and
+	 * padding is what `min-height` on the token makes repeatable.
+	 */
+	--tap: 2.75rem;
+
+	/*
+	 * How tall the masthead actually is, published by `Base.astro` because it is
+	 * a measured value: the nav drops to its own row below 860px and at enlarged
+	 * text the links wrap, so a hard-coded sticky offset is wrong somewhere. Every
+	 * sticky element below the masthead and every in-page anchor offset reads it,
+	 * which is what keeps the filter rail from sliding under the header.
+	 */
+	--masthead-h: 3.5rem;
+
+	/*
+	 * Safe-area insets. The meta viewport does not declare
+	 * `viewport-fit=cover`, so in a browser tab these are 0 and Safari insets the
+	 * layout itself. They are read anyway because the site ships a
+	 * `site.webmanifest`, and an installed launch can be edge-to-edge: without
+	 * this, a landscape notch sits on the filter chips rather than beside them.
+	 * No hex value or `fit=cover` is introduced, so nothing changes in the tab.
+	 */
+	--shell-pad-l: calc(var(--gutter) + env(safe-area-inset-left, 0px));
+	--shell-pad-r: calc(var(--gutter) + env(safe-area-inset-right, 0px));
+
 	/* --- Motion ----------------------------------------------------------- */
 	--ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 	--ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
@@ -175,7 +204,7 @@ a {
 	width: 100%;
 	max-width: var(--maxw);
 	margin-inline: auto;
-	padding-inline: var(--gutter);
+	padding-inline: var(--shell-pad-l) var(--shell-pad-r);
 }
 
 /* Mono label: the museum-tag voice used throughout the catalogue. */
@@ -329,6 +358,17 @@ a {
 /* --- Focus ring for the whole document (keyboard users) ---------------- */
 body:has(:focus-visible) {
 	scroll-padding-block-start: var(--sp-8);
+}
+
+/*
+ * In-page anchors — the verticals map, a table of contents, a heading link —
+ * have to clear the sticky masthead or they land underneath it, where the
+ * target is invisible and the reader assumes the link is broken. Measured
+ * rather than assumed, so it is also correct at 200% text where the masthead is
+ * a third taller than the design assumes.
+ */
+:where(:target, [id]) {
+	scroll-margin-block-start: calc(var(--masthead-h) + var(--sp-4));
 }
 
 /* --- Reduced motion ----------------------------------------------------- */

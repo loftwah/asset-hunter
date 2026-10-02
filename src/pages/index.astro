@@ -9,9 +9,10 @@
  */
 import Base from "../layouts/Base.astro";
 import PossibilityTile from "../components/PossibilityTile.astro";
+import OutcomeFlash from "../components/OutcomeFlash.astro";
 import { loadPossibilities, tallyVerticals } from "../lib/catalogue";
 import { runApp } from "../lib/effect/root";
-import { COOKIE_NAME, boardTotals, parseBoards } from "../lib/board";
+import { COOKIE_NAME, boardOutcome, boardTotals, parseBoards } from "../lib/board";
 import { RIGHTS_LABEL, RIGHTS_MEANING, verticalLabel } from "../lib/vocabulary";
 
 const { possibilities, cacheHint } = await runApp(loadPossibilities());
@@ -38,6 +39,15 @@ const boards = parseBoards(Astro.cookies.get(COOKIE_NAME)?.value);
 const board = Object.keys(boards).find((name) => boards[name].length) ?? "default";
 const savedHere = new Set(boards[board] ?? []);
 const totals = boardTotals(boards);
+
+/*
+ * The answer to the save the reader just made, read back from the redirect. The
+ * `+` on the tile flips to a `✓`, which is feedback a sighted reader gets for
+ * free; without this, a keyboard reader and a screen-reader reader got a page
+ * reload and nothing at all.
+ */
+const bySlug = new Map(possibilities.map((p) => [p.slug, p.title]));
+const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug));
 
 const rightsTally = new Map<string, number>();
 for (const p of filtered) {
@@ -90,8 +100,9 @@ for (const p of filtered) {
 		<ul class="rail__list" data-rail data-scroll-strip>
 			<li>
 				<a
-					href={activeVertical ? "/" : "/"}
+					href="/"
 					class:list={["chip", { "chip--on": !activeVertical }]}
+					data-vertical=""
 					aria-current={!activeVertical ? "true" : undefined}
 				>
 					All<span class="chip__n">{possibilities.length}</span>
@@ -102,9 +113,9 @@ for (const p of filtered) {
 					<li>
 						<a
 							href={`/?vertical=${v.slug}`}
-							class:list={["chip", { "chip--on": activeVertical === v.slug }]}
-							aria-current={activeVertical === v.slug ? "true" : undefined}
+							class="chip"
 							data-vertical={v.slug}
+							aria-current={activeVertical === v.slug ? "true" : undefined}
 						>
 							<span data-label>{verticalLabel(v.slug)}</span>
 							<span class="chip__n">{v.count}</span>
@@ -113,6 +124,16 @@ for (const p of filtered) {
 				))
 			}
 		</ul>
+		{/*
+		 * The filter is applied in place, so the wall does not reload and nothing
+		 * tells a screen reader that the result set changed. This is the only place
+		 * that can know: it counts what it just hid. `role="status"` because it is
+		 * a polite, non-interrupting update — the reader chose the filter and knows
+		 * why they are waiting.
+		*/}
+		<p class="visually-hidden" role="status" data-filter-status>
+			{`Showing all ${possibilities.length} possibilities.`}
+		</p>
 	</nav>
 
 	<section class="wall shell" aria-label="Possibilities">
@@ -146,9 +167,23 @@ for (const p of filtered) {
 	</section>
 
 	{
+		outcome && (
+			<div class="shell outcome">
+				<OutcomeFlash message={outcome.message} tone={outcome.tone} />
+			</div>
+		)
+	}
+
+	{
 		totals.items > 0 && (
 			<nav class="boardbar shell" aria-label="Shortlist">
-				<p class="boardbar__count" role="status">
+				{/*
+				 * No `role="status"` here. It was one, and it announced the saved
+				 * count on every page load — the same words, every time, before the
+				 * reader had done anything. The answer to the action they *did* take
+				 * is the flash above; this line is a static fact about their cookie.
+				 */}
+				<p class="boardbar__count">
 					{totals.items} {totals.items === 1 ? "possibility" : "possibilities"} saved
 					{totals.boards > 1 ? ` across ${totals.boards} boards` : ""}
 				</p>
@@ -190,26 +225,99 @@ for (const p of filtered) {
 	</aside>
 
 	<script>
-		// Progressive enhancement: the server already filtered correctly. This
-		// only makes the filter feel instant when toggling between verticals
-		// that are already in the DOM.
+		/**
+		 * The filter, applied in place.
+		 *
+		 * The server already filtered correctly, so this only has to make toggling
+		 * between verticals feel instant rather than making it work. Three things
+		 * make it honest rather than merely fast, and each was a real failure:
+		 *
+		 * 1. **The chips follow the filter.** It used to hide tiles and leave every
+		 *    chip's selected state exactly as the server had rendered it, so after
+		 *    choosing Games the rail still said "All" was active while the URL and
+		 *    the grid said Games. Two controls disagree on screen and in the
+		 *    accessibility tree.
+		 * 2. **The result count is announced.** Hiding tiles changes the page with
+		 *    no navigation and no announcement, which is the case `role="status"`
+		 *    exists for.
+		 * 3. **Back and forward re-apply the filter.** The URL is the filter
+		 *    (DESIGN.md §9.1), so a `popstate` that moves off `?vertical=` has to
+		 *    put the tiles back. It did not: pressing Back left three of
+		 *    twenty-four tiles on screen under an unfiltered URL, with no way to
+		 *    recover but a reload.
+		 */
 		const list = document.querySelector<HTMLElement>("[data-rail]");
 		const grid = document.querySelector<HTMLElement>("[data-grid]");
-		if (list && grid) {
+		const status = document.querySelector<HTMLElement>("[data-filter-status]");
+		const chips = list
+			? Array.from(list.querySelectorAll<HTMLAnchorElement>(".chip"))
+			: [];
+
+		if (list && grid && chips.length) {
+			const tiles = Array.from(grid.querySelectorAll<HTMLElement>(".tile"));
+
+			const verticalLabelFor = (slug: string) => {
+				const chip = chips.find((c) => c.dataset.vertical === slug);
+				return chip?.querySelector("[data-label]")?.textContent?.trim() ?? "";
+			};
+
+			const applyFilter = (slug: string) => {
+				const all = slug === "";
+				let shown = 0;
+				for (const tile of tiles) {
+					const matches = all || tile.dataset.vertical === slug;
+					tile.hidden = !matches;
+					if (matches) shown++;
+				}
+				// The rail's own state, not the server's: the two disagree the moment
+				// the reader chooses differently from the URL they arrived on.
+				for (const chip of chips) {
+					const on = (chip.dataset.vertical ?? "") === slug;
+					chip.classList.toggle("chip--on", on);
+					if (on) chip.setAttribute("aria-current", "true");
+					else chip.removeAttribute("aria-current");
+				}
+				if (status) {
+					status.textContent = all
+						? `Showing all ${shown} possibilities.`
+						: `Showing ${shown} ${shown === 1 ? "possibility" : "possibilities"} in ${verticalLabelFor(slug)}.`;
+				}
+				return shown;
+			};
+
+			/** The slug the address bar is asking for, or "" for the whole wall. */
+			const slugFromUrl = () => {
+				const requested = new URL(location.href).searchParams.get("vertical");
+				return chips.some((c) => (c.dataset.vertical ?? "") === requested)
+					? (requested ?? "")
+					: "";
+			};
+
 			list.addEventListener("click", (event) => {
 				const link = (event.target as HTMLElement).closest<HTMLAnchorElement>("a[data-vertical]");
 				if (!link) return;
-				const slug = link.dataset.vertical;
-				const tiles = Array.from(grid.querySelectorAll<HTMLElement>(".tile"));
-				// Only intercept when every tile for that vertical is present.
+				const slug = link.dataset.vertical ?? "";
+				// Only intercept when every tile for that vertical is already in the
+				// DOM; otherwise let the link navigate and let the server be right.
+				if (slug && !tiles.some((t) => t.dataset.vertical === slug)) return;
 				event.preventDefault();
-				for (const tile of tiles) {
-					const matches = tile.dataset.vertical === slug;
-					tile.hidden = !matches;
-				}
-				history.pushState(null, "", `/?vertical=${slug}`);
+				const next = new URL(location.href);
+				if (slug) next.searchParams.set("vertical", slug);
+				else next.searchParams.delete("vertical");
+				if (next.href !== location.href) history.pushState(null, "", next.href);
+				const shown = applyFilter(slug);
+				document.dispatchEvent(new CustomEvent("wall:filter", { detail: { slug, shown } }));
+			});
+
+			addEventListener("popstate", () => {
+				const slug = slugFromUrl();
+				applyFilter(slug);
 				document.dispatchEvent(new CustomEvent("wall:filter", { detail: { slug } }));
 			});
+
+			// Reconcile on load, so a restored bfcache page or a client-side
+			// navigation lands on the state its URL describes.
+			applyFilter(slugFromUrl());
 		}
 	</script>
 </Base>
@@ -266,7 +374,14 @@ for (const p of filtered) {
 
 	.rail {
 		position: sticky;
-		top: 3.5rem;
+		/*
+		 * `--masthead-h`, not a literal. The masthead is two rows below 860px and
+		 * one above it, and a rail that sticks at a fixed 3.5rem is sliced in half
+		 * by the masthead on every phone and tablet. The token is the measured
+		 * height; the check that keeps it honest is in `scripts/visual-qa.mjs`
+		 * ("sticky rail under the masthead").
+		 */
+		top: var(--masthead-h);
 		z-index: 30;
 		padding-block: var(--sp-3);
 		background: color-mix(in srgb, var(--canvas) 92%, transparent);
@@ -306,7 +421,9 @@ for (const p of filtered) {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.5rem;
-		min-height: 2rem;
+		/* The rail is the primary filter on a touch device, so the chips are the
+		   touch targets: 33px was below the 44px floor DESIGN.md §7 sets. */
+		min-height: var(--tap);
 		padding: 0.35rem 0.75rem;
 		background: transparent;
 		border: 1px solid var(--line);
@@ -399,6 +516,13 @@ for (const p of filtered) {
 	}
 
 	/* --- Shortlist bar ---------------------------------------------------- */
+
+	/* Where a POST's answer goes: directly under the masthead, above the
+	   catalogue, because it is the answer to something the reader just pressed and
+	   it should not need scrolling to find. */
+	.outcome {
+		padding-block: var(--sp-4) 0;
+	}
 
 	.boardbar {
 		display: flex;
@@ -528,6 +652,88 @@ for (const p of filtered) {
 		.tally {
 			margin-top: var(--sp-2);
 			padding-top: var(--sp-2);
+		}
+	}
+
+	/*
+	 * Landscape phone: the short-window case.
+	 *
+	 * At 844×390 the wall opened with 515px of type above the first plate — 132%
+	 * of the fold, so a reader arriving at a rotated phone saw nothing but a
+	 * headline and had to scroll to discover there was a catalogue. The chrome
+	 * (masthead + rail) is 123px of a 390px window, which leaves very little for
+	 * the intro band, and DESIGN.md §5b's whole point is that this band is not a
+	 * hero.
+	 *
+	 * So the band gets compact rather than hidden: the title takes its size from
+	 * the viewport height, the lede goes to label size, and — once there is width
+	 * for it — the tally moves beside the text instead of under it, which is the
+	 * arrangement the wide layout already uses. No copy is removed. The result is
+	 * 286px at 844×390 and 302px at 932×430, both inside the first viewport with
+	 * the plate itself on screen.
+	 */
+	@media (height <= 30rem) {
+		.intro {
+			padding-block: var(--sp-3) var(--sp-2);
+			gap: var(--sp-2);
+		}
+
+		.intro__title {
+			font-size: clamp(1.0625rem, 4.8vh, 1.375rem);
+		}
+
+		.intro__lede {
+			font-size: var(--step--2);
+			line-height: 1.45;
+			max-width: 72ch;
+		}
+
+		.tally {
+			margin-top: 0;
+			padding-top: var(--sp-2);
+		}
+
+		.tally__n {
+			font-size: var(--step-1);
+		}
+
+		.rail {
+			padding-block: var(--sp-2);
+		}
+
+		.wall {
+			padding-block: var(--sp-4) var(--sp-6);
+		}
+	}
+
+	@media (height <= 30rem) and (width >= 520px) {
+		.intro {
+			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+			align-items: end;
+			gap: var(--sp-4);
+		}
+
+		.tally {
+			border-top: 0;
+			border-left: 1px solid var(--line);
+			padding-top: 0;
+			padding-left: var(--sp-4);
+		}
+
+		.tally > div {
+			display: flex;
+			align-items: baseline;
+			justify-content: space-between;
+			gap: var(--sp-3);
+			padding-block: 0.1rem;
+		}
+
+		.tally > div + div {
+			border-top: 1px solid var(--line);
+		}
+
+		.tally dt {
+			margin-bottom: 0;
 		}
 	}
 </style>

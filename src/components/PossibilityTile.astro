@@ -98,15 +98,37 @@ const status = brokenPreview ? "broken" : loading ? "loading" : null;
 		<div class="tile__plate" data-state={status ?? undefined}>
 			{
 				hasPlate ? (
-					<img
-						src={src}
-						alt={p.tagline ? `${p.title} — ${p.tagline}` : p.title}
-						width="800"
-						height="1000"
-						loading={eager || loading ? "eager" : "lazy"}
-						decoding="async"
-						fetchpriority={eager ? "high" : "auto"}
-					/>
+					<>
+						{/*
+						 * The plate's alt is empty on purpose.
+						 *
+						 * It used to be `"{title} — {tagline}"`, inside a link whose next
+						 * node is a heading with the same title. The accessibility tree
+						 * then read: link "Crowds that move as a fluid, not as agents —
+						 * Screen-space density field…  Crowds that move as a fluid, not as
+						 * agents  Games  Code  Reference only  Generated" — the name
+						 * twice, once with the tagline attached to it, on every one of
+						 * twenty-four tiles. That is the wrong answer for a screen reader
+						 * and for anyone who navigates by link list.
+						 *
+						 * So the image is a decorative cover of an entry the link already
+						 * names (WCAG's own case for `alt=""`), and the tagline — which
+						 * would otherwise have reached a screen reader only through that
+						 * alt — is kept as visually hidden text in the same link. Nothing is
+						 * announced twice and nothing is lost. The drill-in's `<figure>`
+						 * keeps a descriptive alt because there the image stands alone next
+						 * to a caption rather than inside a link.
+						*/}
+						<img
+							src={src}
+							alt=""
+							width="800"
+							height="1000"
+							loading={eager || loading ? "eager" : "lazy"}
+							decoding="async"
+							fetchpriority={eager ? "high" : "auto"}
+						/>
+					</>
 				) : (
 					<span class="tile__absent">
 						<span class="tag">No plate</span>
@@ -135,6 +157,13 @@ const status = brokenPreview ? "broken" : loading ? "loading" : null;
 
 		<div class="tile__label">
 			<Heading class="tile__title">{p.title}</Heading>
+			{/*
+			 * The tagline, for anyone not looking at the plate. It sat on the
+			 * image's `alt` before, which put it in front of the title in the link's
+			 * accessible name; here it follows the heading, so the name reads the
+			 * way the tile looks — title, then what it is, then where it sits.
+			 */}
+			{p.tagline && <span class="visually-hidden">{p.tagline}</span>}
 			{
 				!hideVertical && vertical && (
 					<p class="tile__meta">
@@ -343,8 +372,12 @@ const status = brokenPreview ? "broken" : loading ? "loading" : null;
 	.save__button {
 		display: grid;
 		place-items: center;
-		width: 2rem;
-		height: 2rem;
+		/* 32px was the old size and it sat over the corner of every plate on a
+		   phone, where the neighbouring tile link is 44px away and the tap lands
+		   on whichever the thumb covers first. The plate is the target underneath,
+		   so the control has to be the full floor to be unambiguous. */
+		width: var(--tap);
+		height: var(--tap);
 		background: color-mix(in srgb, var(--canvas) 82%, transparent);
 		border: 1px solid var(--line-loud);
 		border-radius: 999px;
