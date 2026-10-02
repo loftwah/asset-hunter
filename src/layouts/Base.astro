@@ -82,7 +82,13 @@ const isCurrent = (href: string) =>
 				<header class="masthead">
 					<div class="masthead__inner shell">
 						<a class="brand" href="/" aria-label="Asset Hunter — home">
-							<Wordmark size={20} />
+							{/*
+							 * `decorative` because the link's own `aria-label` already
+							 * says "Asset Hunter — home". Labelling the mark as well
+							 * would make a screen reader read the same name twice out
+							 * of the same link, and the wordmark beside it is real text.
+							 */}
+							<Wordmark size={20} decorative />
 							<span class="brand__name">Asset Hunter</span>
 						</a>
 						<nav class="nav" aria-label="Primary">

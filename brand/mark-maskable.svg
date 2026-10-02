@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="512" height="512" fill="none" role="img" aria-label="Asset Hunter aperture mark, maskable icon">
+	<rect width="24" height="24" fill="#08090a" />
+	<g transform="translate(2.4 2.4) scale(0.8)">
+		<circle cx="12" cy="12" r="9.25" fill="none" stroke="#ff5a1f" stroke-width="2.5" />
+		<path d="M12 8.8 14 12 12 15.2 10 12Z" fill="#ff5a1f" />
+	</g>
+</svg>

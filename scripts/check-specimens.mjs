@@ -4,12 +4,26 @@
  * accessible label. Specimens are the catalogue's primary media, so a malformed
  * plate is a broken product tile, not a cosmetic issue.
  *
+ * Also validates the brand kit in `brand/`. Those SVGs are served, referenced
+ * from the webmanifest and embedded by the masthead, so they face exactly the
+ * same bar as a plate — and #53 is the reason: a brand asset that can execute is
+ * a security problem, not a branding one. Keeping the two in one checker is what
+ * stops a new variant being added without being validated.
+ *
  * Usage: node scripts/check-specimens.mjs
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-const DIR = new URL("../public/specimens/", import.meta.url).pathname;
+/**
+ * `{ dir, kind }` per directory checked. `kind` is reported so a failure names
+ * what it is, rather than a reader having to know which folder a file lives in.
+ */
+const TARGETS = [
+	{ dir: new URL("../public/specimens/", import.meta.url).pathname, kind: "specimen plate" },
+	{ dir: new URL("../brand/", import.meta.url).pathname, kind: "brand asset" },
+];
+
 const failures = [];
 const checked = [];
 
@@ -22,16 +36,24 @@ const SVG_TAGS = new Set([
 	"symbol", "marker", "title", "desc", "image", "textPath", "style",
 ]);
 
-let files = [];
-try {
-	files = readdirSync(DIR).filter((f) => f.endsWith(".svg"));
-} catch {
-	console.error(`✖ specimen directory not found: ${DIR}`);
-	process.exit(1);
+/**
+ * Files to check, each tagged with the directory it came from so a failure can
+ * name its directory and the summary can count the two kinds separately.
+ */
+const files = [];
+for (const { dir, kind } of TARGETS) {
+	let names;
+	try {
+		names = readdirSync(dir).filter((f) => f.endsWith(".svg"));
+	} catch {
+		console.error(`✖ ${kind} directory not found: ${dir}`);
+		process.exit(1);
+	}
+	for (const name of names.sort()) files.push({ file: name, dir, kind });
 }
 
-for (const file of files.sort()) {
-	const path = join(DIR, file);
+for (const { file, dir, kind } of files) {
+	const path = join(dir, file);
 	const src = readFileSync(path, "utf8");
 	const size = statSync(path).size;
 	const problems = [];
@@ -91,11 +113,43 @@ for (const file of files.sort()) {
 	// baseline to bracket a figure.
 	problems.push(...findTextCollisions(src));
 
+	// #53: a served SVG that can execute is a security problem. The brand kit is
+	// served and embedded, so it faces the same bar as a plate.
+	problems.push(...findExecutable(src));
+
 	if (problems.length) {
-		failures.push({ file, problems });
+		failures.push({ file, kind, problems });
 	} else {
-		checked.push({ file, size, viewBox });
+		checked.push({ file, kind, size, viewBox });
 	}
+}
+
+/**
+ * Anything that would make an SVG do more than draw.
+ *
+ * Served SVGs are loaded by the browser in the site's own origin, so a `<script>`,
+ * an `onload`, a `href` to a remote file or an `<image>` pulling bytes off
+ * someone else's server is an injection surface with a branding payload. None of
+ * these have any legitimate use in a plate or a logo.
+ */
+function findExecutable(src) {
+	const problems = [];
+	for (const [what, pattern] of [
+		["a <script> element", /<script\b/i],
+		["an inline event handler", /\son[a-z]+\s*=/i],
+		["an external reference", /\b(xlink:)?href\s*=/i],
+		// `url(#id)` is a same-document fragment and every plate with a gradient
+		// or a filter uses one. A `url()` pointing anywhere else is the problem.
+		["an external url() reference", /url\(\s*(?!#)/i],
+		["an <image> element", /<image\b/i],
+		["a <foreignObject>", /<foreignObject\b/i],
+		["an animation", /<animate\b|<animateTransform\b|<set\b/i],
+		["an XML entity", /<!ENTITY/i],
+		["a doctype", /<!DOCTYPE/i],
+	]) {
+		if (pattern.test(src)) problems.push(`contains ${what}`);
+	}
+	return problems;
 }
 
 /**
@@ -200,24 +254,31 @@ function checkBalance(src) {
 	return problems;
 }
 
-for (const { file } of [...failures.map((f) => ({ file: f.file })), ...checked.map((c) => ({ file: c.file }))]) {
-	const src = readFileSync(join(DIR, file), "utf8");
+for (const { file, dir, kind } of files) {
+	const src = readFileSync(join(dir, file), "utf8");
 	const problems = checkBalance(src);
-	if (problems.length) {
-		const found = failures.find((f) => f.file === file);
-		if (found) found.problems.push(...problems);
-		else failures.push({ file, problems });
-	}
+	if (!problems.length) continue;
+	const found = failures.find((f) => f.file === file);
+	if (found) found.problems.push(...problems);
+	else failures.push({ file, kind, problems });
 }
 
 if (failures.length) {
-	console.error(`✖ ${failures.length} specimen plate(s) invalid:\n`);
-	for (const { file, problems } of failures) {
-		console.error(`  ${file}`);
+	console.error(`✖ ${failures.length} SVG asset(s) invalid:\n`);
+	for (const { file, kind, problems } of failures) {
+		console.error(`  ${file} (${kind})`);
 		for (const p of problems) console.error(`    - ${p}`);
 	}
 	process.exit(1);
 }
 
+const summarise = (kind) => checked.filter((c) => c.kind === kind);
 const total = checked.reduce((n, c) => n + c.size, 0);
-console.log(`✔ ${checked.length} specimen plates valid (${(total / 1024).toFixed(0)} KB total, avg ${(total / checked.length / 1024).toFixed(1)} KB)`);
+const byKind = TARGETS.map(({ kind }) => {
+	const group = summarise(kind);
+	return group.length ? `${group.length} ${kind}${group.length === 1 ? "" : "s"}` : null;
+}).filter(Boolean);
+
+console.log(
+	`✔ ${checked.length} SVG assets valid (${byKind.join(", ")}) — ${(total / 1024).toFixed(0)} KB total`,
+);
