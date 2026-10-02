@@ -188,10 +188,21 @@ npm run catalogue -- rights --status reference
 npm run catalogue -- fetch --out /tmp/catalogue.json   # diff a change as a diff
 ```
 
-The full contract is in [`docs/AGENT_API.md`](docs/AGENT_API.md). Three things
-survive into it deliberately: `null` is not `0`, rights are per example, and a
+And a chosen shortlist becomes an implementation handoff at `/api/handoff.json`,
+as the same versioned contract or as Markdown:
+
+```bash
+npm run catalogue -- handoff density-gradient,diegetic-damage --check
+npm run catalogue -- handoff density-gradient --chose density-gradient \
+  --goal "A bento dashboard where emphasis steps down in three tiers" \
+  --markdown --out handoff.md
+```
+
+The full contract is in [`docs/AGENT_API.md`](docs/AGENT_API.md). Four things
+survive into it deliberately: `null` is not `0`, rights are per example, a
 community rating is never blended with a machine measurement or an editorial
-decision.
+decision, and a handoff never invents the goal, platform or acceptance criteria
+a reader did not record — it names them as unrecorded instead.
 
 ## Vocabulary and roadmap
 

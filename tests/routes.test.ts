@@ -504,6 +504,246 @@ describe("the agent interface (#58)", () => {
 });
 
 /**
+ * The implementation handoff (#51).
+ *
+ * The live half of the rules asserted in `tests/handoff.test.ts`. Those prove what
+ * the document decides; these prove it can be reached, that the decisions survive
+ * serialisation, and — the assertion that matters most — that a reference-only
+ * example cannot be reached through a handoff without saying so.
+ */
+describe("the implementation handoff", () => {
+	/** The minimum shape these assertions rely on, declared once. */
+	type Handoff = {
+		schema: string;
+		fingerprint: string;
+		contract: { json: string; markdown: string; catalogue: { schema: string; url: string } };
+		board: { source: string; requested: number; resolved: number; unknown: string[]; overflow: string[] };
+		decision: { recorded: boolean; chosen: string[] | null; rejected: string[] };
+		objective: { goal: string | null; unrecorded: string[] };
+		achieve: string[];
+		doNotCopy: { subject: string; reason: string }[];
+		possibilities: {
+			id: string;
+			url: string;
+			useUrl: string;
+			decision: "chosen" | "candidate" | "rejected";
+			rightsStatus: string | null;
+			examplesUseState: string;
+			examples: {
+				id: string;
+				rightsStatus: string | null;
+				useState: string;
+				useStateLabel: string;
+				useStateMeaning: string;
+				obligation: string | null;
+				handoff: "payload" | "record";
+				blockedBy: string | null;
+				record: string;
+				licence: { spdx: string | null; evidence: string | null };
+				provenance: { sourceUrl: string | null; sourceRepo: string | null; contentHash: string | null };
+			}[];
+		}[];
+		rights: { examples: number; payloads: number; summary: string };
+		credits: string | null;
+	};
+
+	const handoff = async (query: string) =>
+		(await (await fetch(`${baseUrl}/api/handoff.json?${query}`)).json()) as Handoff;
+
+	live("serves a versioned document for a chosen set, without a token", async () => {
+		const res = await fetch(`${baseUrl}/api/handoff.json?slugs=density-gradient,diegetic-damage`);
+		assert.equal(res.status, 200);
+		assert.match(res.headers.get("content-type") ?? "", /application\/json/);
+		assert.equal(res.headers.get("x-ah-handoff-schema"), "asset-hunter.handoff/1");
+		assert.equal(res.headers.get("x-ah-handoff-source"), "slugs");
+
+		const body = await handoff("slugs=density-gradient,diegetic-damage");
+		assert.equal(body.schema, "asset-hunter.handoff/1");
+		assert.match(body.fingerprint, /^[0-9a-f]{8}$/);
+		assert.equal(body.contract.catalogue.schema, "asset-hunter.catalogue/1");
+		assert.equal(body.possibilities.length, 2);
+		// Every reference is an absolute URL on the canonical site, not a path that
+		// only resolves relative to this origin.
+		for (const p of body.possibilities) {
+			assert.ok(p.url.startsWith("https://"), `${p.id} → ${p.url}`);
+			assert.ok(p.useUrl.startsWith("https://"), `${p.id} → ${p.useUrl}`);
+			for (const e of p.examples) assert.ok(e.record.startsWith("https://"), e.id);
+		}
+	});
+
+	live("resolves every referenced slug on the public site", async () => {
+		// The handoff is only useful if the links in it work. Every possibility and
+		// every record it names has to resolve on this deployment, not merely exist
+		// in the CMS.
+		const body = await handoff("slugs=density-gradient,diegetic-damage,crowd-fluid,raymarched-sdf");
+		assert.ok(body.possibilities.length >= 3);
+		for (const p of body.possibilities) {
+			const slug = p.id;
+			for (const route of [`/possibilities/${slug}`, `/use/${slug}`]) {
+				assert.equal((await fetch(`${baseUrl}${route}`)).status, 200, route);
+			}
+			for (const e of p.examples) {
+				const res = await fetch(`${baseUrl}/api/record/${e.id}`);
+				assert.equal(res.status, 200, `/api/record/${e.id} → ${res.status}`);
+			}
+		}
+	});
+
+	live("carries the rights of every example it references", async () => {
+		// The assertion this whole feature exists for: an agent reading a handoff
+		// must be able to tell what is reference-only without opening anything else.
+		const body = await handoff("slugs=density-gradient,diegetic-damage,crowd-fluid,raymarched-sdf");
+		let examples = 0;
+		for (const p of body.possibilities) {
+			for (const e of p.examples) {
+				examples += 1;
+				assert.ok(e.rightsStatus, `${e.id} has no rights status`);
+				assert.ok(e.useState, `${e.id} has no use state`);
+				assert.ok(e.useStateLabel.length > 0, `${e.id} has no use state label`);
+				assert.ok(e.useStateMeaning.length > 0, `${e.id} has no meaning`);
+				assert.equal(e.handoff, "record", `${e.id} should hand over nothing while nothing is retained`);
+				assert.ok(e.blockedBy, `${e.id} refused a handover without saying which rule refused`);
+			}
+		}
+		assert.ok(examples > 0, "no examples to check");
+		// And the states agree with the record endpoint, which is the one mapping.
+		for (const p of body.possibilities) {
+			for (const e of p.examples) {
+				const record = (await (await fetch(`${baseUrl}/api/record/${e.id}`)).json()) as {
+					useState: string;
+					handoff: string;
+					handoffBlockedBy: string | null;
+					obligation: string | null;
+					licenceSpdx: string | null;
+				};
+				assert.equal(e.useState, record.useState, e.id);
+				assert.equal(e.handoff, record.handoff, e.id);
+				assert.equal(e.blockedBy, record.handoffBlockedBy, e.id);
+				assert.equal(e.obligation, record.obligation, e.id);
+				assert.equal(e.licence.spdx, record.licenceSpdx, e.id);
+			}
+		}
+	});
+
+	live("names what must not be copied, and never calls it cleared", async () => {
+		const body = await handoff("slugs=density-gradient,diegetic-damage");
+		// Every non-reusable example appears in do not copy.
+		for (const p of body.possibilities) {
+			for (const e of p.examples) {
+				if (e.useState === "reusable") continue;
+				// `(example: …)` rather than a bare `(…)`: a possibility and its own
+				// plate share a slug in this catalogue, so the kind has to be named.
+				const entry = body.doNotCopy.find((d) => d.subject.startsWith(`${e.id} (example:`));
+				assert.ok(entry, `${e.id} is ${e.useState} and is not in doNotCopy`);
+				assert.match(entry.reason, /Do not copy|Read the recorded licence/);
+			}
+		}
+		// And the standing rule is in the document a reader is handed.
+		assert.ok(body.achieve.some((line) => /Possibility is not permission/.test(line)));
+		// The word "cleared" appears nowhere as a claim about this board.
+		assert.equal(body.rights.payloads, 0, "nothing is downloadable while nothing is retained");
+	});
+
+	live("never invents a field the reader did not record", async () => {
+		const bare = await handoff("slugs=density-gradient");
+		assert.equal(bare.objective.goal, null, "a goal was invented");
+		assert.ok(bare.objective.unrecorded.includes("goal"));
+		// And with no mark, the decision is null rather than an empty selection.
+		assert.equal(bare.decision.recorded, false);
+		assert.equal(bare.decision.chosen, null);
+		assert.ok(bare.achieve.some((line) => line.startsWith("Not yet chosen:")));
+
+		const asked = await handoff("slugs=density-gradient&chose=density-gradient&goal=A+bento+dashboard");
+		assert.equal(asked.objective.goal, "A bento dashboard");
+		assert.equal(asked.decision.recorded, true);
+		assert.deepEqual(asked.decision.chosen, ["density-gradient"]);
+		assert.equal(asked.possibilities[0].decision, "chosen");
+	});
+
+	live("reports a slug the catalogue does not have", async () => {
+		const body = await handoff("slugs=density-gradient,nope-not-real");
+		assert.equal(body.board.requested, 2);
+		assert.equal(body.board.resolved, 1);
+		assert.deepEqual(body.board.unknown, ["nope-not-real"]);
+	});
+
+	live("builds from a reader's own board cookie, privately", async () => {
+		const cookie = `ah_board=${encodeURIComponent(JSON.stringify({ default: ["density-gradient"] }))}`;
+		const res = await fetch(`${baseUrl}/api/handoff.json?board=default`, { headers: { cookie } });
+		assert.equal(res.status, 200);
+		// A board is one reader's list, so a shared cache must not keep it.
+		assert.match(res.headers.get("cache-control") ?? "", /private/);
+		assert.match(res.headers.get("vary") ?? "", /Cookie/);
+		assert.equal(res.headers.get("x-ah-handoff-source"), "cookie");
+		const body = (await res.json()) as Handoff;
+		assert.equal(body.board.source, "cookie");
+		assert.deepEqual(body.possibilities.map((p) => p.id), ["density-gradient"]);
+	});
+
+	live("the slugs branch is public, because it is the same for everyone", async () => {
+		const res = await fetch(`${baseUrl}/api/handoff.json?slugs=density-gradient`);
+		assert.match(res.headers.get("cache-control") ?? "", /public/);
+	});
+
+	live("answers 400 and says how to ask, rather than building an empty one", async () => {
+		const res = await fetch(`${baseUrl}/api/handoff.json`);
+		assert.equal(res.status, 400);
+		const body = text(await res.text());
+		assert.match(body, /No handoff to build/);
+		assert.match(body, /api\/handoff\.json\?slugs=/);
+		assert.match(body, /cookies/, "it says why a board has to come from the browser that has it");
+	});
+
+	live("renders the same document as Markdown", async () => {
+		const res = await fetch(`${baseUrl}/api/handoff.json?slugs=density-gradient&format=md`);
+		assert.equal(res.status, 200);
+		assert.match(res.headers.get("content-type") ?? "", /text\/markdown/);
+		assert.equal(res.headers.get("x-ah-handoff-format"), "markdown");
+
+		const body = await handoff("slugs=density-gradient");
+		const md = await res.text();
+		assert.match(md, /^# Implementation handoff —/m);
+		// Every rights statement in the JSON is in the Markdown. Losing them here
+		// would make the paste the most dangerous of the two renderings.
+		for (const p of body.possibilities) {
+			assert.ok(md.includes(p.id), `Markdown lost ${p.id}`);
+			assert.ok(md.includes(p.url), `Markdown lost the URL of ${p.id}`);
+			for (const e of p.examples) {
+				assert.ok(md.includes(e.id), `Markdown lost ${e.id}`);
+				assert.ok(md.includes(e.useStateLabel), `Markdown lost the use state of ${e.id}`);
+				if (e.obligation) assert.ok(md.includes(e.obligation), `Markdown lost the obligation of ${e.id}`);
+			}
+		}
+		// And nothing on the paste claims to be cleared.
+		assert.equal(/\bcleared\b/i.test(md), false, "the paste claims something is cleared");
+	});
+
+	live("answers a conditional request", async () => {
+		const first = await fetch(`${baseUrl}/api/handoff.json?slugs=density-gradient`);
+		const etag = first.headers.get("etag");
+		assert.ok(etag, "no ETag on a polled endpoint");
+		const second = await fetch(`${baseUrl}/api/handoff.json?slugs=density-gradient`, {
+			headers: { "if-none-match": etag },
+		});
+		assert.equal(second.status, 304);
+	});
+
+	live("the board links both renderings, and the links resolve", async () => {
+		const cookie = `ah_board=${encodeURIComponent(JSON.stringify({ default: ["density-gradient"] }))}`;
+		const html = await (await fetch(`${baseUrl}/board`, { headers: { cookie } })).text();
+		assert.match(html, /Build from this board/);
+		const hrefs = [...html.matchAll(/href="(\/api\/handoff\.json[^"]*)"/g)].map((m) =>
+			m[1].replace(/&amp;/g, "&"),
+		);
+		assert.equal(hrefs.length, 2, `expected both renderings, found ${JSON.stringify(hrefs)}`);
+		for (const href of hrefs) {
+			const res = await fetch(`${baseUrl}${href}`, { headers: { cookie } });
+			assert.equal(res.status, 200, `${href} → ${res.status}`);
+		}
+	});
+});
+
+/**
  * Asset use and handoff (#42).
  *
  * The live half of the rules asserted in `tests/asset-use.test.ts`. The unit

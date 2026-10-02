@@ -251,6 +251,54 @@ const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?
 							)}</textarea
 						>
 					</details>
+
+					{/*
+					 * The handoff (#51). Discovery ends with a choice, and until this
+					 * existed the only thing a reader could do with a decided board was
+					 * paste links somewhere and describe the comparison from memory.
+					 *
+					 * A disclosure rather than a button, and links rather than a form: both
+					 * renderings are real documents at real addresses, so they can be
+					 * bookmarked, diffed and re-fetched later. The copy states what matters
+					 * before anyone follows a link — that the handoff carries each
+					 * example's rights and grants nothing by existing.
+					 *
+					 * No JavaScript, like everything else on this page: a link works with a
+					 * keyboard, a finger and a screen reader, and the endpoint decides what
+					 * a board actually holds.
+					 */}
+					<details class="export">
+						<summary class="tag">Build from this board</summary>
+						<p class="export__note">
+							An implementation handoff turns this board into a document another agent
+							can act on: what to achieve, what each entry actually demonstrates, the
+							recipe to recreate it, and the rights status of every example it names. It
+							reads the same records this page does, so it cannot describe a
+							different catalogue. What it does not do is grant anything — the use
+							state is per example, and reference only stays reference only in the
+							handoff as it does here.
+						</p>
+						<ul class="handoff__links">
+							<li>
+								<a class="linkish" href={`/api/handoff.json?board=${encodeURIComponent(active)}`}>
+									Open the handoff as JSON
+								</a>
+								<span>— versioned and machine-readable, for an agent</span>
+							</li>
+							<li>
+								<a
+									class="linkish"
+									href={`/api/handoff.json?board=${encodeURIComponent(active)}&format=md`}
+								>
+									Open the handoff as Markdown
+								</a>
+								<span>
+									— the same document, to paste into an issue, a DESIGN.md or the top
+									of a prompt
+								</span>
+							</li>
+						</ul>
+					</details>
 				</>
 			)
 		}
@@ -498,6 +546,37 @@ const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?
 		max-width: var(--measure);
 		font-size: var(--step--1);
 		color: var(--ink-3);
+	}
+
+	/* A link plus what it is for, one per line. The list rather than a row of
+	   buttons because both are documents to open rather than actions to perform,
+	   and a row of two identically-worded buttons would say nothing about which is
+	   which. */
+	.handoff__links {
+		display: grid;
+		gap: var(--sp-2);
+		margin: var(--sp-3) 0 0;
+		padding: 0;
+		list-style: none;
+		max-width: 44rem;
+	}
+
+	.handoff__links li {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 0.1rem 0.35rem;
+	}
+
+	.handoff__links span {
+		font-size: var(--step--2);
+		color: var(--ink-3);
+	}
+
+	.handoff__links .linkish {
+		min-height: var(--tap);
+		display: inline-flex;
+		align-items: center;
 	}
 
 	.export textarea {

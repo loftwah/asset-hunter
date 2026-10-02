@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * The catalogue client (#58).
+ * The catalogue client (#58) and the handoff client (#51).
  *
  * An agent should not have to scrape HTML to ask "what does this catalogue
  * know about seams, and what are the rights on it". This reads the documented
@@ -13,6 +13,11 @@
  *   node scripts/catalogue.mjs fetch --out /tmp/catalogue.json
  *   node scripts/catalogue.mjs summary --file /tmp/catalogue.json
  *   node scripts/catalogue.mjs search "loop without a seam" --file /tmp/catalogue.json
+ *
+ * The `handoff` commands read `/api/handoff.json` — the same records, the same
+ * loader, the same use-state decision — and produce the two things a person
+ * actually wants from a shortlist: a Markdown file to keep in a repository, and a
+ * printed rights summary to read before sending it anywhere.
  *
  * Usage: node scripts/catalogue.mjs <command> [options]
  */
@@ -27,6 +32,29 @@ function flag(name, fallback = undefined) {
 	return i === -1 ? fallback : rest[i + 1];
 }
 const has = (name) => rest.includes(`--${name}`);
+
+/**
+ * Flags that take a value. Everything else is a boolean switch.
+ *
+ * Needed to tell an argument from a flag's value: `--url http://localhost:4321
+ * get density-gradient` must read `density-gradient` as the id, not the URL. A
+ * plain "not starting with `--`" filter cannot make that distinction, and it made
+ * `handoff --url … ` build a document about a slug spelled `http://…`.
+ */
+const VALUE_FLAGS = new Set([
+	// `board` has no command here, and is listed anyway: it is a value-taking
+	// flag on the endpoint, so a caller who passes it must not have it mistaken
+	// for the first positional argument.
+	"url", "file", "out", "vertical", "rights", "status", "board",
+	"slugs", "chose", "rejected", "goal", "surface", "platform", "constraints", "acceptance",
+]);
+
+/** Bare words after the command name, with each flag's value consumed with it. */
+const positional = rest.filter((token, i) => {
+	if (token.startsWith("--")) return false;
+	const previous = rest[i - 1];
+	return !(previous?.startsWith("--") && VALUE_FLAGS.has(previous.slice(2)));
+});
 
 const DEFAULT_URL = flag("url") ?? "http://localhost:4321";
 
@@ -152,7 +180,7 @@ const commands = {
 	},
 
 	async search() {
-		const query = rest.filter((a) => !a.startsWith("--"))[0] ?? fail("search needs a query");
+		const query = positional[0] ?? fail("search needs a query");
 		const c = await load();
 		const wanted = terms(query);
 		if (!wanted.length) fail(`"${query}" has no searchable words`);
@@ -185,7 +213,7 @@ const commands = {
 	},
 
 	async get() {
-		const id = rest.filter((a) => !a.startsWith("--"))[0] ?? fail("get needs an id");
+		const id = positional[0] ?? fail("get needs an id");
 		const c = await load();
 		const p = c.possibilities.find((x) => x.id === id);
 		if (!p) fail(`no possibility "${id}". Try \`list\`.`);
@@ -228,7 +256,140 @@ const commands = {
 			}
 		}
 	},
+	/* -------------------------------------------------------------------- */
+	/* The handoff client (#51)                                             */
+	/* -------------------------------------------------------------------- */
+
+	/**
+	 * The implementation handoff for a chosen set of possibilities (#51).
+	 *
+	 * Reads `/api/handoff.json` — the same records, the same loaders and the same
+	 * use-state decision as `/use/<slug>` and `/api/payload/<example>` — so a
+	 * rights statement printed here is the one the site would print.
+	 *
+	 * `--markdown` is the server's own rendering rather than a summary written
+	 * here, which is why this command holds no copy of the document: a second
+	 * renderer in the client is a second answer to "what may I do with this".
+	 */
+	async handoff() {
+		if (flag("format")) fail("use `--markdown` rather than `--format`");
+		// `--file` is the other client's offline mode and does not apply here: a
+		// handoff is built from the catalogue at request time, so a saved copy is
+		// evidence of what was true then rather than an answer. Silently ignoring
+		// the flag would read as "here is your saved handoff".
+		if (flag("file")) fail("a handoff is built from the live catalogue; `--file` has no handoff to read");
+		const markdown = has("markdown") || has("md");
+		// The report is printed from the JSON and the document is the rendered
+		// Markdown. They are two outputs, not two views of one, and silently
+		// dropping a flag the caller asked for is the thing this client keeps
+		// refusing to do.
+		if (markdown && has("check")) fail("`--markdown` writes the document; `--check` prints the report. Pick one.");
+		const params = new URLSearchParams();
+		// A flag, or the bare slugs after the command name. Both are how this is
+		// actually typed, and neither is a second way of reading the catalogue.
+		const slugs = flag("slugs") ?? positional[0];
+		if (!slugs) fail("handoff needs --slugs <slug>[,<slug>] (or bare slugs after the command)");
+		params.set("slugs", slugs);
+		for (const key of ["chose", "rejected", "goal", "surface", "platform", "constraints", "acceptance"]) {
+			// Only what was passed is sent. An unsupplied `--goal` is not sent as an
+			// empty string, because the endpoint reads an absent field as "not
+			// recorded" and there is no reason to make that indistinguishable from
+			// "recorded as blank" in the address a decision is traced back through.
+			const value = flag(key);
+			if (value) params.set(key, value);
+		}
+		if (markdown) params.set("format", "md");
+		if (has("fresh")) params.set("fresh", "1");
+
+		const url = `${DEFAULT_URL}/api/handoff.json?${params.toString()}`;
+		const res = await fetch(url);
+		if (!res.ok) {
+			// The endpoint's 400 explains how to ask, so it is passed through rather
+			// than replaced with a one-line guess.
+			const text = await res.text().catch(() => "");
+			fail(`${url} → HTTP ${res.status}${text ? `\n\n${text.trim()}` : ""}`);
+		}
+		const text = await res.text();
+		// The Markdown rendering is for a person to paste, so the report and the
+		// counts below are read from the JSON. A Markdown handoff is never parsed
+		// back into a claim about rights by this client.
+		const document = markdown ? null : JSON.parse(text);
+
+		/*
+		 * Nothing resolved is a refusal, not a document. The endpoint answers 200
+		 * because an empty answer is a legitimate answer to the catalogue contract —
+		 * `board.unknown` names what was asked for — but handing a person a file
+		 * containing no possibilities would read as "there is nothing here to build",
+		 * which is a different and untrue claim.
+		 */
+		if (document) {
+			if (document.possibilities.length === 0) {
+				fail(
+					`nothing in the catalogue matched ${slugs}. ` +
+						"`list` and `search` show the slugs that do exist.",
+				);
+			}
+			if (has("check")) {
+				rightsReport(document);
+				return;
+			}
+		}
+
+		const out = flag("out");
+		if (out) {
+			writeFileSync(out, markdown && !text.endsWith("\n") ? `${text}\n` : text);
+			console.log(`✔ wrote ${out} — ${res.headers.get("x-ah-handoff-schema")} · ${url}`);
+			return;
+		}
+		process.stdout.write(markdown ? text : `${JSON.stringify(JSON.parse(text), null, "\t")}\n`);
+	},
 };
+
+/**
+ * The rights report a person reads before sending a handoff anywhere.
+ *
+ * Every example is listed with its own state and obligation. A report that prints
+ * a count and hides the entries is a report that lets a reader believe
+ * reference-only material was cleared, which is the one failure this whole flow
+ * exists to prevent — so the count is a summary of the lines, never a substitute
+ * for them.
+ */
+function rightsReport(handoff) {
+	console.log(`${handoff.schema} · ${handoff.contract.json} · fingerprint ${handoff.fingerprint}`);
+	console.log(
+		`${handoff.rights.examples} example${handoff.rights.examples === 1 ? "" : "s"} · ${handoff.rights.summary}`,
+	);
+	console.log(`${handoff.rights.payloads} retained original${handoff.rights.payloads === 1 ? "" : "s"} to download.`);
+	console.log("");
+	for (const p of handoff.possibilities) {
+		const mark = p.decision === "chosen" ? "+" : p.decision === "rejected" ? "x" : "-";
+		console.log(`${mark} ${p.id}  ${p.title}`);
+		console.log(`    entry ${p.rightsLabel ?? "unstated"} · weakest example ${p.examplesUseState}`);
+		for (const e of p.examples) {
+			const blocked = e.blockedBy ? ` (blocked by ${e.blockedBy})` : "";
+			console.log(`    ${e.id}  ${e.useStateLabel}${blocked}`);
+			const where = [e.provenance.sourceRepo, e.provenance.sourceRef, e.provenance.sourcePath]
+				.filter(Boolean)
+				.join(" · ");
+			if (where) console.log(`      from ${where}`);
+			if (e.licence.spdx) console.log(`      ${e.licence.spdx}`);
+			if (e.obligation) console.log(`      ${e.obligation}`);
+			console.log(`      ${e.record}`);
+		}
+	}
+	if (handoff.board.unknown.length > 0) {
+		console.log(`\nunknown slugs, not in the catalogue: ${handoff.board.unknown.join(", ")}`);
+	}
+	if (handoff.board.overflow.length > 0) {
+		console.log(`cut by the board limit: ${handoff.board.overflow.join(", ")}`);
+	}
+	if (!handoff.decision.recorded) {
+		console.log("\nno option was marked chosen. Add --chose <slug> before this goes to an agent.");
+	}
+	if (handoff.objective.unrecorded.length > 0) {
+		console.log(`not recorded, and therefore not invented: ${handoff.objective.unrecorded.join(", ")}`);
+	}
+}
 
 const file = flag("file");
 
@@ -243,6 +404,15 @@ if (!command || !commands[command]) {
   rights [--status S]                 rights status per possibility
   verticals                           coverage by vertical
   schema                              the contract and its field types
+
+  handoff <slug>[,<slug>]            an implementation handoff for a chosen set
+    --markdown                       the Markdown rendering, as the server writes it
+    --check                          the rights report in words, one line per example
+    --out FILE                       write it to a file instead of stdout
+    --chose S[,S] / --rejected S[,S] the decision, recorded so it can be traced
+    --goal T --surface T --platform T --constraints T --acceptance T
+                                      what the reader recorded; whatever is left
+                                      blank is named as unrecorded, never invented
 
   --url   http://localhost:4321      where to read from
   --file  path.json                   read a saved catalogue instead
