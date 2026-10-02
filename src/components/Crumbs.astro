@@ -1,0 +1,126 @@
+---
+/**
+ * The breadcrumb trail, and the rule that keeps a separator off a line of its own.
+ *
+ * Four pages had four copies of this, and all four were broken the same way.
+ *
+ * The trail is a `display: flex; flex-wrap: wrap` row whose separators are their
+ * own elements. A flex item can start a line, so a separator could: with a long
+ * title the trail wrapped and left a line containing nothing but `/` — or `/ /`
+ * — between the vertical and the title. Measured at 1280×800 on
+ * `/possibilities/density-gradient`:
+ *
+ *     Catalogue  UI / Web  Bento layouts with a deliberate density ramp
+ *     /  /
+ *
+ * A line with two slashes and no content, on every drill-in and every use page at
+ * 768, 1280, 1680 and 1920px, and on a phone it repeats. Nothing else in the
+ * visual matrix could see it: the elements are not clipped, not too small and not
+ * overlapping, so every check passed on a breadcrumb that is visibly wrong. It
+ * was found by reading a capture, which is the argument for having captures.
+ *
+ * **The fix is grouping, not a number.** Each step and the separator in front of
+ * it are one flex item, so a break can only ever happen *between* steps and the
+ * separator travels with the step it introduces. There is no `white-space` value
+ * and no width that does this: in a flex row, "keep with next" is a property of
+ * the box, not of the text.
+ *
+ * The trail is also the one place on the site where the current page is named in
+ * a landmark rather than only in an `h1` further down, so the last step carries
+ * `aria-current="page"` — the masthead already claims that for the section, and
+ * two of them in two different landmarks is what the attribute is for.
+ */
+export interface Crumb {
+	label: string;
+	/** Absent on the step you are already on. */
+	href?: string | null;
+}
+
+interface Props {
+	steps: Crumb[];
+}
+
+const { steps } = Astro.props;
+---
+
+<nav class="crumbs" aria-label="Breadcrumb">
+	{
+		steps.map((step, index) => (
+			<span class="crumbs__step">
+				{index > 0 && <span class="crumbs__sep" aria-hidden="true">/</span>}
+				{step.href ? (
+					<a href={step.href}>{step.label}</a>
+				) : (
+					<span class="crumbs__here" aria-current="page">
+						{step.label}
+					</span>
+				)}
+			</span>
+		))
+	}
+</nav>
+
+<style>
+	.crumbs {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.1rem 0.5rem;
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		color: var(--ink-3);
+	}
+
+	/*
+	 * One flex item per step, separator included.
+	 *
+	 * This is the whole fix, and it has to live here rather than in a page's
+	 * stylesheet: the separator has to be inside the same box as the step it
+	 * belongs to, and Astro scopes a page's `<style>` to that page's own markup.
+	 */
+	.crumbs__step {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-width: 0;
+	}
+
+	.crumbs__sep {
+		flex: none;
+		color: var(--ink-4);
+	}
+
+	/* Padding, not type size, carries the tap target: breadcrumb type is
+	   intentionally small so the hierarchy stays readable. */
+	.crumbs a {
+		display: inline-flex;
+		align-items: center;
+		min-height: var(--tap);
+		padding-inline: 0.15rem;
+		color: var(--ink-3);
+		transition: color var(--dur-fast) var(--ease-out);
+	}
+
+	.crumbs a:hover {
+		color: var(--ink);
+	}
+
+	/*
+	 * No `min-height` here, unlike the link above it.
+	 *
+	 * `DESIGN.md` §7's 44px floor is for things you can press. The last step is a
+	 * `<span>`: giving it the tap floor makes a taller box around text that cannot
+	 * be clicked, in a header that has to clear `DESIGN.md` §5b's fold on a
+	 * landscape phone. Two of the four copies this replaced had the floor here and
+	 * two did not; the shortest of the four is the right one, and the difference is
+	 * 24px of dead height on every page with a trail.
+	 */
+	.crumbs__here {
+		display: inline-flex;
+		align-items: center;
+		padding-inline: 0.15rem;
+		color: var(--ink-2);
+	}
+</style>

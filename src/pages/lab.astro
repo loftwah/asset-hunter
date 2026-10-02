@@ -149,12 +149,19 @@ const origins = [...new Set(fixtures.map((f) => f.possibility.representativeOrig
 			distribution all have to read as opinion rather than as a score.
 		</p>
 		<div class="signals">
-			{SIGNAL_FIXTURES.map((fixture) => (
+			{SIGNAL_FIXTURES.map((fixture, index) => (
 				<figure class="signal-case" data-viewer={fixture.viewer ? "signed-in" : "signed-out"}>
 					<figcaption class="tag signal-case__note">{fixture.note}</figcaption>
 					<SignalPanel
 						subjectType="possibility"
 						subjectSlug="fixture-signal"
+						/*
+						 * Every fixture rates the same subject, so `subjectSlug` alone
+						 * would give all seven panels the same `reason-`/`detail-` ids and
+						 * every label on the page would point at the first one. See
+						 * `SignalPanel`'s `idScope`.
+						 */
+						idScope={`fixture-${index + 1}`}
 						viewer={fixture.viewer}
 						community={fixture.community}
 						openReports={fixture.openReports}
@@ -271,7 +278,18 @@ const origins = [...new Set(fixtures.map((f) => f.possibility.representativeOrig
 
 	.section {
 		padding-block: var(--sp-6);
-		scroll-margin-top: 6rem;
+		/*
+		 * The measured masthead, not a number.
+		 *
+		 * This was `6rem`, which is 96px. The masthead publishes its real height
+		 * into `--masthead-h` and measures 99px at 360–430px and 100px at 768px, so
+		 * every jump link on the lab landed 2–4px *under* the sticky header on a
+		 * phone and a tablet. `scripts/visual-qa.mjs` found it the moment `/lab`
+		 * was audited at an anchor rather than only at the top of the page — a
+		 * fragment link that arrives with its heading clipped is a link that looks
+		 * broken, and 3px of clip is enough to cut the top of a display face.
+		 */
+		scroll-margin-top: calc(var(--masthead-h) + var(--sp-4));
 	}
 
 	.section + .section {

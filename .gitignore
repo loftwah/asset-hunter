@@ -1,5 +1,8 @@
 # Dependencies and build output
-node_modules/
+# No trailing slash on `node_modules`: a worktree whose dependencies are a
+# *symlink* to another checkout is not a directory to git, so `node_modules/`
+# does not match it and `git add -A` commits a symlink into node_modules.
+node_modules
 dist/
 .astro/
 .output/

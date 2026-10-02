@@ -7,6 +7,7 @@
 import { getEmDashEntry } from "emdash";
 import { PortableText } from "emdash/ui";
 import Base from "../../layouts/Base.astro";
+import Crumbs from "../../components/Crumbs.astro";
 import HeadingBlock from "../../components/HeadingBlock.astro";
 
 const { slug } = Astro.params;
@@ -77,11 +78,7 @@ const headingBlocks = { h2: HeadingBlock, h3: HeadingBlock };
 	path={`/pages/${page.slug ?? slug}`}
 >
 	<article class="page shell">
-		<nav class="crumbs" aria-label="Breadcrumb">
-			<a href="/">Catalogue</a>
-			<span aria-hidden="true">/</span>
-			<span class="crumbs__here">{page.title}</span>
-		</nav>
+		<Crumbs steps={[{ label: "Catalogue", href: "/" }, { label: page.title }]} />
 
 		<header class="head">
 			<h1 class="display head__title">{page.title}</h1>
@@ -121,35 +118,6 @@ const headingBlocks = { h2: HeadingBlock, h3: HeadingBlock };
 	.page {
 		max-width: 68rem;
 		padding-block: var(--sp-6) var(--sp-8);
-	}
-
-	.crumbs {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 0.1rem 0.5rem;
-		font-family: var(--font-mono);
-		font-size: var(--step--2);
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-		color: var(--ink-4);
-	}
-
-	.crumbs a {
-		display: inline-flex;
-		align-items: center;
-		min-height: var(--tap);
-		padding-inline: 0.15rem;
-		color: var(--ink-3);
-		transition: color var(--dur-fast) var(--ease-out);
-	}
-
-	.crumbs a:hover {
-		color: var(--ink);
-	}
-
-	.crumbs__here {
-		color: var(--ink-2);
 	}
 
 	.head {

@@ -41,6 +41,26 @@ interface Props {
 	openReports?: Report[];
 	/** Noun for the thing being rated, used in the screen-reader legend. */
 	subjectLabel?: string;
+	/**
+	 * Distinguishes this panel's element ids from another panel's on the same
+	 * page.
+	 *
+	 * The panel hard-codes `signals`, `report`, `reason-<slug>` and
+	 * `detail-<slug>`, which is unique as long as there is one panel per page —
+	 * and `/lab` renders all seven states at once, so every `id` was duplicated
+	 * eight, seven and seven times and every `<label for>` on the page pointed at
+	 * the *first* panel's controls. A screen reader on the lab was told the sixth
+	 * form's label was the first form's reason list.
+	 *
+	 * **Unset, deliberately**, for a page that has one panel: `signals` and
+	 * `report` are then still exactly that, because
+	 * `/possibilities/<slug>#signals` is a real link — the masthead, the
+	 * breadcrumbs and `scripts/visual-qa.mjs` all use it, and a heading id that
+	 * changes under an existing fragment is a broken link nobody chose. Scoping
+	 * only when a caller asks for it fixes the duplication without moving
+	 * anything.
+	 */
+	idScope?: string | null;
 }
 
 const {
@@ -50,9 +70,22 @@ const {
 	community,
 	openReports = [],
 	subjectLabel = "entry",
+	idScope = null,
 } = Astro.props;
 
 const back = subjectType === "possibility" ? `/possibilities/${subjectSlug}` : "/";
+
+/*
+ * Ids for this instance. `idScope` is null on a page with one panel, where
+ * `signals` and `report` stay exactly that so the existing
+ * `/possibilities/<slug>#signals` fragment keeps resolving.
+ */
+const ids = {
+	signals: idScope ? `signals-${idScope}` : "signals",
+	report: idScope ? `report-${idScope}` : "report",
+	reason: idScope ? `reason-${idScope}` : `reason-${subjectSlug}`,
+	detail: idScope ? `detail-${idScope}` : `detail-${subjectSlug}`,
+};
 
 /*
  * Where signing in actually is.
@@ -70,8 +103,8 @@ const back = subjectType === "possibility" ? `/possibilities/${subjectSlug}` : "
 const SIGN_IN = "/_emdash/admin";
 ---
 
-<section aria-labelledby="signals" class="signals">
-	<h2 id="signals" class="section__title">Signals</h2>
+<section aria-labelledby={ids.signals} class="signals">
+	<h2 id={ids.signals} class="section__title">Signals</h2>
 
 	<div class="signal">
 		<p class="signal__head">
@@ -171,8 +204,8 @@ const SIGN_IN = "/_emdash/admin";
 	</div>
 </section>
 
-<section aria-labelledby="report" class="report">
-	<h2 id="report" class="section__title">Report a problem</h2>
+<section aria-labelledby={ids.report} class="report">
+	<h2 id={ids.report} class="section__title">Report a problem</h2>
 	<p class="report__why">
 		A report is not a low rating. Use it when something here is wrong rather than bad, and a
 		licence concern is read before anything else.
@@ -187,8 +220,8 @@ const SIGN_IN = "/_emdash/admin";
 			<input type="hidden" name="subject_type" value={subjectType} />
 			<input type="hidden" name="subject_slug" value={subjectSlug} />
 			<input type="hidden" name="back" value={back} />
-			<label class="report__label tag" for={`reason-${subjectSlug}`}>What is wrong</label>
-			<select id={`reason-${subjectSlug}`} name="reason">
+			<label class="report__label tag" for={ids.reason}>What is wrong</label>
+			<select id={ids.reason} name="reason">
 				{REPORT_REASONS.map((reason) => (
 					<option value={reason}>{REPORTS[reason].label}</option>
 				))}
@@ -201,11 +234,11 @@ const SIGN_IN = "/_emdash/admin";
 				A licence concern is read before anything else here. If the status no longer matches
 				what the source says, that is a correction rather than a preference.
 			</p>
-			<label class="report__label tag" for={`detail-${subjectSlug}`}>
+			<label class="report__label tag" for={ids.detail}>
 				Details (optional)
 			</label>
 			<textarea
-				id={`detail-${subjectSlug}`}
+				id={ids.detail}
 				name="detail"
 				rows="3"
 				maxlength="2000"

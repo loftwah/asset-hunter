@@ -13,13 +13,49 @@
  *   node scripts/visual-qa.mjs --audit-only    # assertions, no new captures
  *   node scripts/visual-qa.mjs --url http://…  # audit a different origin
  */
-import { mkdirSync, rmSync, existsSync } from "node:fs";
+import {
+	mkdirSync,
+	rmSync,
+	existsSync,
+	readFileSync,
+	writeFileSync,
+	readdirSync,
+} from "node:fs";
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { chromium, devices } from "playwright";
 
 const args = process.argv.slice(2);
 const baseUrl = valueOf("--url") ?? "http://localhost:4321";
 const auditOnly = args.includes("--audit-only");
 const outDir = new URL("../screenshots/", import.meta.url).pathname;
+
+/**
+ * Whether this origin can serve the development-only routes.
+ *
+ * `/lab` and the fixture selections behind `/use/fixture-use-page-*` are refused
+ * in a production build, so a matrix that expected them there would fail every
+ * production audit. The run *prints* which routes it skipped and why rather than
+ * dropping them silently — a matrix that quietly covers less on the deployed site
+ * than on a laptop is the sort of thing that has to be stated, not assumed.
+ */
+const isLocal = /^(https?:\/\/)?(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(baseUrl);
+
+/**
+ * A shortlist with two boards in it, as the `ah_board` cookie holds it.
+ *
+ * Encoded exactly as `src/lib/board.ts`'s `serialiseBoards` encodes it, because
+ * the route validates every slug against the catalogue and drops the rest: a
+ * cookie written any other way produces an empty board and a green run that
+ * checked nothing. The slugs are real entries, which is the other half of why
+ * this works.
+ */
+const BOARD_COOKIE = encodeURIComponent(
+	JSON.stringify({
+		default: ["density-gradient", "crowd-fluid", "seamless-loop", "match-cut"],
+		"Autumn picks": ["kinetic-type", "negative-space-mark"],
+	}),
+);
 
 function valueOf(flag) {
 	const i = args.indexOf(flag);
@@ -83,6 +119,145 @@ const VIEWPORTS = [
 const MIN_GATE_HEIGHT = 46 * 16;
 
 /**
+ * Routes that exist only in `astro dev`.
+ *
+ * `/lab` is refused in a production build with a hard 404, and the fixture
+ * selections behind `/use/fixture-use-page-*` resolve through the same `DEV`
+ * guard. They are listed here with `devOnly` rather than filtered inline, so the
+ * coverage check can tell "somebody deleted this route" (a failure) from "this
+ * origin is production, where the route is refused by design" (reported, not
+ * failed) — the difference between an honest matrix and one that quietly covers
+ * less on the deployed site than on a laptop.
+ */
+const DEV_ROUTES = [
+	{ path: "/lab", name: "lab", covers: "lab", devOnly: true, expect: { ".case": 30, "#vocabulary": 1, ".signal-case": 7 }, media: true },
+	{
+		path: "/lab#signals",
+		name: "lab-signals",
+		covers: "signals",
+		devOnly: true,
+		anchor: "#signals",
+		// Seven panels. The two authentication states differ in a *control*, not
+		// only in a caption — the rate button is enabled signed in and disabled
+		// signed out, and the report fieldset follows it — so `auditSignalStates`
+		// asserts the difference and a count here would not: counting cannot tell
+		// an enabled button from a disabled one.
+		expect: { ".signal-case": 7, ".dist__row": 25 },
+		audit: "signals",
+	},
+	{
+		path: "/lab#asset-use",
+		name: "lab-use",
+		covers: "use",
+		devOnly: true,
+		anchor: "#asset-use",
+		// All four use states plus the two handoff outcomes that are not about
+		// rights. `data-use-state` is the component's own word for the state, so
+		// this asserts the vocabulary rather than the styling.
+		expect: {
+			'.use[data-use-state="reference-only"]': 1,
+			'.use[data-use-state="review-required"]': 1,
+			'.use[data-use-state="reusable-with-attribution"]': 1,
+			'.use[data-use-state="reusable"]': 2,
+			".use-case": 6,
+		},
+	},
+	/*
+	 * `/use/<slug>` in every use state, on the real page.
+	 *
+	 * The catalogue is 24 of 24 `reference` with nothing retained, so the real
+	 * route can only ever render one of the four states and always with a payload
+	 * count of zero. The other three — and every page with anything to download —
+	 * had no pixels anywhere, which meant the summary line, the download accent,
+	 * the selection credit block and the "N retained originals" copy had never
+	 * been rendered by anybody.
+	 *
+	 * Each `expect` names the honest count for that state, including the downloads
+	 * that must *not* be there, so a change that quietly turns a cleared page back
+	 * into a reference page fails here rather than passing as "still fine".
+	 */
+	{
+		path: "/use/fixture-use-page-reference",
+		name: "use-reference",
+		covers: "use",
+		devOnly: true,
+		expect: { '.use[data-use-state="reference-only"]': 1, ".use__control--primary": 0, '[data-payload-count="0"]': 1 },
+	},
+	{
+		path: "/use/fixture-use-page-review",
+		name: "use-review",
+		covers: "use",
+		devOnly: true,
+		expect: { '.use[data-use-state="review-required"]': 1, ".use__quote": 1, ".use__rows": 1, ".use__control--primary": 0 },
+	},
+	{
+		path: "/use/fixture-use-page-attribution",
+		name: "use-attribution",
+		covers: "use",
+		devOnly: true,
+		expect: { '.use[data-use-state="reusable-with-attribution"]': 1, ".use__credit": 1, "#selection-credit": 1, ".use__control--primary": 0 },
+	},
+	{
+		path: "/use/fixture-use-page-reusable",
+		name: "use-reusable",
+		covers: "use",
+		devOnly: true,
+		// The only page in the product where a download control exists, so it is
+		// the one page where `DESIGN.md` §9.6's "at most one download" rule can
+		// actually be checked rather than assumed.
+		expect: { '.use[data-use-state="reusable"]': 1, ".use__control--primary": 1, '.use[data-handoff="payload"]': 1, '[data-payload-count="1"]': 1 },
+	},
+	{
+		path: "/use/fixture-use-page-not-retained",
+		name: "use-not-retained",
+		covers: "use",
+		devOnly: true,
+		// Permitted, credited, and nothing retained: the state that separates "0
+		// because nothing is permitted" from "0 because the file is not held here",
+		// and the one the catalogue cannot reach.
+		expect: { '.use[data-use-state="reusable"]': 1, ".use__control--primary": 0, ".use__credit": 1 },
+	},
+	/*
+	 * The scale wall (#49), at the largest size in the matrix rather than a
+	 * sample of it.
+	 *
+	 * Audited at every viewport like a real route because it is the real route
+	 * with a bigger catalogue: the same component, grid, filter and lazy strategy
+	 * with `?scale=5000`. A matrix of one 24-entry wall cannot find the failure
+	 * modes that only exist when there are enough tiles for the grid to wrap
+	 * oddly, for the sticky rail to have a long document to sit over, or for
+	 * tap-target checking to hit its own time budget — and each of those is a
+	 * real reader on a real phone.
+	 *
+	 * `?scale=` is refused outside `astro dev`, so it is dev-only rather than
+	 * reported against a production origin, exactly like `/lab`.
+	 *
+	 * No `media: true`. The blank-frame and layout-shift checks assume a page's
+	 * imagery is its content; at 5,000 lazy plates the audit window legitimately
+	 * finds most of them unfetched, and calling that a failure would be the
+	 * harness disagreeing with the lazy strategy that is the thing working.
+	 * `npm run check:perf` is where media loading at scale is measured, and it
+	 * measures it properly.
+	 *
+	 * `capture: false` — a `fullPage` capture of a 5,000-tile wall is 1.1 million
+	 * pixels tall and Chromium silently clamps it, which produces a file that
+	 * looks like a capture and is not one. A matrix that accumulates
+	 * confidently-wrong screenshots is worse than one with fewer of them.
+	 */
+	{
+		path: "/?scale=5000",
+		name: "wall-scale-5000",
+		covers: "wall",
+		devOnly: true,
+		expect: { ".tile": 5000 },
+		fold: ".tile__plate",
+		scroll: 1400,
+		stickyFits: true,
+		capture: false,
+	},
+];
+
+/**
  * Routes under audit. `expect` is the minimum number of elements that must be
  * present for the page to count as working — it is what distinguishes a real
  * render from an empty state or an error page. `fold` names the selector whose
@@ -90,7 +265,7 @@ const MIN_GATE_HEIGHT = 46 * 16;
  * wall whose plates start below the fold is a layout bug even though every
  * other check passes.
  *
- * Three optional flags carry the checks that need more than a fresh page:
+ * Optional flags carry the checks that need more than a fresh page:
  *
  * - `scroll` scrolls before auditing, because **a full-page screenshot does not
  *   simulate sticky positioning.** Chromium lays sticky and fixed elements out
@@ -113,14 +288,22 @@ const MIN_GATE_HEIGHT = 46 * 16;
  * - `plateMin` asserts a plate's rendered **width**, not its position. The floor
  *   is `DESIGN.md` §9.6's number, so this script reports it rather than choosing
  *   it, and every viewport it does not cover is still printed.
+ * - `cookie` seeds a cookie before the request, because some states live in one.
+ *   A board is a cookie by design (`src/lib/board.ts`), so without this the
+ *   populated board — the only version of `/board` anybody actually uses — was
+ *   never captured or audited, and its compare grid, per-entry disclosure,
+ *   export block and clear form had never been seen at any viewport.
+ * - `covers` names the entry in `COVERAGE` this route is the evidence for, so
+ *   the end-of-run table cannot claim a state is covered by a route that no
+ *   longer checks it.
  */
 const ROUTES = [
-	// `stickyFits` marks the routes that hold sticky chrome — the wall's filter
-	// rail and the drill-in's plate — so each is checked at every size in the
-	// matrix rather than only where a screenshot happens to look right.
-	{ path: "/", name: "wall", expect: { ".tile": 20 }, fold: ".tile__plate", plateAspect: ".tile--featured .tile__plate", media: true, scroll: 1400, stickyFits: true },
-	{ path: "/?vertical=games", name: "wall-filtered", expect: { ".tile": 2 }, fold: ".tile__plate", media: true },
-	{ path: "/possibilities/density-gradient", name: "detail", expect: { ".section__title": 3 }, media: true, scroll: 1200, stickyFits: true },
+	// `stickyFits` marks the two routes that hold sticky chrome — the wall's
+	// filter rail and the drill-in's plate — so both are checked at every size in
+	// the matrix rather than only where a screenshot happens to look right.
+	{ path: "/", name: "wall", covers: "wall", expect: { ".tile": 20 }, fold: ".tile__plate", plateAspect: ".tile--featured .tile__plate", media: true, scroll: 1400, stickyFits: true },
+	{ path: "/?vertical=games", name: "wall-filtered", covers: "search", expect: { ".tile": 2 }, fold: ".tile__plate", media: true },
+	{ path: "/possibilities/density-gradient", name: "detail", covers: "detail", expect: { ".section__title": 3 }, media: true, scroll: 1200, stickyFits: true },
 	/*
 	 * The drill-in's own fold. `DESIGN.md` §5b states the rule for the wall and
 	 * says nothing about the drill-in, so this is **measured, not gated** — see
@@ -135,12 +318,14 @@ const ROUTES = [
 		expect: { ".plate img": 1 },
 		measureFold: ".plate img",
 	},
-	// The rating and report interactions (#37). Audited on a scrolled frame
-	// because that block is 2,000px down the drill-in and a `fullPage` capture
-	// of the top of the page says nothing about it. `scroll` lands on it.
+	// The rating and report interactions (#37) **signed out** — the state the
+	// catalogue is actually in, so it is a real route and not a fixture. Audited
+	// on an anchored frame because that block is 2,000px down the drill-in and a
+	// `fullPage` capture of the top of the page says nothing about it.
 	{
 		path: "/possibilities/density-gradient#signals",
 		name: "detail-signals",
+		covers: "signals",
 		expect: { ".rate__star": 5, ".rate button": 1, ".report__form select": 1, ".report__form button": 1 },
 		anchor: "#signals",
 	},
@@ -161,18 +346,19 @@ const ROUTES = [
 	{
 		path: "/use/density-gradient",
 		name: "asset-use",
+		covers: "use",
 		expect: { ".use": 1, ".summary__payload": 1, ".states__row": 4 },
 		media: true,
 		fold: ".plate img",
 		plateMin: { selector: ".plate img", px: 560, fromWidth: 1280 },
 	},
 	{ path: "/verticals", name: "verticals", expect: { ".row": 10 }, media: true },
-	// An in-page anchor. `/verticals#games` and `/pages/licensing#statuses` are
+	// An in-page anchor. `/verticals#games` and `/pages/licensing#the-statuses` are
 	// linked from the masthead, the breadcrumbs and the footer, so a target that
 	// lands under the sticky masthead is a link that looks broken.
 	{ path: "/verticals#games", name: "verticals-anchor", expect: { ".row": 10 }, anchor: "#games" },
 	{ path: "/collections", name: "collections", expect: { ".collection": 4 } },
-	{ path: "/collections/seams", name: "collection", expect: { ".tile": 4 }, fold: ".tile__plate", media: true },
+	{ path: "/collections/seams", name: "collection", covers: "detail", expect: { ".tile": 4 }, fold: ".tile__plate", media: true },
 	// The gallery (#17). Deliberately **not** `media: true`: that flag asks the
 	// harness to assert that media renders at its container's declared aspect
 	// ratio, which is the specimen-plate rule. A gallery image is a screenshot
@@ -182,53 +368,98 @@ const ROUTES = [
 	{ path: "/gallery", name: "gallery", expect: { ".shot": 4, ".phone__link img": 1 }, scroll: 900 },
 	{ path: "/pages/about", name: "page-about", expect: { ".prose p": 5 } },
 	{ path: "/pages/licensing", name: "page-licensing", expect: { ".prose h2": 3 }, anchor: "#the-statuses" },
-	// The lab (#45) is development-only but audited like a real route: a state
-	// that exists only in a screenshot is a state nobody has checked. It 404s in
-	// production by design, so it is skipped rather than reported there — a
-	// matrix that fails because a deliberately-absent route is absent would train
-	// people to ignore the matrix.
-	...(baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1")
-		? [
-				{ path: "/lab", name: "lab", expect: { ".case": 30, "#vocabulary": 1, ".signal-case": 7 }, media: true },
-				/*
-				 * The scale wall (#49), at the largest size in the matrix rather than
-				 * a sample of it.
-				 *
-				 * Audited at every viewport like a real route because it is the real
-				 * route with a bigger catalogue: the same component, grid, filter and
-				 * lazy strategy with `?scale=5000`. A matrix of one 24-entry wall
-				 * cannot find the failure modes that only exist when there are enough
-				 * tiles for the grid to wrap oddly, for the sticky rail to have a long
-				 * document to sit over, or for tap-target checking to hit its own
-				 * time budget — and each of those is a real reader on a real phone.
-				 *
-				 * `?scale=` is refused outside `astro dev`, so it is skipped rather
-				 * than reported against a production origin, exactly like `/lab`.
-				 *
-				 * No `media: true`. The blank-frame and layout-shift checks assume a
-				 * page's imagery is its content; at 5,000 lazy plates the audit
-				 * window legitimately finds most of them unfetched, and calling that a
-				 * failure would be the harness disagreeing with the lazy strategy that
-				 * is the thing working. `npm run check:perf` is where media loading at
-				 * scale is measured, and it measures it properly.
-				 */
-				{
-					path: "/?scale=5000",
-					name: "wall-scale-5000",
-					expect: { ".tile": 5000 },
-					fold: ".tile__plate",
-					scroll: 1400,
-					stickyFits: true,
-					capture: false,
-				},
-			]
-		: []),
-	{ path: "/board", name: "board", expect: { ".empty__title": 1 } },
-	{ path: "/search?q=seam", name: "search", expect: { ".count": 1 }, media: true },
-	{ path: "/nope-does-not-exist", name: "404", expect: {}, allow404: true },
+	// `/lab` and the fixture selections, and the 5,000-entry wall, are
+	// development-only and live in `DEV_ROUTES` above rather than being spliced
+	// in here behind an origin test: the coverage table can then see what a
+	// production run is *not* looking at and print it.
+	// Search in the three states it can be in. The blank page and the zero-result
+	// page are two of the states `DESIGN.md` §8 requires to be as good as the
+	// loaded one, and neither had ever been captured: a matrix holding only
+	// `/search?q=seam` cannot see whether "nothing found" offers a way forward.
+	{ path: "/search", name: "search-blank", covers: "search", expect: { "#q-page": 1, ".suggest .tile": 8 }, media: true },
+	{ path: "/search?q=seam", name: "search", covers: "search", expect: { ".count": 1, ".found__row": 3 }, media: true },
+	{
+		path: "/search?q=zzqqxxwwnothing",
+		name: "search-none",
+		covers: "search",
+		// The empty state has to *offer* something, not just say no: two ways out
+		// and three concrete suggestions are the whole acceptance criterion.
+		expect: { ".none__title": 1, ".none__links a": 2, ".tries li": 3 },
+	},
+	// The shortlist, empty and full. The full one is the state a reader is in
+	// every time they use the product, and it is the only place the compare grid,
+	// the per-entry disclosure, the export block and the clear form appear.
+	{ path: "/board", name: "board", covers: "compare", expect: { ".empty__title": 1 } },
+	{
+		path: "/board",
+		name: "board-full",
+		covers: "compare",
+		cookie: { ah_board: BOARD_COOKIE },
+		expect: { ".entry": 4, ".entry__more": 4, ".clear details": 1, ".export": 1, ".empty__title": 0, ".chip": 2 },
+		media: true,
+	},
+	{
+		path: "/board?board=Autumn%20picks",
+		name: "board-second",
+		covers: "compare",
+		cookie: { ah_board: BOARD_COOKIE },
+		// The second board, at a different count, so the "N to choose between"
+		// headline and the per-entry columns are read with two entries as well.
+		expect: { ".entry": 2, ".chip": 2, ".chip--on": 1 },
+		media: true,
+	},
+	// 404: not a dead end. A search field and eight ways in are the acceptance
+	// criterion in `DESIGN.md` §8, so they are counted rather than hoped for.
+	{ path: "/nope-does-not-exist", name: "404", expect: { ".finder input": 1, ".starts a": 8 }, allow404: true },
 	// Non-HTML: checked for content type and well-formedness, not pixels.
 	{ path: "/rss.xml", name: "feed", expect: {}, nonHtml: true },
+	// `/lab` and the fixture selections: development only, listed in `DEV_ROUTES`
+	// above. The two anchors are separate routes because they are separate claims —
+	// the lab is 36,000px tall on a phone, so a `fullPage` capture of `/lab` is a
+	// thumbnail of a header with the states too small to judge.
+	...DEV_ROUTES,
 ];
+
+/**
+ * The routes this origin can actually serve.
+ *
+ * `ROUTES` stays whole so the coverage check can see what a production run is
+ * *not* looking at, and `AUDITED` is what gets visited. The difference is
+ * reported rather than hidden — see the note printed under the coverage table.
+ */
+const AUDITED = isLocal ? ROUTES : ROUTES.filter((route) => !route.devOnly);
+
+/**
+ * What the issue names, and what answers it.
+ *
+ * The point is not the table, it is that a route can be deleted, renamed or have
+ * its `expect` emptied without anybody noticing that a state stopped being
+ * checked — which is exactly how `/board` stayed empty-only and `/use/<slug>`
+ * stayed single-state through a whole review cycle. A coverage claim nobody can
+ * falsify is a claim rather than a check, so each row names the routes that carry
+ * it and the run **fails** if a row is left with nothing behind it.
+ */
+const COVERAGE = {
+	wall: { issue: "wall/home", routes: ["wall", "wall-filtered", "wall-scale-5000"] },
+	search: { issue: "search/filter results", routes: ["search", "search-blank", "search-none", "wall-filtered"] },
+	detail: { issue: "possibility detail", routes: ["detail", "detail-fold", "collection"] },
+	compare: { issue: "compare/shortlist", routes: ["board", "board-full", "board-second"] },
+	signals: {
+		issue: "rating/report interactions",
+		routes: ["detail-signals", "lab-signals"],
+		// More than a route: the signed-in and signed-out states have to be
+		// *distinguished*, which is `auditSignalStates`.
+		extra: "auditSignalStates",
+	},
+	use: {
+		issue: "asset-use/licence drill-in",
+		routes: ["asset-use", "lab-use", "use-reference", "use-review", "use-attribution", "use-reusable", "use-not-retained"],
+	},
+	cms: { issue: "EmDash-managed content reflected publicly", routes: [], extra: "auditCmsReflection" },
+	viewports: { issue: "key mobile/tablet/desktop viewports", routes: [], extra: "VIEWPORTS" },
+	theme: { issue: "light/dark if both are supported", routes: [], extra: "auditDarkOnly" },
+	lab: { issue: "/lab fixture states", routes: ["lab", "lab-signals", "lab-use"] },
+};
 
 const audit = [];
 const failures = [];
@@ -258,6 +489,10 @@ const plateSizes = [];
  * type-heavy" into an observation somebody can argue with.
  */
 const measuredFolds = [];
+/** route → how many always-on accent-coloured elements it paints. */
+const accents = [];
+/** Placeholders wider than the field they sit in. Reported, not gated — see check 15. */
+const placeholders = [];
 
 function record(group, route, issues) {
 	audit.push({ viewport: group, route: route.name, issues });
@@ -477,7 +712,163 @@ function pageAuditScript() {
 		}
 	}
 
-	return { issues, ratioContainers };
+	// 12. Element ids that are used twice.
+	//
+	//     `<label for>` resolves to the *first* element with that id, so a second
+	//     one is not merely untidy: the label names the wrong control and the
+	//     fragment link lands on the wrong element. This is how `/search` ended up
+	//     with two `id="q"` — the masthead's search field and the page's own — and
+	//     how `/lab`, which renders all seven rating states at once, ended up with
+	//     `signals` eight times and `reason-<slug>` seven times.
+	//
+	//     Nothing else in this script could see it: the accessibility tree reports a
+	//     label as present whether or not it points at the intended control, and
+	//     `document.querySelector("#q")` happily returns the first match.
+	//
+	//     The count is reported rather than just the first offender, because "this
+	//     page has 30 duplicate ids" and "this page has one" are different problems
+	//     with different fixes.
+	const idCounts = new Map();
+	for (const el of document.querySelectorAll("[id]")) {
+		idCounts.set(el.id, (idCounts.get(el.id) ?? 0) + 1);
+	}
+	const duplicated = [...idCounts.entries()].filter(([, n]) => n > 1);
+	if (duplicated.length) {
+		issues.push(
+			`${duplicated.length} duplicated id(s): ${duplicated
+				.slice(0, 6)
+				.map(([id, n]) => `${id} x${n}`)
+				.join(", ")} — every <label for> and every #fragment resolves to the first one`,
+		);
+	}
+
+	// 13. A label that points at nothing.
+	//
+	//     The other half of check 12, and the one that survives an id being
+	//     *renamed* rather than duplicated: a control with a `for` that resolves to
+	//     zero elements has no accessible name at all, however good the visible
+	//     text beside it is. Check 12 cannot see that case at all.
+	const dangling = [];
+	for (const label of document.querySelectorAll("label[for]")) {
+		const target = label.getAttribute("for");
+		if (!target || document.getElementById(target)) continue;
+		dangling.push(`${describe(label)} → #${target}`);
+		if (dangling.length > 4) break;
+	}
+	if (dangling.length) {
+		issues.push(
+			`${dangling.length} label(s) point at an id that does not exist: ${dangling.slice(0, 4).join(", ")}`,
+		);
+	}
+
+	// 14. A status line that opens with a separator.
+	//
+	//     These lines are built by joining counted parts with a middle dot, and the
+	//     join is where a rendering fault hides: `/search` with no results rendered
+	//     its `role="status"` count as `· for zzqqxxwwnothing` — a leading separator
+	//     with nothing before it. It only happened on the emptiest state, which is
+	//     the state a page is least likely to be reviewed in, and no other check
+	//     here can see it: the text is present, correctly sized, correctly contrasted
+	//     and not clipped.
+	//
+	//     Scoped to live regions and the site's count/tally lines rather than to all
+	//     text, because a paragraph legitimately starting with an em dash is not a
+	//     fault. A separator is a *join*, so it only looks wrong where a join is
+	//     possible.
+	const ledWithSeparator = [];
+	for (const el of document.querySelectorAll(
+		"[role='status'], [role='alert'], .count, .tally, .summary__line, .signal__value",
+	)) {
+		const text = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+		if (!text) continue;
+		if (!/^[·|—–/,;:]/.test(text)) continue;
+		ledWithSeparator.push(`${describe(el)} reads "${text.slice(0, 40)}"`);
+		if (ledWithSeparator.length > 3) break;
+	}
+	if (ledWithSeparator.length) {
+		issues.push(
+			`${ledWithSeparator.length} status/count line(s) begin with a separator, which reads as a join with nothing before it: ${ledWithSeparator.join(", ")}`,
+		);
+	}
+
+	// 15. A placeholder that does not fit its own field.
+	//
+	//     A placeholder is painted *inside* the control and scrolls with it, so
+	//     check 9 cannot see this: the input's `scrollWidth` is the **value's**
+	//     width, not the placeholder's, and an empty input has no overflow at all.
+	//     The result is a truncated sentence with no ellipsis and no scrollbar —
+	//     `screenshots/404--mobile-390.png` shows "Try a technique, a treatmen",
+	//     cut mid-word, which reads as a rendering fault rather than as a short
+	//     hint.
+	//
+	//     Measured with a canvas at the element's own computed font, because the
+	//     placeholder is drawn in the input's font and nothing else knows how wide
+	//     it will be. A visible placeholder is the field explaining itself; a
+	//     clipped one is the field failing to.
+	//
+	//     **Single-line inputs only.** A `<textarea>` placeholder *wraps* — it is
+	//     painted over as many lines as it needs and the box scrolls — so a long
+	//     hint in a textarea is a hint that is fully visible, and treating it as
+	//     clipped reported the report form's 59-character placeholder as a defect on
+	//     every viewport. A check that cries wolf on correct markup is a check
+	//     people learn to ignore.
+	//
+	//     `type` is narrowed to the text-like inputs for the same reason: a
+	//     `date` or `number` field paints its own format hint in its own glyphs.
+	//     `datetime-local`, `month` and `time` keep their native picker.
+	//
+	//     The only inputs whose hint is a sentence are the search fields, and those
+	//     are the two this found.
+		// The input types whose `placeholder` is painted as text this script can
+	// measure. `search` is here because both finders are `type="search"`.
+	const TEXT_INPUTS = new Set([
+		"text",
+		"search",
+		"url",
+		"email",
+		"tel",
+		"password",
+	]);
+	const clippedPlaceholders = [];
+	for (const el of document.querySelectorAll("input[placeholder]")) {
+		if (!TEXT_INPUTS.has(el.type)) continue;
+		const text = el.getAttribute("placeholder")?.trim() ?? "";
+		// Only a placeholder that is actually on screen: a filled field is showing
+		// its value, and a hidden one is showing nothing.
+		if (!text || el.value) continue;
+		const r = el.getBoundingClientRect();
+		if (r.width < 8 || r.height < 8) continue;
+		if (Number.parseFloat(getComputedStyle(el).opacity) === 0) continue;
+		const cs = getComputedStyle(el);
+		const measure = document.createElement("canvas").getContext("2d");
+		if (!measure) break;
+		measure.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+		const needed = measure.measureText(text).width;
+		const available =
+			el.clientWidth - Number.parseFloat(cs.paddingLeft) - Number.parseFloat(cs.paddingRight);
+		if (needed <= available + 1) continue;
+		clippedPlaceholders.push(
+			`${describe(el)} needs ${Math.round(needed)}px for "${text}" and has ${Math.round(available)}px — ${Math.round(needed - available)}px of it is cut`,
+		);
+		if (clippedPlaceholders.length > 3) break;
+	}
+	/*
+	 * **Reported, not gated**, and the distinction is the point.
+	 *
+	 * A clipped placeholder is a real defect — the field is failing to explain
+	 * itself — and the fix is usually mechanical (give the field the line instead of
+	 * the button). But when the field already has the whole line and the sentence is
+	 * still too long, the only remaining move is to change the words, and the words
+	 * are the design authority's: `DESIGN.md` §9.1 gives the search placeholder as
+	 * "technique, treatment, problem, tool" and §3 sets 10–13px mono as the floor for
+	 * the label voice. Failing the run over that would be a script making a copy
+	 * decision, which is the same mistake as gating a fold the authority has not
+	 * written a rule for.
+	 *
+	 * So the number is printed with the offenders named, the detector is proved by
+	 * the self-check, and the decision stays where it belongs.
+	 */
+	return { issues, ratioContainers, clippedPlaceholders };
 }
 
 /**
@@ -720,7 +1111,26 @@ async function auditBlankMedia(page) {
 		const images = [...document.images].filter(
 			(img) => img.complete && img.naturalWidth > 0 && img.getClientRects().length > 0,
 		);
-		if (!images.length) return { issues: ["blank media: no resolved image on a media route"], sampled: 0, least: 0 };
+		/*
+		 * Images this check could **not** look at, counted rather than ignored.
+		 *
+		 * `loading="lazy"` images below the fold have not been requested, so
+		 * `img.complete` is false and the filter above skips them. On a long page —
+		 * the lab is 14,490px tall — that is most of the plates, and the check then
+		 * reports a healthy minimum from the handful that happened to be in the first
+		 * viewport. It passed, and it had not looked at anything below the fold.
+		 *
+		 * Not a failure: a lazy image that has not loaded is the page behaving
+		 * correctly. But a run that says "fewest distinct colours on any plate: 49"
+		 * has to say how many plates that number is drawn from, or the number reads
+		 * as a claim about the whole page.
+		 */
+		const deferred = [...document.images].filter(
+			(img) => img.getAttribute("src") && (!img.complete || img.naturalWidth === 0),
+		).length;
+		if (!images.length) {
+			return { issues: ["blank media: no resolved image on a media route"], sampled: 0, least: 0, deferred };
+		}
 		const canvas = document.createElement("canvas");
 		canvas.width = 40;
 		canvas.height = 50;
@@ -752,7 +1162,7 @@ async function auditBlankMedia(page) {
 				if (issues.length > 3) break;
 			}
 		}
-		return { issues, sampled, least: least === Number.POSITIVE_INFINITY ? 0 : least };
+		return { issues, sampled, least: least === Number.POSITIVE_INFINITY ? 0 : least, deferred };
 	});
 }
 
@@ -838,6 +1248,231 @@ async function auditLayoutShift(browser, viewport, route, url) {
 	} finally {
 		await context.close();
 	}
+}
+
+/**
+ * Dark-only is a **decision**, so the check asserts the absence of a light theme
+ * rather than skipping it (#47's "light/dark if both are supported").
+ *
+ * `DESIGN.md` §9.3 is explicit: the catalogue is a lit-vitrine archive, a light
+ * theme would mean re-authoring 25 plates and re-tuning every contrast pair, and
+ * "if a light mode is ever genuinely wanted, it is a separate visual system, not
+ * a token flip". So there is one theme, and the useful automated question is
+ * not "does light look right" but "has light crept in anyway".
+ *
+ * Four things are measured, and each can fail on its own:
+ *
+ * 1. `color-scheme` resolves to `dark` on the document, so a browser paints its
+ *    own scrollbars and form controls for a dark page rather than light ones
+ *    under a dark canvas.
+ * 2. **The page renders identically under `prefers-color-scheme: dark` and
+ *    `prefers-color-scheme: light`.** This is the real assertion: a `@media
+ *    (prefers-color-scheme: light)` block anywhere in the bundle, a `light-dark()`
+ *    call, or a `data-theme` flip changes something here.
+ * 3. No theme control exists in the interface. A switch that flips a token and
+ *    then reveals a second visual system is exactly what §9.3 refuses, and it
+ *    would be invisible in a screenshot of the default state.
+ * 4. The tokens that carry the whole system are the same in both contexts.
+ *
+ * The self-check points the same comparison at a page that *does* switch, so this
+ * cannot pass vacuously — see `auditDarkOnly` in the self-check.
+ */
+async function auditDarkOnly(browser, url) {
+	const read = async (scheme) => {
+		const context = await browser.newContext({
+			viewport: { width: 1280, height: 800 },
+			colorScheme: scheme,
+			locale: "en-GB",
+			timezoneId: "UTC",
+		});
+		const page = await context.newPage();
+		try {
+			await page.goto(url ?? `${baseUrl}/`, { waitUntil: "networkidle", timeout: 30000 });
+			return await page.evaluate(() => {
+				const root = getComputedStyle(document.documentElement);
+				const body = getComputedStyle(document.body);
+				return {
+					colorScheme: root.colorScheme,
+					canvas: root.getPropertyValue("--canvas").trim(),
+					ink: root.getPropertyValue("--ink").trim(),
+					painted: body.backgroundColor,
+					// A toggle, a switch, a theme picker: anything that could reach a
+					// second visual system. Matched on the words rather than on a class,
+					// because a class can be renamed and the control cannot.
+					switches: [
+						...document.querySelectorAll("button, a, input, select, [role='switch'], [role='button']"),
+					]
+						.map(
+							(el) =>
+								`${(el.getAttribute("aria-label") ?? el.textContent ?? "").trim()} ${el.className ?? ""}`.toLowerCase(),
+						)
+						.filter((text) => /\b(theme|dark mode|light mode|colour scheme|color scheme)\b/.test(text))
+						.slice(0, 3),
+				};
+			});
+		} finally {
+			await context.close();
+		}
+	};
+
+	const issues = [];
+	const dark = await read("dark");
+	const light = await read("light");
+
+	if (dark.colorScheme !== "dark") {
+		issues.push(
+			`theme: html resolves color-scheme "${dark.colorScheme}", not "dark" — a light page is announced to the browser`,
+		);
+	}
+	if (light.canvas !== dark.canvas || light.ink !== dark.ink) {
+		issues.push(
+			`theme: prefers-color-scheme: light changes the tokens (--canvas ${dark.canvas} → ${light.canvas}, --ink ${dark.ink} → ${light.ink}); DESIGN.md §9.3 is dark only`,
+		);
+	}
+	if (light.painted !== dark.painted) {
+		issues.push(
+			`theme: the page background changes under prefers-color-scheme: light (${dark.painted} → ${light.painted})`,
+		);
+	}
+	if (dark.switches.length || light.switches.length) {
+		issues.push(
+			`theme: a theme control exists in the interface (${[...new Set([...dark.switches, ...light.switches])].join(" | ")}) — DESIGN.md §9.3 is dark only, so a switch reveals a second visual system that does not exist`,
+		);
+	}
+	return issues;
+}
+
+/**
+ * The rating and report states, asserted as *behaviour* rather than as counts.
+ *
+ * The lab renders all seven states at once, and the difference between the two
+ * authentication states is not decoration: the rate button is disabled when
+ * signed out and the report fieldset is disabled with it, because a rating a
+ * reader cannot withdraw is a vote and a report nobody can answer is worse than
+ * no report. A count of `.rate__star` cannot tell an enabled button from a
+ * disabled one, so the panel's own `data-viewer` marker is checked against the
+ * state of the controls it describes.
+ *
+ * The two states also have to differ in the *other* direction: the numbers are
+ * public whether or not you are signed in. A signed-out panel with no ratings on
+ * screen is indistinguishable from a broken one, so the fixture set has to
+ * include a signed-out panel that still shows a distribution.
+ */
+async function auditSignalStates(page) {
+	return page.evaluate(() => {
+		const issues = [];
+		const cases = [...document.querySelectorAll(".signal-case")];
+		if (!cases.length) return ["signal states: no .signal-case on the page, so nothing was compared"];
+
+		let sawDistributionWhileSignedOut = false;
+		for (const [index, panel] of cases.entries()) {
+			const signedIn = panel.dataset.viewer === "signed-in";
+			const rate = panel.querySelector(".rate button");
+			const fieldset = panel.querySelector(".report__form fieldset");
+			if (!rate) {
+				issues.push(`signal state ${index + 1}: no rate button`);
+			} else if (rate.disabled === signedIn) {
+				// `rate.disabled === signedIn` is wrong in both directions: a signed-in
+				// reader must be able to rate, and a signed-out one must not be able to.
+				issues.push(
+					`signal state ${index + 1}: the rate button is ${rate.disabled ? "disabled" : "enabled"} but the panel is marked ${signedIn ? "signed-in" : "signed-out"}`,
+				);
+			}
+			if (!fieldset) {
+				issues.push(`signal state ${index + 1}: no report fieldset`);
+			} else if (fieldset.disabled === signedIn) {
+				issues.push(
+					`signal state ${index + 1}: the report form is ${fieldset.disabled ? "disabled" : "enabled"} but the panel is marked ${signedIn ? "signed-in" : "signed-out"}`,
+				);
+			}
+			// The refusal has to name the way in. A disabled control with no route is
+			// the keyboard journey failing at its last step.
+			if (!signedIn) {
+				const signIn = [...panel.querySelectorAll("a")].some(
+					(a) => (a.getAttribute("href") ?? "").includes("_emdash"),
+				);
+				if (!signIn) {
+					issues.push(`signal state ${index + 1}: signed out, but nothing on the panel says how to sign in`);
+				}
+				if (panel.querySelector(".dist__row")) sawDistributionWhileSignedOut = true;
+			}
+		}
+		if (!sawDistributionWhileSignedOut) {
+			issues.push(
+				"signal states: no signed-out panel shows a rating distribution, so 'the numbers are public, the control is not' is never seen",
+			);
+		}
+		return issues;
+	});
+}
+
+/**
+ * How much accent each page actually paints. **Measured, not gated.**
+ *
+ * `DESIGN.md` §2: *One accent. Ember marks action, selection and the single
+ * highest-priority element on a viewport. It is never decorative.* That is a rule
+ * about a count, and a rule about a count is exactly the kind of thing to put a
+ * number next to.
+ *
+ * It is printed rather than enforced on purpose. "How many ember elements is too
+ * many" is a judgement: the wall's active filter chip and its featured tile wash
+ * are both legitimate, the drill-in's eyebrow plus one action is legitimate, and
+ * four decorative taglines is not. A script that failed the run on a number a
+ * designer disputes would be a script people pass `--audit-only` to avoid, which
+ * is how a matrix stops being read.
+ *
+ * Only *always-on* paint is counted — computed colour, background or border on
+ * the element itself, not a `:hover` rule, which is interaction and is what the
+ * token is for. `--ember-line` and `--ember-dim` are excluded: they are the
+ * accent at reduced weight for borders and fills, and every focus ring on the
+ * site is one.
+ */
+async function auditAccent(page) {
+	return page.evaluate(() => {
+		const root = getComputedStyle(document.documentElement);
+		const ember = (root.getPropertyValue("--ember") ?? "").trim();
+		const toRgba = (value) => {
+			const hex = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+			if (hex) {
+				const h = hex[1].length === 3 ? hex[1].split("").map((c) => c + c).join("") : hex[1];
+				const n = Number.parseInt(h, 16);
+				return [(n >> 16) & 255, (n >> 8) & 255, n & 255, 1];
+			}
+			const m = value.match(/rgba?\(([^)]+)\)/);
+			if (!m) return null;
+			const parts = m[1].split(/[,/]/).map((n) => Number.parseFloat(n.trim()));
+			if (parts.length < 3 || parts.slice(0, 3).some((n) => !Number.isFinite(n))) return null;
+			return [parts[0], parts[1], parts[2], parts.length > 3 && Number.isFinite(parts[3]) ? parts[3] : 1];
+		};
+		const accent = toRgba(ember);
+		if (!accent) return { count: 0, names: [], note: `--ember is "${ember}" and was not compared` };
+		const same = (value) => {
+			const c = toRgba(value);
+			// **Alpha matters.** `--ember-wash` is `rgb(255 90 31 / 0.12)` — the same
+			// three numbers as the accent — and it is a background tint behind text,
+			// not an accent block. Counting it would put every search hit's `<mark>`
+			// and every focus wash into the total and make the number meaningless.
+			return Boolean(c) && c[3] === 1 && c[0] === accent[0] && c[1] === accent[1] && c[2] === accent[2];
+		};
+
+		const describe = (el) =>
+			`${el.tagName.toLowerCase()}${el.className && typeof el.className === "string" ? `.${el.className.trim().split(/\s+/)[0]}` : ""}`;
+
+		const names = [];
+		for (const el of document.querySelectorAll("body *")) {
+			if (el.closest(".visually-hidden")) continue;
+			const r = el.getBoundingClientRect();
+			if (r.width < 1 || r.height < 1) continue;
+			if (Number.parseFloat(getComputedStyle(el).opacity) === 0) continue;
+			const cs = getComputedStyle(el);
+			const hit =
+				same(cs.color) ||
+				same(cs.backgroundColor) ||
+				(same(cs.borderTopColor) && Number.parseFloat(cs.borderTopWidth) >= 2);
+			if (hit) names.push(describe(el));
+		}
+		return { count: names.length, names: names.slice(0, 8), note: null };
+	});
 }
 
 /**
@@ -1153,6 +1788,51 @@ const BROKEN_PAGE =
 			'<img src="' +
 			FLAT_SVG +
 			'" alt="a flat frame" width="800" height="1000">\n' +
+			// 6. One id used twice, and a label pointing at an id that is not there.
+			//    Both are invisible to the accessibility tree, which reports a label
+			//    as present whether or not it points at the control it was written
+			//    for, and to `querySelector`, which returns the first match happily.
+			'<label for="q">The first field</label><input id="q" type="text">\n' +
+			'<label for="q">The second field, same id</label><input id="q" type="text">\n' +
+			'<label for="nowhere">A label with nothing to name</label>\n' +
+			// 7. A status line whose joined parts are empty, so it opens with the
+			//    separator. `/search` with no results rendered exactly this.
+			'<p role="status"> · for zzqqxxwwnothing</p>\n' +
+			// 8. A placeholder wider than the field it sits in. A placeholder is
+			//    painted inside a control that scrolls, so the clipped-content check
+			//    cannot see it and an empty input has no overflow at all.
+			'<input type="search" placeholder="a placeholder far too long for this narrow field" style="width:120px;font:13px monospace">\n' +
+			"</body></html>",
+	);
+
+/**
+ * A page that really does switch to a light theme.
+ *
+ * `auditDarkOnly` compares the same page under `prefers-color-scheme: dark` and
+ * `light` and requires the tokens to be identical. On this product that is a
+ * pass, which is exactly the shape of a check that cannot fail: the natural
+ * reading of "identical under both schemes" is a tautology when the site is
+ * dark-only and nobody has ever added a light theme.
+ *
+ * So the comparison is pointed at this fixture first. If it does not report a
+ * theme change here, the detector is not looking, and the run fails rather than
+ * reporting a clean bill of health for a check that never looked.
+ */
+const THEMED_PAGE =
+	"data:text/html," +
+	encodeURIComponent(
+		'<!doctype html>\n' +
+			'<html lang="en"><head><meta charset="utf-8"><title>themed</title>\n' +
+			"<style>\n" +
+			"  :root { --canvas: #08090a; --ink: #f4f2ee; color-scheme: dark light; }\n" +
+			"  @media (prefers-color-scheme: light) {\n" +
+			"    :root { --canvas: #fbfaf7; --ink: #14161a; }\n" +
+			"    html { color-scheme: light; }\n" +
+			"  }\n" +
+			"  body { background: var(--canvas); color: var(--ink); margin: 0; }\n" +
+			"</style></head>\n" +
+			"<body><h1>A second visual system</h1>\n" +
+			'<button aria-label="Switch to light mode">Light</button>\n' +
 			"</body></html>",
 	);
 
@@ -1212,13 +1892,30 @@ async function auditSelfCheck(browser) {
 		}
 		await page.waitForTimeout(120);
 		const found = await page.evaluate(pageAuditScript);
-		const all = [...found.issues, ...(await auditStickyOverlap(page)), ...(await auditBlankMedia(page)).issues];
+		/*
+		 * `clippedPlaceholders` is a *returned measurement* rather than an issue, so
+		 * it has to be folded in here explicitly. It was not, and the self-check said
+		 * so: `self-check: the audit does not report a placeholder clipped by its own
+		 * input`. Which is the self-check doing exactly what it is for — the detector
+		 * had been demoted from a finding to a printed number, and nothing had told
+		 * anyone it had stopped being able to fail.
+		 */
+		const all = [
+			...found.issues,
+			...(found.clippedPlaceholders ?? []).map((entry) => `placeholder clipped: ${entry}`),
+			...(await auditStickyOverlap(page)),
+			...(await auditBlankMedia(page)).issues,
+		];
 		const expect = [
 			["clipped content:", "clipped content inside a non-scrolling box"],
 			["collapsed control:", "an interactive element with no area"],
 			["aspect-ratio:", "a ratio container rendering the wrong shape"],
 			["sticky div", "one sticky element painted over another"],
 			["blank media:", "an image that resolves and paints a flat frame"],
+			["duplicated id(s):", "one id used by two elements"],
+			["label(s) point at an id that does not exist", "a label naming a control that is not there"],
+			["begin with a separator", "a status line that opens with a join it has nothing before"],
+			["of it is cut", "a placeholder clipped by its own input"],
 		];
 		for (const [prefix, what] of expect) {
 			if (!all.some((issue) => issue.includes(prefix))) {
@@ -1239,6 +1936,24 @@ async function auditSelfCheck(browser) {
 	} finally {
 		await context.close();
 	}
+
+	/*
+	 * The dark-only check, pointed at a page that *does* have a light theme.
+	 *
+	 * `auditDarkOnly` passes on a product that is dark only, and the reason it
+	 * passes is that nothing has gone wrong. That is a check whose failure mode is
+	 * silence, so the same comparison runs here against `THEMED_PAGE` first and
+	 * has to report the difference. `auditDarkOnly` takes an optional URL for
+	 * exactly this, so the code under test is the code that ships rather than a
+	 * second implementation written to prove the first one works.
+	 */
+	const themed = await auditDarkOnly(browser, THEMED_PAGE);
+	if (!themed.length) {
+		issues.push(
+			"self-check: the dark-only check reports no theme change on a page that has one — it cannot detect a light theme appearing, so its pass on this site means nothing",
+		);
+	}
+
 	return issues;
 }
 
@@ -1284,14 +1999,218 @@ async function auditNonHtml(route) {
 	return issues;
 }
 
+/**
+ * Screenshot artefacts: a manifest, and a stated retention policy.
+ *
+ * #47's last acceptance criterion is that artefacts are "retained intentionally
+ * or cleaned up; they do not become repository debris". Both halves of that need
+ * to be *enforced*, because the alternative is the status quo: a gitignored
+ * directory that nobody knows what is in it, and an ignore rule that quietly
+ * stops matching.
+ *
+ * **Retention.** `screenshots/` is wiped at the start of every capture run and
+ * never committed. It is a working set, not an archive: a run is reproducible
+ * from the commit, the origin and the matrix, and the matrix is in this file. The
+ * manifest is what makes a run *identifiable* without keeping it.
+ *
+ * **The manifest** records what produced the set — origin, commit, node, browser,
+ * the routes and viewports and the assertions each one was checked against — plus
+ * a size and digest per file. A reviewer handed a set of PNGs can then tell
+ * whether it is the set this script claims to produce, and whether two runs of
+ * the same commit produced the same pixels (compare the digests) or a different
+ * one (they do not, and that is the interesting case).
+ *
+ * **`auditManifest` fails the run** when a capture is missing, when a file on
+ * disk is not in the manifest, or when `screenshots/` is no longer ignored. A
+ * manifest nothing checks is a note in a file, and a note in a file is how the
+ * next person decides the artefacts are "obviously fine".
+ */
+function writeManifest(captures) {
+	const git = (args) => {
+		try {
+			return execFileSync("git", args, { cwd: new URL("..", import.meta.url).pathname, encoding: "utf8" }).trim();
+		} catch {
+			return null;
+		}
+	};
+	const files = captures.map((capture) => {
+		const full = `${outDir}${capture.file}`;
+		let bytes = null;
+		let sha256 = null;
+		try {
+			bytes = readFileSync(full).length;
+			sha256 = createHash("sha256").update(readFileSync(full)).digest("hex").slice(0, 16);
+		} catch {
+			// Left null on purpose: a file the run claims to have written but cannot
+			// read is a finding, and `auditManifest` reports it as one rather than
+			// this quietly producing a manifest with holes in it.
+		}
+		return { ...capture, bytes, sha256 };
+	});
+
+	const manifest = {
+		schema: "asset-hunter.visual-qa/1",
+		generated: new Date().toISOString(),
+		origin: baseUrl,
+		local: isLocal,
+		commit: git(["rev-parse", "HEAD"]),
+		branch: git(["rev-parse", "--abbrev-ref", "HEAD"]),
+		dirty: git(["status", "--porcelain"]) ? true : false,
+		node: process.version,
+		playwright: chromium.name(),
+		viewports: VIEWPORTS,
+		routes: AUDITED.map((r) => ({
+			name: r.name,
+			path: r.path,
+			expect: r.expect ?? {},
+			...(r.covers ? { covers: r.covers } : {}),
+			...(r.cookie ? { cookie: Object.keys(r.cookie) } : {}),
+			...(r.localOnly ? { localOnly: true } : {}),
+		})),
+		counts: { routes: AUDITED.length, viewports: VIEWPORTS.length, files: files.length },
+		files,
+		retention:
+			"Wiped at the start of every capture run and never committed. Regenerate with `npm run check:visual`; share a run by its commit and this manifest, not by committing the PNGs.",
+	};
+	writeFileSync(`${outDir}manifest.json`, `${JSON.stringify(manifest, null, "\t")}\n`);
+	return manifest;
+}
+
+/** Everything about the artefact set that can be checked without a human. */
+function auditManifest(manifest) {
+	const issues = [];
+
+	const missing = manifest.files.filter((f) => f.bytes === null);
+	if (missing.length) {
+		issues.push(
+			`artefacts: ${missing.length} capture(s) are in the manifest but not on disk — ${missing
+				.slice(0, 4)
+				.map((f) => f.file)
+				.join(", ")}`,
+		);
+	}
+
+	// The expected set, derived from the matrix rather than from what happened.
+	// This is what catches a route that threw halfway through and stopped writing
+	// files while the run still reported a green count.
+	const expected = [];
+	for (const route of AUDITED) {
+		if (route.nonHtml) continue;
+		for (const viewport of VIEWPORTS) {
+			expected.push(`${route.name}--${viewport.name}.png`);
+			if (route.scroll) expected.push(`${route.name}--${viewport.name}--scrolled.png`);
+		}
+	}
+	expected.push("wall--iphone13.png");
+	const have = new Set(manifest.files.map((f) => f.file));
+	const absent = expected.filter((file) => !have.has(file));
+	if (absent.length) {
+		issues.push(
+			`artefacts: ${absent.length} expected capture(s) were never written — ${absent.slice(0, 6).join(", ")}`,
+		);
+	}
+
+	// Anything on disk the matrix does not name is debris from an earlier run or
+	// from a route that has since been deleted, and either way it is a file
+	// nobody can account for.
+	const named = new Set([...expected, "manifest.json"]);
+	const stray = readdirSync(outDir).filter((f) => !named.has(f));
+	if (stray.length) {
+		issues.push(
+			`artefacts: ${stray.length} file(s) in screenshots/ that the matrix does not name — ${stray.slice(0, 6).join(", ")}. The directory is wiped per run, so these are from a route that has been removed and nobody looked.`,
+		);
+	}
+
+	// The rule that keeps any of this out of the repository. A symlinked
+	// `node_modules` does not match `node_modules/` either, which is how a
+	// worktree's dependencies end up in `git add -A`; that is a separate one-line
+	// fix, and this check is what would have noticed.
+	const ignorePath = new URL("../.gitignore", import.meta.url).pathname;
+	if (existsSync(ignorePath)) {
+		const rules = readFileSync(ignorePath, "utf8")
+			.split("\n")
+			.map((line) => line.trim())
+			.filter((line) => line && !line.startsWith("#"));
+		const ignored = rules.some((rule) => rule === "screenshots/" || rule === "screenshots" || rule === "/screenshots/" || rule === "/screenshots");
+		if (!ignored) {
+			issues.push(
+				"artefacts: screenshots/ is not in .gitignore, so a capture run would put ~200 PNGs into the working tree. Add the rule or stop committing them deliberately.",
+			);
+		}
+	} else {
+		issues.push("artefacts: no .gitignore found, so nothing stops screenshots/ being committed");
+	}
+
+	return issues;
+}
+
+/**
+ * The coverage table, and the run's refusal to claim what it did not check.
+ *
+ * #47 asks for a named list of evidence. A list in an issue is a list somebody
+ * has to keep true by hand, and it stops being true silently: a route is
+ * renamed, or its `expect` is emptied, or a state is reachable only through a
+ * fixture that stopped resolving — and the issue still says "captures all four
+ * use states". So the run prints what carries each item and **fails** if an item
+ * has nothing behind it, which makes the claim falsifiable instead of decorative.
+ */
+function auditCoverage() {
+	const issues = [];
+	const byName = new Map(ROUTES.map((r) => [r.name, r]));
+	const lines = [];
+	for (const entry of Object.values(COVERAGE)) {
+		/*
+		 * Three outcomes, and they are not the same thing:
+		 *
+		 * - the route is not in the matrix at all → the claim in the issue is
+		 *   false, which is a **failure**;
+		 * - the route is in the matrix, is development-only, and this is not a
+		 *   development origin → covered on a laptop, not here: **reported**, and
+		 *   expected;
+		 * - the route is in the matrix and was visited → covered.
+		 *
+		 * Reporting the second as the first would fail every production audit for
+		 * behaving correctly. Treating the second as the third would let a
+		 * production run claim the coverage it does not have, which is the thing
+		 * this table exists to prevent.
+		 */
+		const missing = entry.routes.filter((name) => !byName.has(name));
+		const devOnlyHere = entry.routes.filter(
+			(name) => byName.get(name)?.devOnly && !AUDITED.some((r) => r.name === name),
+		);
+		const present = entry.routes.filter(
+			(name) => byName.has(name) && !devOnlyHere.includes(name),
+		);
+		if (missing.length) {
+			issues.push(
+				`coverage: "${entry.issue}" names route(s) ${missing.join(", ")} that the matrix does not contain — the claim in the issue is no longer true`,
+			);
+		}
+		if (!present.length && !entry.extra) {
+			issues.push(
+				`coverage: "${entry.issue}" has no route and no check behind it on this origin`,
+			);
+		}
+		lines.push({
+			item: entry.issue,
+			routes: present.length ? present.join(", ") : "—",
+			also: entry.extra ?? null,
+			devSkipped: devOnlyHere,
+		});
+	}
+	return { issues, lines };
+}
+
 async function main() {
 	if (!auditOnly && existsSync(outDir)) rmSync(outDir, { recursive: true });
 	if (!auditOnly) mkdirSync(outDir, { recursive: true });
+	/** Every file this run claims to have written. See `writeManifest`. */
+	const captures = [];
 
 	const browser = await chromium.launch();
 	let captured = 0;
 
-	for (const route of ROUTES) {
+	for (const route of AUDITED) {
 		// Non-HTML endpoints are verified as data, not screens.
 		if (route.nonHtml) {
 			const issues = await auditNonHtml(route);
@@ -1314,6 +2233,26 @@ async function main() {
 					: {}),
 			});
 			const page = await context.newPage();
+
+			/*
+			 * Seed the state a route cannot reach on its own.
+			 *
+			 * A shortlist is a cookie by design (`src/lib/board.ts`), so a route
+			 * that means "the board with things on it" has to say so. Without this
+			 * the matrix held one `/board` — the empty one — and the compare grid,
+			 * the per-entry disclosure, the export block and the clear form had
+			 * never been rendered at any viewport, which is how #65 could describe
+			 * the empty board in detail while the loaded one went unlooked-at.
+			 */
+			if (route.cookie) {
+				await context.addCookies(
+					Object.entries(route.cookie).map(([name, value]) => ({
+						name,
+						value,
+						url: baseUrl,
+					})),
+				);
+			}
 
 			/*
 			 * Enlarged text, at full width.
@@ -1342,6 +2281,29 @@ async function main() {
 			});
 			page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${err.message.slice(0, 160)}`));
 
+			/*
+			 * A subresource the *server* failed to deliver, kept apart from the
+			 * page's own faults.
+			 *
+			 * These are the findings that mislead. A dev server that answers 500
+			 * for a style module paints its own error overlay over the masthead, and
+			 * the sticky-overlap check then reports, with complete confidence, that
+			 * the masthead is 99px behind `vite-error-overlay` — seventeen times
+			 * across the matrix, every one of them a statement about a development
+			 * tool rather than about the product. The console error is a symptom of
+			 * the same thing and reads as a page fault.
+			 *
+			 * So they are recorded as *server* failures with the URL attached. A
+			 * reader can then tell "the layout is wrong" from "the thing serving it
+			 * is broken", and the first of those is worth filing.
+			 */
+			const serverErrors = [];
+			page.on("response", (res) => {
+				if (res.status() < 500) return;
+				if (res.request().resourceType() === "document") return;
+				serverErrors.push(`${res.status()} ${res.url().replace(baseUrl, "")}`);
+			});
+
 			const response = await page.goto(`${baseUrl}${route.path}`, {
 				waitUntil: "networkidle",
 				timeout: 30000,
@@ -1355,10 +2317,50 @@ async function main() {
 				issues.push(`HTTP ${status}`);
 			}
 
+			/*
+			 * A development tool has painted over the page.
+			 *
+			 * `astro dev` injects `<vite-error-overlay>` as a `position: fixed`
+			 * full-viewport element when a module fails to load. It is a
+			 * development tool, not the product, and it is *sticky*, so every
+			 * sticky check on the page reports the overlay sitting on top of the
+			 * masthead and the filter rail. Those reports are true and worthless,
+			 * and a run that prints seventeen of them teaches people to skip the
+			 * run.
+			 *
+			 * So when the overlay is present the page's own checks are **skipped**
+			 * and the reason is the finding. The server error that caused it is
+			 * reported on its own line, so the next step is obvious.
+			 */
+			const devOverlay = await page
+				.evaluate(() => Boolean(document.querySelector("vite-error-overlay")))
+				.catch(() => false);
+			if (devOverlay) {
+				record(viewport.name, route, [
+					"a dev-server error overlay covered this page, so none of its layout checks ran",
+				]);
+				for (const err of [...new Set(serverErrors)].slice(0, 3)) {
+					failures.push(`${viewport.name} ${route.name}: server ${err}`);
+				}
+				await context.close();
+				continue;
+			}
+
 			// Expected content must be present for the page to count as working.
+			//
+			// `0` is an assertion of **absence**, not a minimum nothing can fail: a
+			// populated board that also renders `.empty__title` is the two-headline
+			// problem in #65 appearing in a state nobody had looked at, and a
+			// reference-only use page that grew a `.use__control--primary` is a
+			// download appearing for material nobody has cleared — the one thing
+			// `DESIGN.md` §9.6 exists to prevent. A minimum would pass both.
 			for (const [selector, min] of Object.entries(route.expect ?? {})) {
 				const found = await page.locator(selector).count();
-				if (found < min) issues.push(`${selector}: ${found} < ${min} expected`);
+				if (min === 0) {
+					if (found > 0) issues.push(`${selector}: ${found} present, expected absent`);
+				} else if (found < min) {
+					issues.push(`${selector}: ${found} < ${min} expected`);
+				}
 			}
 
 			// The fold check. `document` top is the honest measure because the
@@ -1517,9 +2519,52 @@ async function main() {
 			// from every screenshot of every route that has one. The evidence is
 			// worthless if the harness is what moved the thing it is photographing.
 			if (!auditOnly && route.capture !== false) {
+				/*
+				 * An anchored route is captured at the viewport, not full-page.
+				 *
+				 * The point of `/lab#signals` is the signal states, and the lab is
+				 * 14,490px tall at 1280. A `fullPage` capture of an anchored route is
+				 * therefore a thumbnail of a header with the states too small to read —
+				 * which is exactly the failure the anchored route was added to prevent,
+				 * and it looked fine in the output because the file existed and the
+				 * assertions passed. Found by opening the PNG, not by reading the code.
+				 *
+				 * A full-page capture also re-lays-out the document, so it does not show
+				 * where the browser actually lands you. For a fragment link that is the
+				 * only interesting thing about the picture.
+				 */
 				await page.screenshot({
 					path: `${outDir}${route.name}--${viewport.name}.png`,
-					fullPage: viewport.width >= 768,
+					/*
+					 * Three reasons not to capture the whole document, each measured.
+					 *
+					 * - An **anchored** route exists to show a region. The lab is
+					 *   14,490px tall; a full-page capture of `/lab#signals` is a
+					 *   thumbnail of a header with the states too small to read, which
+					 *   is the failure the anchored route was added to prevent.
+					 * - At **200% text** the same thing happens without a fragment: the
+					 *   drill-in is 11,922px tall and the capture came out 190px wide.
+					 * - A full-page capture also re-lays-out the document, so it does
+					 *   not show where the browser actually lands you — which is the only
+					 *   interesting thing about a picture of a fragment link.
+					 *
+					 * Routes that need the whole page still get it, and the two routes
+					 * with sticky chrome have their own second, scrolled frame.
+					 */
+					fullPage: viewport.width >= 768 && !route.anchor && !viewport.textScale,
+				});
+				// Recorded, not counted. `captured` was a number that could be
+				// anything, and a run that wrote nine files and said it wrote nine
+				// hundred was still a green run. The manifest is the answer: it names
+				// every file with its size and digest, and `auditManifest` fails the
+				// run when one of them is missing.
+				captures.push({
+					route: route.name,
+					path: route.path,
+					viewport: viewport.name,
+					file: `${route.name}--${viewport.name}.png`,
+					kind: "page",
+					...(viewport.textScale ? { textScale: viewport.textScale } : {}),
 				});
 				captured++;
 			}
@@ -1545,6 +2590,13 @@ async function main() {
 				if (!auditOnly) {
 					await page.screenshot({
 						path: `${outDir}${route.name}--${viewport.name}--scrolled.png`,
+					});
+					captures.push({
+						route: route.name,
+						path: route.path,
+						viewport: viewport.name,
+						file: `${route.name}--${viewport.name}--scrolled.png`,
+						kind: "scrolled",
 					});
 					captured++;
 				}
@@ -1585,6 +2637,21 @@ async function main() {
 				}
 			}
 
+			/*
+			 * A named, state-specific audit, run once rather than at every viewport.
+			 *
+			 * `auditSignalStates` compares the control states of the seven rating
+			 * panels against the panel that describes them. It is a claim about
+			 * behaviour, not geometry, so eleven identical readings per run would
+			 * cost minutes and learn nothing new — the same reason layout shift and
+			 * reduced motion run once. A counting `expect` cannot stand in for it:
+			 * counting `.rate button` cannot tell an enabled button from a disabled
+			 * one, and that difference *is* the signed-in/signed-out state.
+			 */
+			if (route.audit === "signals" && viewport === VIEWPORTS[0]) {
+				issues.push(...(await attempt(() => auditSignalStates(page), page)));
+			}
+
 			// The audit script is serialised into the page, so report its own
 			// failure rather than silently passing a route.
 			try {
@@ -1597,6 +2664,9 @@ async function main() {
 					warnings.push(
 						`${viewport.name} ${route.name}: a media route has no aspect-ratio containers, so the crop check had nothing to measure`,
 					);
+				}
+				for (const found of auditResult.clippedPlaceholders ?? []) {
+					placeholders.push(`${viewport.name} ${route.name}: ${found}`);
 				}
 			} catch (err) {
 				issues.push(`audit failed: ${String(err).split("\n")[0].slice(0, 120)}`);
@@ -1618,6 +2688,19 @@ async function main() {
 			// the difference between "there is no video" being true and being
 			// assumed.
 			issues.push(...(await attempt(() => auditAutoplay(page), page)));
+
+			// The one-accent rule, counted. Once per route rather than per viewport,
+			// because the count is a property of the page and re-measuring it eleven
+			// times would learn the same thing eleven times. See `auditAccent` for why
+			// this is printed and not gated.
+			if (viewport === VIEWPORTS.find((v) => v.name === "laptop-1280")) {
+				const accent = await attempt(() => auditAccent(page), page);
+				if (accent && accent.note) {
+					warnings.push(`${route.name}: accent count skipped — ${accent.note}`);
+				} else if (accent) {
+					accents.push({ route: route.name, ...accent });
+				}
+			}
 
 			// Sticky chrome and the scrolled capture both ran above, before the
 			// full-page screenshot rearranged the document.
@@ -1648,6 +2731,12 @@ async function main() {
 				}
 			}
 
+			// The server's own failures, kept out of the page's list. See the
+			// `response` handler above for why they are worth separating.
+			for (const err of [...new Set(serverErrors)].slice(0, 3)) {
+				failures.push(`${viewport.name} ${route.name}: server ${err}`);
+			}
+
 			record(viewport.name, route, issues);
 			await context.close();
 		}
@@ -1659,6 +2748,13 @@ async function main() {
 		const page = await context.newPage();
 		await page.goto(`${baseUrl}/`, { waitUntil: "networkidle" });
 		await page.screenshot({ path: `${outDir}wall--iphone13.png`, fullPage: true });
+		captures.push({
+			route: "wall",
+			path: "/",
+			viewport: "iphone13",
+			file: "wall--iphone13.png",
+			kind: "device-profile",
+		});
 		await context.close();
 		captured++;
 	}
@@ -1673,7 +2769,7 @@ async function main() {
 	 */
 	const shiftViewport =
 		VIEWPORTS.find((v) => v.name === "laptop-1280") ?? VIEWPORTS[0];
-	const shiftRoute = ROUTES.find((r) => r.name === "wall");
+	const shiftRoute = AUDITED.find((r) => r.name === "wall");
 	if (shiftRoute) {
 		const shiftIssues = await auditLayoutShift(browser, shiftViewport, shiftRoute);
 		if (shiftIssues.length) {
@@ -1689,13 +2785,34 @@ async function main() {
 	if (motionIssues.length) for (const issue of motionIssues) failures.push(issue);
 
 	/*
+	 * Dark only, asserted as an absence (#47's "light/dark if both are
+	 * supported", and `DESIGN.md` §9.3's decision not to have a light one).
+	 *
+	 * Skipping this row would be the wrong answer twice over: the issue asks for
+	 * light *and* dark only if both exist, and the honest reply to "only one is
+	 * supported" is "here is the evidence that the other one is not there" — not
+	 * silence. `auditDarkOnly` reads the same page under both colour schemes and
+	 * fails if anything differs, if `color-scheme` is not `dark`, or if a theme
+	 * control has appeared in the interface. Its self-check has already pointed it
+	 * at a page that *does* have a light theme, so a pass here means it looked.
+	 */
+	const themeIssues = await auditDarkOnly(browser);
+	if (themeIssues.length) {
+		for (const issue of themeIssues) failures.push(issue);
+	} else {
+		console.log(
+			`Light/dark — the wall renders identically under prefers-color-scheme: dark and light, color-scheme is dark, and there is no theme control: DESIGN.md §9.3 is dark only`,
+		);
+	}
+
+	/*
 	 * Sticky chrome has to fit the viewport it sticks to. Run once per viewport
 	 * rather than per route×viewport: it needs its own context (it is a
 	 * geometry question, not an audit of one page's contents), and the routes
 	 * that have sticky chrome are known — the wall's filter rail and the
 	 * drill-in's plate. Both are audited at every size in the matrix.
 	 */
-	const stickyRoutes = ROUTES.filter((r) => r.stickyFits && !r.nonHtml);
+	const stickyRoutes = AUDITED.filter((r) => r.stickyFits && !r.nonHtml);
 	for (const viewport of VIEWPORTS) {
 		for (const route of stickyRoutes) {
 			const issues = await auditStickyFits(browser, viewport, route);
@@ -1729,8 +2846,58 @@ async function main() {
 
 	await browser.close();
 
-	console.log(`\nVisual QA — ${ROUTES.length} routes × ${VIEWPORTS.length} viewports`);
-	if (!auditOnly) console.log(`Captured ${captured} screenshots → screenshots/`);
+	/*
+	 * The artefact set, described and then checked.
+	 *
+	 * Written before the checks so a failing run still leaves a record of what it
+	 * was looking at — a run that fails on the eleventh viewport is exactly the
+	 * run somebody needs to know the origin of. `auditManifest` then fails the run
+	 * on a missing capture, an unaccounted file, or `screenshots/` having stopped
+	 * being ignored.
+	 */
+	let manifest = null;
+	if (!auditOnly) {
+		manifest = writeManifest(captures);
+		for (const issue of auditManifest(manifest)) failures.push(issue);
+	} else {
+		// An audit-only run still has to answer the coverage question, because that
+		// is about the matrix rather than about the captures.
+		for (const issue of auditCoverage().issues) failures.push(issue);
+	}
+	if (!auditOnly) {
+		for (const issue of auditCoverage().issues) failures.push(issue);
+	}
+
+	console.log(`\nVisual QA — ${AUDITED.length} routes × ${VIEWPORTS.length} viewports`);
+	if (!auditOnly) {
+		console.log(
+			`Captured ${captured} screenshot(s) → screenshots/, described by screenshots/manifest.json (commit ${manifest?.commit?.slice(0, 7) ?? "unknown"}, ${manifest?.origin})`,
+		);
+		console.log(
+			`Artefacts — wiped at the start of every run and never committed; regenerate rather than keeping them. Share a run by its commit and manifest.`,
+		);
+	}
+
+	/*
+	 * What the issue names, and what answered it.
+	 *
+	 * Printed on every run, including a failing one, because the alternative is a
+	 * coverage claim that lives only in the issue text and goes stale the moment
+	 * somebody renames a route. The dev-only rows are the ones a production audit
+	 * covers less of, and that is stated rather than left to be discovered.
+	 */
+	const coverage = auditCoverage();
+	console.log("\nCoverage — what the issue asked for, and what carried it:");
+	for (const line of coverage.lines) {
+		const also = line.also ? ` + ${line.also}` : "";
+		console.log(`  ${line.item.padEnd(38)} ${line.routes}${also}`);
+	}
+	const devSkipped = coverage.lines.flatMap((line) => line.devSkipped);
+	if (devSkipped.length) {
+		console.log(
+			`  (this is not a development origin, so ${devSkipped.length} development-only route(s) were skipped — ${[...new Set(devSkipped)].join(", ")}. They are refused in production by design, not failing; run them against a local dev server.)`,
+		);
+	}
 
 	const byViewport = new Map();
 	for (const entry of audit) {
@@ -1769,8 +2936,12 @@ async function main() {
 	if (blankMedia.length) {
 		const least = Math.min(...blankMedia.map((b) => b.least));
 		const sampled = blankMedia.reduce((sum, b) => sum + b.sampled, 0);
+		const deferred = blankMedia.reduce((sum, b) => sum + (b.deferred ?? 0), 0);
 		console.log(
-			`Blank media — ${sampled} image(s) sampled, fewest distinct colours on any plate: ${least} (a flat frame scores 1)`,
+			`Blank media — ${sampled} image(s) sampled, fewest distinct colours on any plate: ${least} (a flat frame scores 1)` +
+				(deferred
+					? `; ${deferred} image(s) below the fold were never requested (loading="lazy"), so that number is drawn from the first viewport only`
+					: ""),
 		);
 	}
 	if (folds.length) {
@@ -1812,6 +2983,30 @@ async function main() {
 							`${p.viewport} ${p.width === null ? "missing" : `${p.width}px`} (${p.width === null ? "—" : `${((p.width / 800) * 13).toFixed(1)}px annotation`}${p.gated ? ", gated" : ""})`,
 					)
 					.join(", "),
+		);
+	}
+	if (placeholders.length) {
+		const byField = new Map();
+		for (const entry of placeholders) {
+			const field = entry.replace(/^\S+ \S+: /, "");
+			byField.set(field, (byField.get(field) ?? 0) + 1);
+		}
+		console.log(
+			`Placeholders wider than their field — ${byField.size} distinct field(s) across ${placeholders.length} page/viewport pair(s). Measured, not gated: when the field already has the whole line the remaining fix is the wording, which is DESIGN.md's to decide.`,
+		);
+		for (const [field, n] of [...byField.entries()].slice(0, 6)) {
+			console.log(`  · ×${n}  ${field}`);
+		}
+	}
+	if (accents.length) {
+		const worst = [...accents].sort((x, y) => y.count - x.count);
+		console.log(
+			`Accent (DESIGN.md §2 allows one per viewport; measured, not gated) — ${
+				worst.length
+			} route(s) counted; most: ${worst
+				.slice(0, 5)
+				.map((a) => `${a.route} ${a.count}`)
+				.join(", ")}${worst[0].names.length ? ` · e.g. ${worst[0].names.join(", ")}` : ""}`,
 		);
 	}
 	if (tapUnder44.size) {
