@@ -131,6 +131,33 @@ shows. Machine entries arrive as drafts at `editorial_rank: 0`, which puts them
 last on the wall; promoting one is a person's decision. `npm run doctor` checks
 that no draft has leaked onto the public wall.
 
+### Two decisions, not one
+
+`status` and `visibility` are independent, and conflating them is the failure
+this section exists to prevent:
+
+- **`status`** is EmDash's *publish state* — has the CMS released this revision?
+- **`visibility`** is a *person's judgement* — does this belong in the catalogue?
+
+So an entry can be published **and** hidden, which means EmDash's
+`status: "published"` filter is not sufficient on its own. `isPubliclyVisible`
+in `src/lib/catalogue.ts` is the single rule, applied by `loadPossibilities`,
+`loadPossibility`, `loadCollections` and the search page:
+
+| `visibility`    | Public? | Why |
+| --------------- | ------- | --- |
+| `published`     | yes     | the intended state |
+| absent          | yes     | the field predates it; defaulting absent to hidden would empty the catalogue |
+| `draft`         | no      | unreviewed crawl output |
+| `hidden`        | no      | a curator said no |
+| anything else   | no      | an unrecognised value is not permission, same direction as `flagValue` |
+
+A withdrawn entry is absent from the wall, from search, from `/verticals`,
+from collection membership, from the RSS feed and from
+`/api/catalogue.json` — and its drill-in 404s rather than rendering, so
+guessing a slug does not reach it. `tests/visibility.test.ts` hides a real
+seeded entry and asserts each of those, then restores it.
+
 ### Compressing sources into possibilities
 
 The engine's job is not to list repositories. `engine/src/possibility.ts`

@@ -155,6 +155,7 @@ export const PossibilityData = Schema.Struct({
 	coverage: Measure,
 	editorial_rank: Measure,
 	featured: Flag,
+	visibility: Text,
 });
 
 /** The fields an example row is contractually allowed to carry. */

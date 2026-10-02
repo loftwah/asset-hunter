@@ -32,6 +32,12 @@ import { runApp } from "../../lib/effect/root.ts";
 /** EmDash's roles, by level. Editor is the threshold for curation. */
 const EDITOR = 40;
 
+/** A row's fields, read as a bag. One narrowing, shared by both direct reads. */
+const draftFieldsOf = (data: unknown): Record<string, unknown> =>
+	typeof data === "object" && data !== null && !Array.isArray(data)
+		? (data as Record<string, unknown>)
+		: {};
+
 const viewer = actorFrom(Astro.locals?.user);
 const level = Number((Astro.locals?.user as { role?: unknown } | undefined)?.role ?? 0);
 if (!viewer || level < EDITOR) {
@@ -42,10 +48,32 @@ if (!viewer || level < EDITOR) {
 
 // Three independent reads, one program. `Effect.all` keeps each branch's type,
 // and `runApp` is the one runner every edge in this repository shares.
+//
+// `loadPossibilities` now filters on `visibility` (see `isPubliclyVisible`), so
+// the public wall cannot show a hidden entry. That makes this page the one place
+// that reads the collection without that filter — which is what a curator needs,
+// because "what did I hide and why" is precisely the question. The rows carry
+// their visibility so the answer is visible rather than inferred.
 const [{ possibilities }, reports, ratings] = await runApp(
 	Effect.all([loadPossibilities(), loadReports(), loadRatings()]),
 	{ signal: Astro.request.signal },
 );
+
+// Hidden entries, read directly. A curator's own decisions are the one thing a
+// curation queue must not hide from the curator.
+const hiddenPage = await runApp(
+	Effect.flatMap(EmDashContent, (emdash) => emdash.collection("possibilities", { limit: 100 })),
+	{ signal: Astro.request.signal },
+);
+const hidden = hiddenPage.entries
+	.map((e) => ({ id: e.id, fields: draftFieldsOf(e.data) }))
+	.filter((e) => e.fields.visibility === "hidden")
+	.map((e) => ({
+		id: e.id,
+		title: String(e.fields.title ?? e.id),
+		vertical: (e.fields.vertical as string) ?? null,
+		rightsStatus: (e.fields.rights_status as string) ?? null,
+	}));
 
 // Queue 1: open reports, grouped by reason with the licence concern first,
 // because it is the one where being wrong makes the catalogue unsafe.
@@ -68,23 +96,19 @@ const draftPage = await runApp(
 	Effect.flatMap(EmDashContent, (emdash) => emdash.collection("possibilities", { limit: 50 })),
 	{ signal: Astro.request.signal },
 );
-/** A draft row's fields, read as a bag. One narrowing, used once. */
-const draftFields = (data: unknown): Record<string, unknown> =>
-	typeof data === "object" && data !== null && !Array.isArray(data)
-		? (data as Record<string, unknown>)
-		: {};
-const drafts = draftPage.entries.map(
-	(e) => ({
+const drafts = draftPage.entries.map((e) => {
+	const fields = draftFieldsOf(e.data);
+	return {
 		id: e.id,
-		title: String(draftFields(e.data).title ?? e.id),
-		rightsStatus: (draftFields(e.data).rights_status as string) ?? null,
-		vertical: (draftFields(e.data).vertical as string) ?? null,
-		hunt: (draftFields(e.data).source_hunt as string) ?? null,
-		syncedAt: (draftFields(e.data).machine_synced_at as string) ?? null,
-		examples: (draftFields(e.data).example_count as number) ?? 0,
-		sources: (draftFields(e.data).distinct_sources as number) ?? 0,
-	}),
-);
+		title: String(fields.title ?? e.id),
+		rightsStatus: (fields.rights_status as string) ?? null,
+		vertical: (fields.vertical as string) ?? null,
+		hunt: (fields.source_hunt as string) ?? null,
+		syncedAt: (fields.machine_synced_at as string) ?? null,
+		examples: (fields.example_count as number) ?? 0,
+		sources: (fields.distinct_sources as number) ?? 0,
+	};
+});
 
 // Queue 3: entries whose machine observations were never made, or whose sources
 // were never verified. Not errors — the honest state of a catalogue that has not
@@ -110,6 +134,7 @@ const totals = {
 	reports: open.length,
 	licences: open.filter((r) => r.reason === "licence-changed").length,
 	drafts: drafts.length,
+	hidden: hidden.length,
 	unmeasured: unmeasured.length,
 	unverified: unverified.length,
 };
@@ -125,7 +150,7 @@ const totals = {
 		<p class="tag tag--ember">Curation</p>
 		<h1 class="display head__title">What needs a decision</h1>
 		<p class="lede">
-			Four queues. Everything here is a question rather than an edit: the decisions are made in
+			Five queues. Everything here is a question rather than an edit: the decisions are made in
 			the <a href="/_emdash/admin">EmDash admin</a>, which has the revisions and the audit
 			trail. This page exists so nothing sits in the catalogue unexamined.
 		</p>
@@ -143,6 +168,10 @@ const totals = {
 			<div>
 				<dt class="tag">Held drafts</dt>
 				<dd class="tally__n">{totals.drafts}</dd>
+			</div>
+			<div>
+				<dt class="tag">Hidden</dt>
+				<dd class="tally__n">{totals.hidden}</dd>
 			</div>
 			<div>
 				<dt class="tag">Unmeasured</dt>
@@ -223,6 +252,39 @@ const totals = {
 								<p class="row__foot">
 									{draft.hunt ? `hunt ${draft.hunt} · ` : ""}
 									{draft.syncedAt ? `synced ${draft.syncedAt.slice(0, 10)}` : "never synced"} ·{" "}
+									<a href="/_emdash/admin/possibilities">review it</a>
+								</p>
+							</li>
+						))}
+					</ul>
+				)
+			}
+		</section>
+
+		<section aria-labelledby="q-hidden">
+			<h2 id="q-hidden" class="section__title">
+				Withdrawn from the catalogue
+				<span class="tag">{hidden.length}</span>
+			</h2>
+			<p class="section__why">
+				A person set <code>visibility</code> to <code>hidden</code>. These are not on the wall,
+				not in search and not in the JSON contract — the drill-in 404s like a missing entry, so
+				guessing a slug does not reach one. They are listed here because the useful question is
+				"what did I withdraw, and does it still need to be", not "hide it more thoroughly".
+			</p>
+			{
+				hidden.length === 0 ? (
+					<p class="empty-note">Nothing withdrawn.</p>
+				) : (
+					<ul class="queue">
+						{hidden.map((entry) => (
+							<li class="row">
+								<p class="row__head">
+									<span class="row__title row__title--plain">{entry.title}</span>
+									<span class="tag">{entry.vertical ?? "unclassified"}</span>
+									<span class="tag">{entry.rightsStatus ?? "unstated"}</span>
+								</p>
+								<p class="row__foot">
 									<a href="/_emdash/admin/possibilities">review it</a>
 								</p>
 							</li>

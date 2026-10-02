@@ -85,10 +85,20 @@ const reasonFor = (text: string | null | undefined) => {
 	return `${start > 0 ? "…" : ""}${markTerms(text.slice(start, end).trim())}${end < text.length ? "…" : ""}`;
 };
 
-const hits = rawHits.map((item) => ({
-	item,
-	possibility: item.collection === "possibilities" ? bySlug.get(item.slug ?? "") : undefined,
-}));
+/**
+ * EmDash's index knows about every published entry. `loadPossibilities` honours
+ * `visibility`, so a withdrawn possibility is *not* in `bySlug` — and without
+ * this filter its search hit would fall through to the collection branch and
+ * render as a broken row linking to `/collections/<possibility-slug>`, which
+ * 404s. A search result for something the catalogue will not show is worse than
+ * no result: it implies the thing is findable.
+ */
+const hits = rawHits
+	.filter((item) => item.collection !== "possibilities" || bySlug.has(item.slug ?? ""))
+	.map((item) => ({
+		item,
+		possibility: item.collection === "possibilities" ? bySlug.get(item.slug ?? "") : undefined,
+	}));
 
 // Collections are only loaded when a collection actually matched: each one
 // costs a reference-resolution request, and most searches hit none.

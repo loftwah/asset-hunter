@@ -64,6 +64,15 @@ export interface Possibility {
 	coverage?: number | null;
 	editorialRank?: number | null;
 	featured?: boolean | null;
+	/**
+	 * A person's decision about whether this belongs in the public catalogue.
+	 *
+	 * Distinct from EmDash's own `status`, which is publish state. An entry can be
+	 * published *and* hidden: published means "the CMS has released it", hidden
+	 * means "a curator decided the catalogue should not show it". Conflating the
+	 * two is how a quarantined entry stays on the wall.
+	 */
+	visibility?: string | null;
 }
 
 export interface Example {
@@ -212,6 +221,7 @@ function toPossibility(entry: RawEntryValue): Effect.Effect<
 			coverage: measure(d.coverage),
 			editorialRank: measure(d.editorial_rank),
 			featured: d.featured === undefined || d.featured === null ? null : flagValue(d.featured),
+			visibility: text(d.visibility),
 		})),
 		// Name the record that failed. A `SchemaError` says which field; this says
 		// which entry, which is the part a log line needs and the part a decoder
@@ -284,6 +294,36 @@ export function mediaSrc(
 }
 
 /**
+ * Whether an entry may be shown to the public.
+ *
+ * Two independent decisions, and the bug this exists to prevent is treating them
+ * as one:
+ *
+ * - EmDash's `status` is **publish state** — has the CMS released this revision?
+ * - `visibility` is a **person's judgement** — does this belong in the catalogue?
+ *
+ * So an entry can be published *and* hidden. EmDash's `status: "published"`
+ * filter alone therefore keeps a quarantined entry on the wall, in search and in
+ * the JSON contract, which is precisely what a curator used `hidden` to prevent.
+ *
+ * The rule for a missing value, which is the part that matters most:
+ *
+ * - **`published` or absent → visible.** Absent means the field predates it.
+ *   Defaulting absent to hidden would empty the catalogue the first time this
+ *   shipped, and the seed's own entries carry no value on older databases.
+ * - **`draft` → not visible.** A hunt's unreviewed output must never be public,
+ *   which is the invariant `engine/src/merge.ts` writes it for.
+ * - **`hidden` → not visible.** A person said so.
+ * - **Anything else → not visible.** An unrecognised value is not permission.
+ *   This is the same direction as `flagValue`: absence is not permission, and a
+ *   typo is not permission either.
+ */
+export function isPubliclyVisible(visibility: string | null | undefined): boolean {
+	if (visibility === null || visibility === undefined || visibility === "published") return true;
+	return false;
+}
+
+/**
  * Loads the catalogue wall. Ordering is editorial rank first, then the machine
  * observation, so a human decision leads and popularity never silently erases a
  * novel possibility.
@@ -302,7 +342,12 @@ export function loadPossibilities(
 			cursor: options.cursor,
 			orderBy: { editorial_rank: "desc" },
 		});
-		const possibilities = yield* Effect.forEach(page.entries, toPossibility);
+		// Decoded before filtering, because `visibility` is a field on the row and
+		// an undecodable row is a failure whether or not it would have been shown.
+		const decoded = yield* Effect.forEach(page.entries, toPossibility);
+		// `visibility` is enforced here rather than by EmDash's `status` filter,
+		// which is publish state — see `isPubliclyVisible`.
+		const possibilities = decoded.filter((p) => isPubliclyVisible(p.visibility));
 		// Editorial rank may be null on entries that predate the field; fall back to
 		// title so ordering stays deterministic rather than database-dependent.
 		possibilities.sort(
@@ -324,8 +369,13 @@ export function loadPossibility(slug: string): CatalogueRead<{
 	return Effect.gen(function* () {
 		const emdash = yield* EmDashContent;
 		const found = yield* emdash.entry("possibilities", slug);
+		if (!found.entry) return { possibility: null, cacheHint: found.cacheHint };
+		const possibility = yield* toPossibility(found.entry);
 		return {
-			possibility: found.entry ? yield* toPossibility(found.entry) : null,
+			// A hidden entry 404s like a missing one rather than rendering. An entry
+			// a curator withdrew should not be reachable by guessing its slug, and
+			// the drill-in's own 404 path already says what to do next.
+			possibility: isPubliclyVisible(possibility.visibility) ? possibility : null,
 			cacheHint: found.cacheHint,
 		};
 	});
@@ -425,7 +475,10 @@ export function loadCollections(): CatalogueRead<{
 						title: fields.title ?? entry.id,
 						tagline: text(fields.tagline),
 						summary: text(fields.summary),
-						members: [...members],
+						// A withdrawn member drops out of its collections. A collection is a
+						// curation of what the catalogue shows, and a member link to a page
+						// that 404s is a broken curation.
+						members: members.filter((m) => isPubliclyVisible(m.visibility)),
 					} satisfies CuratedCollection;
 				}),
 			{ concurrency: REFERENCE_CONCURRENCY },
