@@ -32,6 +32,25 @@ import { runApp } from "../../lib/effect/root.ts";
 /** EmDash's roles, by level. Editor is the threshold for curation. */
 const EDITOR = 40;
 
+/**
+ * The viewer's role level, or 0 for anything this gate cannot read.
+ *
+ * ## Why this is not `Number(user.role ?? 0)` (#53)
+ *
+ * `Number("editor")` is `NaN`, and `NaN < 40` is `false` — so the previous
+ * expression *granted* access to any session whose `role` was not the numeric
+ * level it expected, which is precisely the case a check like this exists for.
+ * A gate that fails open on an unrecognised value is worse than no gate, because
+ * it looks like one.
+ *
+ * So the reading fails closed: only a finite number in EmDash's own range counts,
+ * and everything else is 0, which is below the threshold and therefore a 404.
+ */
+const roleLevel = (user: unknown): number => {
+	const raw = (user as { role?: unknown } | undefined)?.role;
+	return typeof raw === "number" && Number.isFinite(raw) && raw >= 0 ? raw : 0;
+};
+
 /** A row's fields, read as a bag. One narrowing, shared by both direct reads. */
 const draftFieldsOf = (data: unknown): Record<string, unknown> =>
 	typeof data === "object" && data !== null && !Array.isArray(data)
@@ -39,11 +58,24 @@ const draftFieldsOf = (data: unknown): Record<string, unknown> =>
 		: {};
 
 const viewer = actorFrom(Astro.locals?.user);
-const level = Number((Astro.locals?.user as { role?: unknown } | undefined)?.role ?? 0);
+const level = roleLevel(Astro.locals?.user);
 if (!viewer || level < EDITOR) {
 	// A 404 rather than a 403: this page is not a thing that exists for you, and
 	// a 403 confirms it exists.
-	return new Response("Not found", { status: 404 });
+	//
+	// And it is the *site's* 404, rendered, rather than a bare
+	// `new Response("Not found")` (#53). The bare body was its own oracle: it
+	// answered `404` with `text/plain` and nine bytes, where a URL that genuinely
+	// does not exist answers `404` with `text/html` and the whole not-found page —
+	// so an anonymous visitor could tell "a gated page I may not see" from "no
+	// such page", and enumerate the protected routes by content length. Measured
+	// against production: `/curate` was `text/plain`, 9 bytes; `/no-such-page` was
+	// `text/html`, 14,028 bytes.
+	//
+	// `Astro.rewrite` renders `/404` without changing the URL, so the status is
+	// 404, the body is the page a missing page gets, and there is nothing left to
+	// distinguish the two.
+	return Astro.rewrite("/404");
 }
 
 // Three independent reads, one program. `Effect.all` keeps each branch's type,

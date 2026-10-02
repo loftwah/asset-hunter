@@ -17,6 +17,7 @@
  * RuntimeConfig    ← Config, read from a record of environment values
  * EmDashContent    ← the in-process CMS reader (reads)
  * EmDashContentApi ← the HTTP content API (writes)
+ * RateLimits       ← the in-isolate abuse window behind the public POSTs (#53)
  * ```
  *
  * `RequestAbort` and `Clock` are references with defaults rather than layers:
@@ -47,6 +48,7 @@ import { Clock, Effect, Exit, Fiber, Layer, type Config } from "effect";
 import { RequestAbort, cancellable, type AbortedError } from "./abort.ts";
 import { RuntimeConfig } from "./config.ts";
 import { EmDashContent, EmDashContentApi, type EmDashRequest } from "./emdash.ts";
+import { RateLimits } from "./limits.ts";
 
 /**
  * Everything an application program is allowed to name in its `R` channel.
@@ -56,7 +58,11 @@ import { EmDashContent, EmDashContentApi, type EmDashRequest } from "./emdash.ts
  * that wants to be testable in time asks for `Clock.Clock` explicitly, and gets a
  * `TestClock` in a test without the root's involvement.
  */
-export type AppServices = EmDashContent | EmDashContentApi | RuntimeConfig;
+export type AppServices =
+	| EmDashContent
+	| EmDashContentApi
+	| RateLimits
+	| RuntimeConfig;
 
 /** The options every runner takes. One shape, so every edge passes the same thing. */
 export interface RunOptions {
@@ -75,7 +81,7 @@ export interface RunOptions {
 
 /** The live graph for one environment. */
 const AppLive = (env: Readonly<Record<string, string | undefined>>) =>
-	Layer.mergeAll(EmDashContent.layer, EmDashContentApi.layer).pipe(
+	Layer.mergeAll(EmDashContent.layer, EmDashContentApi.layer, RateLimits.layer).pipe(
 		Layer.provideMerge(RuntimeConfig.fromEnv(env)),
 	);
 
@@ -161,5 +167,5 @@ export const forkApp = <A, E>(
 ): Fiber.Fiber<A, E | AbortedError | Config.ConfigError> =>
 	Effect.runFork(Effect.scoped(prepare(effect, options)));
 
-export { Clock, RequestAbort, RuntimeConfig, EmDashContent, EmDashContentApi };
+export { Clock, RequestAbort, RuntimeConfig, EmDashContent, EmDashContentApi, RateLimits };
 export type { AbortedError, EmDashRequest };

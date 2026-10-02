@@ -616,6 +616,7 @@ describe("every POST answers", () => {
 			// it in `?note=`. Nothing read it back: a refused rating, a failed one
 			// and a successful one all looked identical.
 			const response = await page.context().request.post(`${baseUrl}/api/signal`, {
+				headers: { "sec-fetch-site": "same-origin", origin: baseUrl },
 				form: {
 					intent: "rate",
 					subject_type: "possibility",
@@ -659,6 +660,7 @@ describe("every POST answers", () => {
 		async (page) => {
 			const post = async (form: Record<string, string>) => {
 				const res = await page.context().request.post(`${baseUrl}/api/board`, {
+					headers: { "sec-fetch-site": "same-origin", origin: baseUrl },
 					form,
 					maxRedirects: 0,
 				});

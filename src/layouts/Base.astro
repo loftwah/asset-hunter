@@ -157,43 +157,6 @@ const isCurrent = (href: string) => isCurrentLink(current, href);
 			)
 		}
 
-		{/*
-		 * Right here, immediately after the masthead, and inline.
-		 *
-		 * The masthead's height is a measurement — the nav drops to its own row
-		 * below 860px, and at 200% text the header is 113px — so the offsets that
-		 * depend on it cannot be a number in the stylesheet. `--masthead-h` is read
-		 * by the wall's sticky filter rail and by every in-page anchor's
-		 * `scroll-margin`.
-		 *
-		 * It has to run *synchronously during parsing*, before the browser performs
-		 * the fragment scroll on load, which is why it is here and why it is
-		 * `is:inline`: Astro bundles a module script and defers it to after the
-		 * scroll, and the fallback token was in force at the moment the offset was
-		 * needed — measured, `/possibilities/…#signals` landed 74px under the
-		 * masthead on an 844×390 phone. `ResizeObserver` then keeps it right for
-		 * zoom, rotation and font swaps.
-		 *
-		 * Nothing depends on this having run: every consumer has a token default,
-		 * so a reader without script gets the design's own number.
-		 */}
-		<script is:inline>
-			(function () {
-				var masthead = document.querySelector(".masthead");
-				if (!masthead) return;
-				var publish = function () {
-					var height = Math.round(masthead.getBoundingClientRect().height);
-					if (height > 0) {
-						document.documentElement.style.setProperty("--masthead-h", height + "px");
-					}
-				};
-				publish();
-				if ("ResizeObserver" in window) new ResizeObserver(publish).observe(masthead);
-				if (document.fonts && document.fonts.ready) document.fonts.ready.then(publish);
-				addEventListener("resize", publish, { passive: true });
-			})();
-		</script>
-
 		<main id="main">
 			<slot />
 		</main>
@@ -674,3 +637,50 @@ const isCurrent = (href: string) => isCurrentLink(current, href);
 		}
 	}
 </style>
+
+<script>
+	/**
+	 * Publishes `--masthead-h`, the one measurement every sticky offset needs.
+	 *
+	 * The masthead's height is not a number in the stylesheet: the nav drops to its
+	 * own row below 860px, and at 200% text the header is 113px high.
+	 * `--masthead-h` is read by the wall's sticky filter rail and by every in-page
+	 * anchor's `scroll-margin`. `ResizeObserver`, `document.fonts.ready` and
+	 * `resize` keep it right through zoom, rotation and a late webfont swap.
+	 *
+	 * ## Why this is not `is:inline` any more (#53)
+	 *
+	 * It used to be an inline `<script>`, and the Content-Security-Policy had to
+	 * allow it by hash. That did not work, and it failed silently in the worst way:
+	 * the browser computed the *identical* digest — measured, in Chromium, the page's
+	 * script and the policy both hashed to `sha256-9204…` — and blocked the script
+	 * anyway. `--masthead-h` was never published, and `tests/responsive-a11y.test.ts`
+	 * caught the consequence: the sticky rail overlapped the masthead by 43px.
+	 *
+	 * A bundled `<script>` is served from this origin, so `script-src 'self'` covers
+	 * it with **no hash, no nonce and no `'unsafe-inline'`** — strictly stronger
+	 * than the hash list it replaces, because a hash has to be kept in step with the
+	 * bytes by hand and this does not. Measured after the change: the script runs,
+	 * `--masthead-h` is published, and the console is clean.
+	 *
+	 * Deferral is the trade #46 once made against `is:inline`, and it is the
+	 * opposite way round from what it was: the fallback token is in force until this
+	 * runs rather than until the browser scrolls, and `tests/responsive-a11y.test.ts`
+	 * is the assertion that this is good enough. Nothing depends on it having run at
+	 * all — every consumer has a token default, so a reader without script gets the
+	 * design's own number.
+	 */
+	const masthead = document.querySelector(".masthead");
+	if (masthead) {
+		const publish = () => {
+			const height = Math.round(masthead.getBoundingClientRect().height);
+			if (height > 0) {
+				document.documentElement.style.setProperty("--masthead-h", height + "px");
+			}
+		};
+		publish();
+		if ("ResizeObserver" in window) new ResizeObserver(publish).observe(masthead);
+		if (document.fonts && document.fonts.ready) document.fonts.ready.then(publish);
+		addEventListener("resize", publish, { passive: true });
+	}
+</script>

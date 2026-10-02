@@ -36,6 +36,7 @@ import type { CacheHint } from "emdash";
 import { EmDashContent } from "./effect/emdash.ts";
 import { CatalogueDecodeError, EmDashTransportError } from "./effect/errors.ts";
 import { decodeOr } from "./effect/decode.ts";
+import { readableText, safeMediaSrc } from "./security.ts";
 import {
 	CollectionData,
 	ExampleData,
@@ -155,8 +156,30 @@ type CatalogueRead<A> = Effect.Effect<
  */
 export const REFERENCE_CONCURRENCY = 8;
 
-/** `undefined` and `null` are the same absence here, and null is the answer. */
-const text = (value: string | null | undefined): string | null => value ?? null;
+/**
+ * Every crawled string on its way to a page.
+ *
+ * `undefined` and `null` are the same absence here, and null is the answer — but
+ * that is the *smallest* thing this function has to do (#53).
+ *
+ * A repository description, a licence quote, a contributor name and a file path
+ * are all chosen by whoever owns the repository, and they are all rendered on a
+ * public page. Escaping stops them becoming markup; it does nothing about text
+ * that is not markup and still does not say what it is. A `rights_note` of
+ * `"Reference only ‮egilavre for commercial use"` renders with the reassurance
+ * *last*, to a reader scanning for whether they may ship it — and that was
+ * measured, on a page of this app, before this line existed.
+ *
+ * So every value passes through {@link readableText} here, at the one place all
+ * of them pass through, rather than at each of the dozen places they are shown.
+ * A projection is where the data becomes the product, and this is where the
+ * product stops being other people's text.
+ *
+ * Deliberately **not** applied to a slug or an id: those are identifiers this app
+ * chose or validated, and rewriting one would point at nothing.
+ */
+const text = (value: string | null | undefined): string | null =>
+	value === null || value === undefined ? null : readableText(value);
 
 /** A number D1 may have stored as text. See `LooseNumber` for why it is not parsed here. */
 type LooseMeasure = number | string | null | undefined;
@@ -274,6 +297,14 @@ const referenceIds = (entry: RawEntryValue, field: string): ReadonlyArray<string
  * to the repo-shipped specimen plate. The `image` field is an object, not a
  * string — this is the most common EmDash integration mistake, so it is
  * resolved in exactly one place.
+ *
+ * The recorded value passes through `safeMediaSrc` (#53), which admits a
+ * root-relative path or an `http(s)` URL and refuses everything else. In an
+ * `<img src>` today `javascript:` and `data:text/html` are inert, so this is not
+ * closing a live hole — it is making the field unable to *become* one. The same
+ * string is emitted into `og:image` and into whatever a future component does
+ * with it, and a CMS field that can only hold a path or an http(s) URL cannot be
+ * the start of that.
  */
 /**
  * The narrow shape `mediaSrc` needs. Accepting a structural type rather than
@@ -290,7 +321,9 @@ export function mediaSrc(
 	entry: MediaBearing,
 	fallback = "/specimens/placeholder.svg",
 ): string {
-	return entry.image?.src || entry.specimen || fallback;
+	return (
+		safeMediaSrc(entry.image?.src) ?? safeMediaSrc(entry.specimen) ?? fallback
+	);
 }
 
 /**

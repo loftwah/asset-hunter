@@ -228,10 +228,28 @@ describe("a withdrawn entry disappears from every public surface", () => {
 		// entry and then reads a cached catalogue is asserting about the cache, not
 		// about `visibility` — which is exactly the flake this was: it passed most
 		// runs and failed when a previous run had warmed the TTL.
-		const json = (await (await get("/api/catalogue.json?fresh=1")).json()) as {
+		//
+		// #53 added a cooldown to `?fresh` (one rebuild per `FRESH_COOLDOWN_MS` per
+		// origin, because an unauthenticated parameter that forces a full catalogue
+		// rebuild is a denial-of-service lever), and the endpoint says so in
+		// `x-catalogue-fresh: served-stale`. So this polls for a body the endpoint
+		// actually rebuilt, and **fails** if it never gets one — the assertion is
+		// unchanged, only the way of asking for an uncached body is.
+		let json: {
 			possibilities: { id: string }[];
 			counts: { possibilities: number };
-		};
+		} = { possibilities: [], counts: { possibilities: 0 } };
+		const deadline = Date.now() + 20_000;
+		while (Date.now() < deadline) {
+			const response = await get("/api/catalogue.json?fresh=1");
+			if (response.headers.get("x-catalogue-fresh") === "served-stale") {
+				await new Promise((resolve) => setTimeout(resolve, 500));
+				continue;
+			}
+			json = (await response.json()) as typeof json;
+			break;
+		}
+		assert.ok(json, "never got a freshly rebuilt catalogue to inspect");
 		assert.equal(
 			json.possibilities.some((p) => p.id === SLUG),
 			false,
