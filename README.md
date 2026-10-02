@@ -85,6 +85,21 @@ curl "http://localhost:4321/_emdash/api/setup/dev-bypass"
 That endpoint creates a local dev admin (`dev@emdash.local`) and is
 development-only — it refuses to run outside `astro dev`.
 
+### Scale fixtures
+
+In development the wall accepts `?scale=N` and renders itself with `N` synthetic
+entries derived from the real catalogue, through the production tile:
+
+```bash
+open "http://localhost:4321/?scale=500"    # what five hundred entries do
+open "http://localhost:4321/?scale=5000"   # what five thousand do
+```
+
+The fixture is refused outside `astro dev` — the entries do not exist, and five
+hundred of them would be both a lie and a performance liability. It exists so
+performance budgets are measured against a real wall rather than a page built to
+resemble one; see [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
+
 ## Content model
 
 `seed/atlas.json` is the readable source of truth for catalogue content.
@@ -117,10 +132,11 @@ change in the seed needs a fresh database or a migration.
 
 ```bash
 npm run verify            # typecheck + seed + plates + tests (no server needed)
-npm run verify:full       # verify + smoke + admin-edit + visual (needs dev server)
+npm run verify:full       # verify + smoke + admin-edit + visual + perf (needs dev server)
 npm run smoke             # proves the public catalogue is served by EmDash
 npm run check:admin-edit  # writes through the CMS, publishes, reads the public page
 npm run check:visual      # screenshot matrix + layout/a11y assertions
+npm run check:perf        # budget every route, plus a 500-entry wall
 npm run doctor            # environment report
 ```
 
@@ -132,8 +148,8 @@ local database seeded (`curl "http://localhost:4321/_emdash/api/setup/dev-bypass
 | `verify`                 | Types, seed validity, every plate renders, unit + route tests. Route tests skip with no server and **fail** on a server that answers errors |
 | `smoke`                  | The public catalogue reads EmDash, not a shadow data source          |
 | `check:admin-edit`       | An EmDash edit reaches the public site, then is restored             |
-| `check:visual`           | Layout, contrast, tap targets, images, headings, focus, fold, crop, gutter |
-| `check:perf`             | Transfer, requests, DOM size, CLS and interaction latency against recorded ceilings |
+| `check:visual`           | Layout, contrast, tap targets, images, headings, focus, fold, crop, gutter — on the real wall *and* on a 5,000-entry one |
+| `check:perf`             | Transfer, requests, DOM size, eager-vs-fetched media, CLS, filter and drill-in latency and main-thread cost on a long wall, against recorded ceilings |
 | `check:specimens`        | Plates are well-formed XML with usable viewBox and alt text          |
 | `check:plates`           | Plates render without text collisions or cropped marks                |
 | `doctor`                 | What is installed versus what is integrated and used                 |
@@ -141,6 +157,12 @@ local database seeded (`curl "http://localhost:4321/_emdash/api/setup/dev-bypass
 `check:visual` captures every public route at five viewports plus an iPhone
 profile into `screenshots/`, and asserts in the rendered page rather than on the
 source — so it catches what a stylesheet review cannot.
+
+`check:perf` also measures `/?scale=5000`, the same wall with a synthetic
+catalogue of five thousand entries. It is development-only (`?scale=` is refused
+outside `astro dev`), deterministic, and rendered through the production tile.
+Its numbers, and what is deliberately measured rather than gated, are in
+[`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
 
 `check:plates` renders each specimen plate in a browser and measures real glyph
 boxes. Overlapping labels in a plate look fine in source and become gibberish at
@@ -168,7 +190,9 @@ three were each a real bug found by reading captures rather than source.
 | `npm run check:specimens` | Validate plate structure                         |
 | `npm run check:plates`    | Render plates and measure them                   |
 | `npm run check:visual`    | Visual QA matrix and assertions                  |
-| `npm run check:perf`      | Measure the wall and compare to recorded ceilings |
+| `npm run check:perf`      | Measure every route plus a 500-entry wall, compare to recorded ceilings |
+| `npm run check:perf:write` | Re-record those ceilings from this machine        |
+| `npm run check:perf:repeat` | Median of three runs, for a busy host            |
 | `npm run hunt -- <brief>` | Run a hunt: crawl, read licences, build the payload   |
 | `npm run hunt:sync`      | Reconcile the payload into the catalogue            |
 | `npm run hunt:verify`    | Prove the catalogue matches the payload             |
