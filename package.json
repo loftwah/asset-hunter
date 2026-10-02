@@ -30,6 +30,7 @@
 		"test:engine": "node --test tests/engine.test.ts",
 		"test:routes": "node --test tests/routes.test.ts",
 		"hunt": "node --experimental-strip-types engine/src/cli.ts hunt",
+		"hunt:refresh": "node --experimental-strip-types engine/src/cli.ts refresh",
 		"hunt:sync": "node --experimental-strip-types engine/src/cli.ts sync",
 		"hunt:sync:dry": "node --experimental-strip-types engine/src/cli.ts sync --dry-run",
 		"hunt:verify": "node --experimental-strip-types engine/src/cli.ts verify",

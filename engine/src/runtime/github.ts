@@ -41,10 +41,14 @@ import { EngineConfig } from "./config.ts";
 import {
 	ContentsResponse,
 	CommitResponse,
+	ObservationResponse,
 	RepoResponse,
 	SearchResponse,
 	TreeResponse,
 } from "./schemas.ts";
+// A type-only import, so the refresh planner stays the single place that decides
+// what an observation *means* and this module is only responsible for reading one.
+import type { SourceObservation } from "../refresh.ts";
 
 /**
  * A GitHub call that did not succeed.
@@ -119,6 +123,21 @@ export class GitHubApi extends Context.Service<
 	{
 		readonly search: (query: string, perPage: number, page?: number) => Effect.Effect<ReadonlyArray<SearchHit>, GitHubError>;
 		readonly resolve: (fullName: string) => Effect.Effect<RepoRef, GitHubError>;
+		/**
+		 * The cheap pre-check (#41): what is true about this repository right now,
+		 * without reading a single byte of its content.
+		 *
+		 * This is the call a refresh makes *before* deciding whether to spend a
+		 * download, so it is deliberately the cheapest read that answers the
+		 * question. Two requests, no tree listing and no `contents/` call — see the
+		 * implementation for why the head commit is a second request rather than a
+		 * first.
+		 *
+		 * A 404 is a failure here, not `null`, because a repository that cannot be
+		 * read is exactly the case the caller has to record honestly. Deciding what
+		 * to do about it belongs to the crawl, not the client.
+		 */
+		readonly observe: (fullName: string) => Effect.Effect<SourceObservation, GitHubError>;
 		readonly tree: (ref: RepoRef, maxEntries?: number) => Effect.Effect<ReadonlyArray<TreeNode>, GitHubError>;
 		/** `null` rather than a failure for a path that is not there. */
 		readonly file: (ref: RepoRef, path: string) => Effect.Effect<RepoFile | null, GitHubError>;
@@ -363,6 +382,79 @@ export class GitHubApi extends Context.Service<
 				return { owner, repo, ref: sha } satisfies RepoRef;
 			});
 
+			/**
+			 * The cheap pre-check, in full.
+			 *
+			 * ## Why two requests
+			 *
+			 * `GET /repos/{owner}/{repo}` carries `pushed_at`, `archived`, `fork`,
+			 * `default_branch`, `stargazers_count` and the canonical `full_name` —
+			 * five of the six signals a `SourceObservation` needs, in one document
+			 * of a few kilobytes. It does **not** carry the head commit. That was
+			 * checked against the live API rather than assumed: the repository
+			 * document has no commit reference at all, so any client that claims
+			 * otherwise is either reading a cached field or making a second call.
+			 *
+			 * So the head commit costs one more request — `/commits/{branch}`, which
+			 * returns a single commit and is not a listing. Two metadata requests is
+			 * the honest floor, and it is still the same request count the old
+			 * `resolve()` already paid per repository, before it listed a tree that
+			 * is frequently megabytes and then downloaded files. What changed is not
+			 * the number of round trips but that this one is reached only for a
+			 * repository the crawl already owns, and a repository that has not moved
+			 * stops here.
+			 *
+			 * The commit is read rather than inferred from `pushed_at` because a
+			 * force-push or a rebase moves the head without the push timestamp moving
+			 * far enough to be trusted on its own, and the planner's rule is that a
+			 * moved commit owes a re-read.
+			 */
+			const observe = Effect.fn("GitHubApi.observe")(function* (fullName: string) {
+				const [owner, repo] = fullName.split("/");
+				if (!owner || !repo) {
+					return yield* Effect.fail(
+						new GitHubError({
+							operation: "observe",
+							status: 400,
+							url: fullName,
+							detail: `"${fullName}" is not owner/repo`,
+							rateLimited: false,
+						}),
+					);
+				}
+				const body = yield* get("observe", `/repos/${owner}/${repo}`, ObservationResponse);
+				const branch = body.default_branch ?? "main";
+				const head = yield* get(
+					"observe",
+					`/repos/${owner}/${repo}/commits/${encodeURIComponent(branch)}`,
+					CommitResponse,
+				);
+				const headSha = head.sha ?? head.object?.sha;
+				if (!headSha) {
+					return yield* Effect.fail(
+						new GitHubError({
+							operation: "observe",
+							status: 502,
+							url: fullName,
+							detail: `could not resolve ${body.full_name}@${branch} to a commit`,
+							rateLimited: false,
+						}),
+					);
+				}
+				return {
+					// The canonical name, not the one that was asked for. A renamed
+					// repository still answers at its old path, and reading this is the
+					// only way a refresh can tell "moved" from "gone".
+					fullName: body.full_name,
+					pushedAt: body.pushed_at ?? "",
+					archived: body.archived === true,
+					fork: body.fork === true,
+					defaultBranch: branch,
+					headSha,
+					stars: Number(body.stargazers_count ?? 0),
+				} satisfies SourceObservation;
+			});
+
 			const tree = Effect.fn("GitHubApi.tree")(function* (ref: RepoRef, maxEntries = 4000) {
 				const body = yield* get(
 					"tree",
@@ -410,6 +502,7 @@ export class GitHubApi extends Context.Service<
 			return GitHubApi.of({
 				search,
 				resolve,
+				observe,
 				tree,
 				file,
 				authenticated: Boolean(token),
