@@ -15,6 +15,7 @@
 import Wordmark from "../components/Wordmark.astro";
 import { loadPrimaryNav, isCurrentLink } from "../lib/site-shell";
 import { buildInfo, buildSentence } from "../lib/build-info";
+import { SEARCH_PLACEHOLDER_SHORT } from "../lib/vocabulary";
 import { runApp } from "../lib/effect/root";
 import "../styles/global.css";
 
@@ -146,7 +147,7 @@ const isCurrent = (href: string) => isCurrentLink(current, href);
 								id="q"
 								type="search"
 								name="q"
-								placeholder="Search"
+								placeholder={SEARCH_PLACEHOLDER_SHORT}
 								autocomplete="off"
 								spellcheck="false"
 							/>

@@ -29,7 +29,7 @@
  * Usage: `node scripts/agent-contract.mjs [--json]`
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join, dirname, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 
 /**
  * The canonical set, and what each one owns.

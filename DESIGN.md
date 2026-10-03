@@ -258,8 +258,13 @@ Rules:
 - **Queries are `noindex`.** Including the blank search page: it is a starting
   point, not a destination.
 - **Search matches the problem, not the vocabulary.** The placeholder says
-  "technique, treatment, problem, tool" and the empty state suggests searching for
-  the problem rather than the solution.
+  "technique, treatment, tool" and the empty state suggests searching for the
+  problem rather than the solution. It names three nouns, not four: "problem" was
+  dropped because the four-word sentence needs 316px and the narrowest supported
+  phone gives the field 293px, and §3's 10–13px mono floor means the type cannot
+  shrink to compensate. `tests/placeholder.test.ts` measures this at every width in
+  the matrix. `SEARCH_PLACEHOLDER` in `src/lib/vocabulary.ts` is the single source,
+  and `/search` and `/404` share it.
 - **Search results are rows, not tiles.** A search for a known term is a
   comparison task, so each hit is a 4:5 thumbnail, a title, its tagline, its
   vertical/media/rights markers, and a line of the entry's own summary with the

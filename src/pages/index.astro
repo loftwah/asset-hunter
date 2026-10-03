@@ -509,10 +509,26 @@ for (const p of filtered) {
 	/*
 	 * `.linkish` is page-scoped to `/use` and `/board`, so on the wall a bare `<a>`
 	 * inside the lede inherited the body colour with no underline — a link that
-	 * does not look like one. This is the same treatment `.flash a` already uses
-	 * here rather than a third convention.
+	 * does not look like one. That part was right and stays.
+	 *
+	 * What was missing is the *height*. As prose inside a `<p>`, this link measured
+	 * 205×18 at every width from 768 up and 155×13 on a phone, so `check:visual`
+	 * reported it as 14 findings across seven viewports — under both the 24px and the
+	 * 44px floors. `DESIGN.md` §7's 44px is for things you can press, and a back link
+	 * on a filtered wall is exactly that: it is how a reader leaves a filter they
+	 * did not intend to be in.
+	 *
+	 * So it is `inline-flex` with `min-height: var(--tap)`, which puts the box
+	 * around the text without touching the lede's type scale — the link is still the
+	 * same size as the sentence beside it, it simply has a target. Enlarging the
+	 * *font* would have been wrong twice over: bigger type in a lede is a different
+	 * product decision, and it would not have reached 44px anyway.
 	 */
 	.intro__back a {
+		display: inline-flex;
+		align-items: center;
+		min-height: var(--tap);
+		padding-inline: 0.15rem;
 		color: var(--ember);
 		text-decoration: underline;
 		text-underline-offset: 3px;

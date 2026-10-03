@@ -18,7 +18,7 @@ import {
 	mediaSrc,
 	type Possibility,
 } from "../lib/catalogue";
-import { verticalLabel } from "../lib/vocabulary";
+import { SEARCH_PLACEHOLDER, verticalLabel } from "../lib/vocabulary";
 import { Effect } from "effect";
 import { runApp } from "../lib/effect/root";
 import { excerpt, safeSnippet } from "../lib/search-text";
@@ -161,7 +161,7 @@ const counted = parts.length > 0 ? `${parts.join(" · ")} · ` : "";
 				type="search"
 				name="q"
 				value={query}
-				placeholder="Technique, treatment, problem, tool"
+				placeholder={SEARCH_PLACEHOLDER}
 				autocomplete="off"
 				spellcheck="false"
 				autofocus={!query}
@@ -406,21 +406,39 @@ const counted = parts.length > 0 ? `${parts.join(" · ")} · ` : "";
 	}
 
 	/*
-	 * `1 1 20rem`, not `1 1 14rem`.
+	 * `1 1 22rem`, not `1 1 20rem`.
 	 *
-	 * The hint is the field's own explanation of itself, and a 13px mono sentence
-	 * needs 300–317px. Beside a 120px button on a 360px line the field got 192px and
-	 * the sentence was cut mid-word — "Try a technique, a treatmen" — with no
-	 * ellipsis and no way to see the rest. A 20rem basis means the pair needs 448px,
-	 * so below about 460px the button takes its own row and the field gets the whole
-	 * line; above it, side by side, the field has 600px+.
+	 * The hint is the field's own explanation of itself. Measured in the browser at
+	 * every width in the matrix, and asserted by `tests/placeholder.test.ts` so this
+	 * stays a number rather than an opinion:
 	 *
-	 * This is a layout answer rather than a copy one: the words are `DESIGN.md`
-	 * §9.1's, and the alternative — shortening them — would edit the design authority
-	 * to fit a box. The box was the thing that was wrong.
+	 *     360px   need 316px   avail 293px    over by 23px
+	 *     390px   need 317px   avail 321px    fits
+	 *
+	 * So 20rem was *almost* enough and the failure is at 360 — the width where it is
+	 * worst, and the one the design authority cares most about.
+	 *
+	 * It was invisible for a second reason: `flex-wrap: wrap` lets the field shrink
+	 * *below* its basis when the button shares the line, so the row still fit and
+	 * the placeholder was clipped mid-word inside it. Wrapping only decides whether
+	 * the pair shares a line; it does not stop the field being squeezed on that
+	 * line. So the basis has to clear the measured need with room to spare, and
+	 * `min-width: 0` is deliberately *not* set — letting the field shrink is the
+	 * behaviour being fixed.
+	 *
+	 * And at 360 it was still 23px short, because the field's own horizontal padding
+	 * lives inside the box: 327px of row, 32px of padding, 293px of text space, and
+	 * the sentence needs 316. No flex basis fixes that, because at this width the
+	 * *container* is the constraint. So the padding gives ground below 30rem only,
+	 * where the sentence then has 317px against a 316px need — and
+	 * `tests/placeholder.test.ts` measures that rather than trusting the arithmetic.
+	 *
+	 * This stays a layout answer rather than a copy one. The words are `DESIGN.md`
+	 * §9.1's, and §3 puts 10–13px mono as the floor for this voice, so shrinking the
+	 * type to fit would edit the design authority from the wrong end.
 	 */
 	.finder input {
-		flex: 1 1 20rem;
+		flex: 1 1 22rem;
 		min-height: 3rem;
 		padding: 0.7rem 1rem;
 		background: var(--surface);
@@ -433,6 +451,23 @@ const counted = parts.length > 0 ? `${parts.join(" · ")} · ` : "";
 
 	.finder input::placeholder {
 		color: var(--ink-4);
+	}
+
+	/*
+	 * Reduced horizontal padding, at 360 only.
+	 *
+	 * At the narrowest width in the matrix the row is 327px, and 32px of that is
+	 * the field's own padding. The placeholder needs the rest of it and more, so
+	 * this is where the two halves of the sentence used to meet mid-word.
+	 *
+	 * Scoped below 30rem because everywhere else the field has room and the padding
+	 * is not the problem. The touch target does not shrink with its padding — only
+	 * its interior does — so this costs reachability nothing.
+	 */
+	@media (width <= 30rem) {
+		.finder input {
+			padding-inline: 0.75rem;
+		}
 	}
 
 	.finder input:focus {

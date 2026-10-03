@@ -52,7 +52,9 @@ import {
 	ORIGIN_MEANING,
 	RIGHTS_MEANING,
 	USE_STATE_COLOR,
+	UNNAMED_EXAMPLE,
 	USE_STATE_LABEL,
+	exampleIdentity,
 	originLabelFor,
 	verticalLabel,
 } from "../../lib/vocabulary.ts";
@@ -361,7 +363,26 @@ const outcome = boardOutcome(
 											/>
 										)}
 										<div class="pick__ident">
-											<h3 class="pick__title">{example.title}</h3>
+											{/*
+											The example's own identity, not its parent's (#69).
+
+											`example.title` is written from the technique the example
+											demonstrates, so it is usually character-identical to the
+											possibility's title — which the breadcrumb and the `h1`
+											already carry. On a page with one example that is three
+											copies of one string; on a page with several it means
+											there is no way to tell the blocks apart, which is the more
+											serious half.
+
+											`exampleIdentity` prefers what is actually about *this*
+											example: the path inside the source repository, then the
+											origin, then a title that is not simply its parent's. With
+											none of those it says so in words rather than repeating the
+											parent — `DESIGN.md` §1.5's honest zero applied to a name.
+										*/}
+										<h3 class="pick__title">
+											{exampleIdentity(example) ?? UNNAMED_EXAMPLE}
+										</h3>
 											{example.origin && (
 												<p class="pick__origin">
 													{ORIGIN_MEANING[example.origin as keyof typeof ORIGIN_MEANING]}
