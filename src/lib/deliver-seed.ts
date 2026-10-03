@@ -54,6 +54,19 @@ export interface SeedCollection {
 /** A content row as `seed/seed.json` declares it. */
 export interface SeedRow {
 	readonly id?: unknown;
+	/**
+	 * The row's public identity.
+	 *
+	 * Not always the `id`. An example is `id: "ex-adaptive-mark"` with
+	 * `slug: "adaptive-mark"`, and it is the slug that everything else refers to —
+	 * including the `possibility: "$ref:adaptive-mark"` on the row that points at it,
+	 * and including the route a reader lands on. Delivering by `id` would create
+	 * `ex-adaptive-mark` as a *slug*, which matches no reference and no URL.
+	 *
+	 * Possibilities happen to have `id === slug`, which is exactly why the first
+	 * delivery was correct for them and would have been wrong for examples.
+	 */
+	readonly slug?: unknown;
 	readonly data?: unknown;
 }
 
@@ -65,7 +78,16 @@ export interface Seed {
 export interface LiveDatabase {
 	/** Collection slugs the database already has. */
 	readonly collections: ReadonlySet<string>;
-	/** Entry ids the deployed catalogue already serves. */
+	/**
+	 * Rows the database already has, as `"<collection>/<slug>"`.
+	 *
+	 * Keyed by collection because a slug is unique only *within* one. A flat set of
+	 * slugs makes every example look delivered the moment its possibility exists —
+	 * they share a slug — and the delivery then reports nothing to do while the
+	 * catalogue serves ten entries with no specimen. That is the same shape of error
+	 * as the id comparison that came before it: comparing across a boundary where the
+	 * value is not unique.
+	 */
 	readonly entries: ReadonlySet<string>;
 	/**
 	 * Fields the database already has, as `"<collection slug>/<field slug>"`.
@@ -82,43 +104,30 @@ export interface LiveDatabase {
 }
 
 /**
- * The collections whose entries are public.
+ * The collections a delivery creates, **in order**.
  *
- * Deliberately the same list `check-deploy-parity` compares, and for the same
- * reason: the two must not drift, or the gate and its remedy would disagree about
- * what is missing. `examples` are served nested inside their possibility, so
- * planning them separately would create rows whose parent does not exist.
- */
-export const PUBLISHED = ["possibilities", "collections"] as const;
-
-/**
- * Stands in for the `--file` path of a content create.
+ * Order is not cosmetic: an example carries `possibility: "$ref:<slug>"`, so its
+ * row cannot be created before the possibility it points at exists.
  *
- * The plan is pure, so it cannot write a temp file; it names the row instead, and
- * the script swaps in a real path. A prefix rather than a bare marker so a
- * placeholder can never be mistaken for a real filename.
- */
-export const DATA_PLACEHOLDER = "<data for ";
-
-/** The marker {@link planDelivery} puts where a `--file` path will go. */
-export function placeholderFor(id: string): string {
-	return `${DATA_PLACEHOLDER}${id}>`;
-}
-
-/**
- * The id a placeholder names, or `null` if the last argument is not one.
+ * `examples` was missing from this list until it had already gone wrong once. The
+ * reasoning that removed it was that examples are *served* nested inside their
+ * possibility, so creating them separately would "create rows whose parent does not
+ * exist". That conflated the API's response shape with storage: `seed.json` keeps
+ * `content.examples` as its own collection of its own rows, and a delivery that
+ * skips it produces ten possibilities with **no examples at all** — which is exactly
+ * what the first delivery to production did.
  *
- * Both halves live here so the writer and the reader cannot disagree about the
- * format. They did once: the reader sliced the prefix and left the closing `>`
- * behind, and ten files were named `monoline-constant-weight>.json`. Harmless in a
- * dry run, and a confusing error in production.
+ * The same blind spot was in `check-deploy-parity`, so the gate agreed with the
+ * remedy and neither noticed. The list is now shared deliberately rather than
+ * derived, and the gate compares examples as a *pairing* — see
+ * {@link LiveDatabase.seedPossessionsWithExamples} in `deploy-parity.ts` — because
+ * `/api/catalogue.json` gives an example its possibility's slug as an `id`, so the
+ * ids themselves are not comparable across the two sides.
  */
-export function placeholderId(args: readonly string[]): string | null {
-	const last = args.at(-1);
-	if (typeof last !== "string") return null;
-	if (!last.startsWith(DATA_PLACEHOLDER) || !last.endsWith(">")) return null;
-	return last.slice(DATA_PLACEHOLDER.length, -1);
-}
+export const DELIVERED = ["possibilities", "examples", "collections"] as const;
+
+/** How `seed.json` marks a relation field's target. */
+const REF = "$ref:";
 
 /** The only verbs this plan may ever emit. Asserted in the test by enumeration. */
 const SAFE_VERBS = ["create", "add-field"] as const;
@@ -126,8 +135,29 @@ const SAFE_VERBS = ["create", "add-field"] as const;
 export interface DeliveryStep {
 	/** One line naming what this step creates, for the person reading the list. */
 	readonly what: string;
-	/** Arguments for `npx emdash …`, without the leading binary. */
+	readonly kind: "schema" | "content";
+	/** Arguments for `npx emdash …`, without the leading binary. Schema steps only. */
 	readonly args: readonly string[];
+	/** What to POST. Content steps only. */
+	readonly entry?: {
+		readonly collection: string;
+		readonly slug: string;
+		readonly data: Readonly<Record<string, unknown>>;
+		/**
+		 * Relation fields, as `{field: [value]}`.
+		 *
+		 * These cannot go in `data`. EmDash refuses a payload that sets a field bound
+		 * to a relation — "Reference fields bound to a relation are set through
+		 * 'references', not 'data'" — and dropping it instead would report a
+		 * successful write with nothing linked. They are also unreachable through
+		 * `emdash content create`: its `--file` is the `data` bag, so a `references`
+		 * key is rejected as an unknown field. The API is the only way to write one,
+		 * which is why content steps are not CLI steps.
+		 */
+		readonly references: Readonly<Record<string, readonly string[]>>;
+		/** Whether the seed says this row is published. */
+		readonly publish: boolean;
+	};
 	/**
 	 * A field this plan could not express, if any.
 	 *
@@ -160,7 +190,7 @@ export function planDelivery(seed: Seed, live: LiveDatabase): DeliveryStep[] {
 			if (singular) create.push("--label-singular", singular);
 			const description = str(collection.description);
 			if (description) create.push("--description", description);
-			steps.push({ what: `collection ${slug}`, args: create });
+			steps.push({ what: `collection ${slug}`, kind: "schema", args: create });
 		}
 
 		let skipped = 0;
@@ -176,26 +206,47 @@ export function planDelivery(seed: Seed, live: LiveDatabase): DeliveryStep[] {
 			const label = str(field?.label);
 			if (label) add.push("--label", label);
 			if (field?.required === true) add.push("--required");
-			steps.push({ what: `field ${slug}.${name}`, args: add });
+			steps.push({ what: `field ${slug}.${name}`, kind: "schema", args: add });
 		}
 		if (skipped > 0) {
 			steps.push({
 				what: `warning for ${slug}`,
+				kind: "schema",
 				args: [],
 				warning: `${slug}: ${skipped} field(s) declared no slug or type and were not planned`,
 			});
 		}
 	}
 
-	for (const collection of PUBLISHED) {
+	for (const collection of DELIVERED) {
 		const rows = seed.content?.[collection];
 		if (!Array.isArray(rows)) continue;
 		for (const row of rows) {
-			const id = str(row?.id);
-			if (!id || live.entries.has(id)) continue;
+			// Identity is the slug, because that is what other rows reference and what
+			// a reader's URL contains. `id` is the fallback for a collection whose two
+			// coincide, which is every collection except `examples` today.
+			const identity = str(row?.slug) ?? str(row?.id);
+			if (!identity || live.entries.has(`${collection}/${identity}`)) continue;
+			const data: Record<string, unknown> = {};
+			const references: Record<string, string[]> = {};
+			for (const [key, value] of Object.entries((row?.data ?? {}) as Record<string, unknown>)) {
+				if (typeof value === "string" && value.startsWith(REF)) {
+					references[key] = [value.slice(REF.length)];
+				} else {
+					data[key] = value;
+				}
+			}
 			steps.push({
-				what: `${collection} ${id}`,
-				args: ["content", "create", collection, "--slug", id, "--file", placeholderFor(id)],
+				what: `${collection} ${identity}`,
+				kind: "content",
+				args: [],
+				entry: {
+					collection,
+					slug: identity,
+					data,
+					references,
+					publish: (row as { status?: unknown })?.status !== "draft",
+				},
 			});
 		}
 	}

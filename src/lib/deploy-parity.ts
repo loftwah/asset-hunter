@@ -62,6 +62,24 @@ export interface ParityInput {
 	readonly seedCollections: ReadonlySet<string>;
 	/** Collection slugs the deployed database actually has. */
 	readonly liveCollections: ReadonlySet<string>;
+	/**
+	 * Possibilities the seed gives at least one example to.
+	 *
+	 * Optional, because it cannot be compared as an id set. `/api/catalogue.json`
+	 * publishes **one** example per possibility — the representative — and gives it
+	 * the *possibility's* slug as its `id`, while `seed.json` stores examples as their
+	 * own rows keyed `ex-<slug>`. So example ids are not comparable across the two
+	 * sides, and a seed that declares 34 examples is not a claim that 34 example ids
+	 * should come back.
+	 *
+	 * What *is* comparable, and what actually broke, is the pairing: a possibility the
+	 * seed gives an example to, served with none. That is a reader arriving at an
+	 * entry with no specimen on it, and it is exactly what the first delivery to
+	 * production produced — ten new possibilities, live, with `exampleCount: 0`.
+	 */
+	readonly seedPossessionsWithExamples?: ReadonlySet<string>;
+	/** Possibilities the deployed catalogue reports at least one example for. */
+	readonly livePossessionsWithExamples?: ReadonlySet<string>;
 }
 
 export interface ParityResult {
@@ -73,13 +91,23 @@ export interface ParityResult {
 	readonly missingCollections: string[];
 	readonly extraCollections: string[];
 	/**
+	 * Possibilities the seed gives an example to and the catalogue serves with none.
+	 *
+	 * Reported separately from {@link missingEntries} because the ids are not
+	 * comparable: the entry exists, so `missingEntries` is empty and `aligned` would
+	 * otherwise be the verdict. An entry with no specimen is a real defect and an
+	 * invisible one.
+	 */
+	readonly possibilitiesWithoutExamples: string[];
+	/**
 	 * What to do, or `null`.
 	 *
-	 * Names `--on-conflict=skip` rather than `update` on purpose. `skip` is
-	 * additive: it cannot delete a row and cannot overwrite one, so it cannot
-	 * destroy a curator's edit. `update` would bring the missing rows in *and*
-	 * overwrite every editorial change made since the last seed — the one command
-	 * in this repository that can silently destroy a person's work.
+	 * Names delivery rather than a seed re-application. Delivery is a sequence of
+	 * creates and POSTs, which cannot delete a row and cannot overwrite one, so it
+	 * cannot destroy a curator's edit. `emdash seed --on-conflict=update` would bring
+	 * the missing rows in *and* overwrite every editorial change made since the last
+	 * seed — the one call in this repository that can silently destroy a person's
+	 * work, and it reads as harmless.
 	 */
 	readonly remedy: string | null;
 }
@@ -104,6 +132,7 @@ export function assessDeployParity(input: ParityInput): ParityResult {
 		extraEntries: [] as string[],
 		missingCollections: [] as string[],
 		extraCollections: [] as string[],
+		possibilitiesWithoutExamples: [] as string[],
 	};
 
 	if (!input.reachable) {
@@ -129,8 +158,13 @@ export function assessDeployParity(input: ParityInput): ParityResult {
 	const extraEntries = [...input.liveEntries]
 		.filter((id) => !input.seedEntries.has(id))
 		.sort();
+	const possibilitiesWithoutExamples = [
+		...(input.seedPossessionsWithExamples ?? new Set<string>()),
+	]
+		.filter((id) => !(input.livePossessionsWithExamples ?? new Set<string>()).has(id))
+		.sort();
 
-	if (!missingCollections.length && !missingEntries.length) {
+	if (!missingCollections.length && !missingEntries.length && !possibilitiesWithoutExamples.length) {
 		return {
 			kind: "aligned",
 			summary: `the deployed database serves all ${input.seedEntries.size} seeded entries across all ${input.seedCollections.size} collections`,
@@ -138,9 +172,16 @@ export function assessDeployParity(input: ParityInput): ParityResult {
 			extraEntries,
 			missingCollections,
 			extraCollections,
+			possibilitiesWithoutExamples,
 			remedy: null,
 		};
 	}
+
+	// An entry with no specimen reads as complete and is not, so it is named in the
+	// same sentence as the entries rather than only in the arrays.
+	const specimens = possibilitiesWithoutExamples.length
+		? `; ${possibilitiesWithoutExamples.length} of them have no example`
+		: "";
 
 	// Collections first: a missing collection is a feature that cannot run, and it
 	// is invisible to anybody reading the site.
@@ -162,11 +203,17 @@ export function assessDeployParity(input: ParityInput): ParityResult {
 						)}`
 					: ""
 			}`
-		: `the deployed catalogue does not serve ${missingEntries.length} seeded ${plural(
-				missingEntries.length,
-				"entry",
-				"entries",
-			)}: ${list(missingEntries)}`;
+		: missingEntries.length
+			? `the deployed catalogue does not serve ${missingEntries.length} seeded ${plural(
+					missingEntries.length,
+					"entry",
+					"entries",
+				)}: ${list(missingEntries)}${specimens}`
+			: `${possibilitiesWithoutExamples.length} seeded ${plural(
+					possibilitiesWithoutExamples.length,
+					"entry has",
+					"entries have",
+				)} no example: ${list(possibilitiesWithoutExamples)}`;
 
 	return {
 		kind: "drifted",
@@ -175,8 +222,9 @@ export function assessDeployParity(input: ParityInput): ParityResult {
 		extraEntries,
 		missingCollections,
 		extraCollections,
+		possibilitiesWithoutExamples,
 		remedy:
-			"apply the seed additively — `emdash seed --on-conflict=skip`, never `update`, which would overwrite editorial changes. See docs/DEPLOY.md",
+			"deliver it additively: `npm run deliver:seed --apply`. Never `emdash seed --on-conflict=update`, which would overwrite editorial changes. See docs/DEPLOY.md",
 	};
 }
 

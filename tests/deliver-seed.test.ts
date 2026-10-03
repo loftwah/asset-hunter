@@ -30,9 +30,7 @@ import {
 	planDelivery,
 	hasUnsafeVerb,
 	stepVerb,
-	placeholderFor,
-	placeholderId,
-	PUBLISHED,
+	DELIVERED,
 } from "../src/lib/deliver-seed.ts";
 
 const seed = {
@@ -65,7 +63,7 @@ const verbs = (steps: { args: readonly string[] }[]) => steps.map((s) => stepVer
 describe("a plan for a database that is missing things", () => {
 	const steps = planDelivery(seed, {
 		collections: new Set(["possibilities"]),
-		entries: new Set(["p1"]),
+		entries: new Set(["possibilities/p1"]),
 	});
 
 	test("creates the collections the database lacks, and only those", () => {
@@ -79,8 +77,8 @@ describe("a plan for a database that is missing things", () => {
 	test("puts schema before content, because a row needs its collection to exist", () => {
 		// Order is the whole reason this is a plan and not a set. Content created
 		// first would reference a collection that does not exist yet.
-		const firstContent = steps.findIndex((s) => s.args[0] === "content");
-		const lastSchema = steps.map((s) => s.args[0]).lastIndexOf("schema");
+		const firstContent = steps.findIndex((s) => s.kind === "content");
+		const lastSchema = steps.map((s) => s.kind).lastIndexOf("schema");
 		assert.ok(lastSchema < firstContent, "every schema step must precede every content step");
 	});
 
@@ -95,9 +93,9 @@ describe("a plan for a database that is missing things", () => {
 	});
 
 	test("creates only the entries the catalogue does not already serve", () => {
-		const content = steps.filter((s) => s.args[0] === "content");
+		const content = steps.filter((s) => s.kind === "content");
 		assert.deepEqual(
-			content.map((s) => s.args[4]),
+			content.map((s) => s.entry?.slug),
 			["p2", "p3"],
 		);
 	});
@@ -113,7 +111,7 @@ describe("a plan for a database that is missing things", () => {
 		// collection that was created but not finished".
 		const steps = planDelivery(seed, {
 			collections: new Set(["possibilities", "disputes"]),
-			entries: new Set(["p1", "p2", "p3"]),
+			entries: new Set(["possibilities/p1", "possibilities/p2", "possibilities/p3"]),
 			fields: new Set(["possibilities/title", "disputes/title", "disputes/reason"]),
 		});
 		assert.deepEqual(
@@ -128,7 +126,7 @@ describe("a plan for a database that is missing things", () => {
 		// compare it. Planning it would mean creating rows the gate cannot then
 		// confirm — the plan and the gate would disagree about what is missing.
 		assert.ok(!steps.some((s) => s.what.includes("page-1")));
-		assert.deepEqual([...PUBLISHED], ["possibilities", "collections"]);
+		assert.deepEqual([...DELIVERED], ["possibilities", "examples", "collections"]);
 	});
 });
 
@@ -141,9 +139,18 @@ describe("a plan that cannot destroy anything", () => {
 		 * means a new destructive verb added to the CLI tomorrow fails here, instead
 		 * of being quietly accepted because nobody thought to blacklist it.
 		 */
+		// Content steps carry no CLI verb at all: a relation field cannot be written
+		// through `emdash content create`, so they are API steps. So the enumeration is
+		// over the schema steps, and "content steps use no CLI" is asserted separately
+		// below rather than left implied.
 		const steps = planDelivery(seed, empty);
-		assert.deepEqual([...new Set(verbs(steps))].sort(), ["add-field", "create"]);
+		const schema = steps.filter((s) => s.kind === "schema");
+		assert.deepEqual([...new Set(verbs(schema))].sort(), ["add-field", "create"]);
 		assert.equal(hasUnsafeVerb(steps), false);
+		assert.ok(
+			steps.filter((s) => s.kind === "content").every((s) => s.args.length === 0),
+			"no content step is expressed as a CLI command",
+		);
 	});
 
 	test("rejects update, delete and publish if any ever appear", () => {
@@ -154,7 +161,11 @@ describe("a plan that cannot destroy anything", () => {
 			{ what: "x", args: ["content", "publish", "possibilities", "p1"] },
 		];
 		for (const step of destructive) {
-			assert.equal(hasUnsafeVerb([step]), true, `${step.args[1]} must be refused`);
+			assert.equal(
+				hasUnsafeVerb([{ ...step, kind: "schema" }]),
+				true,
+				`${step.args[1]} must be refused`,
+			);
 		}
 	});
 
@@ -175,7 +186,7 @@ describe("a plan that cannot destroy anything", () => {
 		assert.equal(
 			planDelivery(seed, {
 				collections: new Set(["possibilities", "disputes"]),
-				entries: new Set(["p1", "p2", "p3"]),
+				entries: new Set(["possibilities/p1", "possibilities/p2", "possibilities/p3"]),
 				fields: new Set(["possibilities/title", "disputes/title", "disputes/reason"]),
 			}).length,
 			0,
@@ -201,110 +212,81 @@ describe("a field the plan cannot express", () => {
 	});
 });
 
-describe("the --file placeholder", () => {
-	test("round-trips an id through both halves", () => {
-		// They disagreed once: the reader sliced the prefix and kept the closing `>`,
-		// naming ten files `monoline-constant-weight>.json`. Harmless in a dry run,
-		// confusing against production.
-		const id = "monoline-constant-weight";
-		const args = ["content", "create", "possibilities", "--slug", id, "--file", placeholderFor(id)];
-		assert.equal(placeholderId(args), id);
-		assert.ok(!placeholderFor(id).slice(0, -1).includes(">"));
-	});
-
-	test("is null for anything that is not a placeholder", () => {
-		assert.equal(placeholderId(["content", "create"]), null);
-		assert.equal(placeholderId(["content", "create", "--file", "/tmp/real.json"]), null);
-		assert.equal(placeholderId(["content", "create", "--file", "<data for x"]), null, "unclosed");
-		assert.equal(placeholderId([]), null);
-	});
-
-	test("names every content row exactly once", () => {
-		const steps = planDelivery(seed, empty);
-		const ids = steps
-			.filter((s) => s.args[0] === "content")
-			.map((s) => placeholderId(s.args));
-		assert.deepEqual(ids.sort(), ["p1", "p2", "p3"]);
-		assert.equal(new Set(ids).size, ids.length, "no row may be planned twice");
-	});
-});
-
-describe("a collection that was created but not finished", () => {
+describe("a relation field", () => {
 	/*
-	 * The failure this closes.
+	 * The last thing standing between a delivery and a correct catalogue.
 	 *
-	 * A run against production creates `disputes` and then fails on its ninth field —
-	 * a token expires, a rate limit, a typo in a label. The collection now exists and
-	 * is wrong. A plan keyed only on "does this collection exist?" would skip it from
-	 * then on, so one transient failure became a permanently half-built collection
-	 * with no way to complete it through this script — and the parity gate would
-	 * report it as present, because the collection *is* present.
+	 * A seed row writes its parent as `possibility: "$ref:<slug>"`, which reads like
+	 * data and is not: EmDash refuses a `data` payload that sets a field bound to a
+	 * relation, and `emdash content create --file` cannot carry one either, because
+	 * its file *is* the data bag — a `references` key there is rejected as an unknown
+	 * field. So the split has to happen here, and `references` values are arrays.
 	 *
-	 * So fields are planned independently of their collection. Keying on fields makes
-	 * the plan resumable, which is the only useful property for a step that talks to
-	 * production.
+	 * Getting it wrong is invisible rather than loud: the write succeeds with nothing
+	 * linked, and the entry reaches the public catalogue as a possibility with no
+	 * specimen. That is what the first delivery to production did.
 	 */
-	const disputes = {
-		slug: "disputes",
-		label: "Rights disputes",
-		fields: [
-			{ slug: "title", type: "string" },
-			{ slug: "state", type: "string" },
-			{ slug: "reason", type: "select" },
-		],
-	};
-	const only = {
-		collections: [disputes],
-		content: { possibilities: [], collections: [] },
+	const withRelations = {
+		collections: [],
+		content: {
+			possibilities: [{ id: "p1", slug: "p1", status: "published", data: { title: "One" } }],
+			examples: [
+				{
+					id: "ex-p1",
+					slug: "p1",
+					status: "published",
+					data: { title: "A specimen", possibility: "$ref:p1", origin: "generated" },
+				},
+			],
+			collections: [],
+		},
 	};
 
-	test("plans the fields it is missing, and not the collection again", () => {
-		const steps = planDelivery(only, {
-			collections: new Set(["disputes"]),
-			entries: new Set(),
-			fields: new Set(["disputes/title", "disputes/state"]),
-		});
+	/** The `examples` step specifically: the possibility sorts first. */
+	const exampleStep = () =>
+		planDelivery(withRelations, { collections: new Set(), entries: new Set() })
+			.find((s) => s.entry?.collection === "examples")!;
+
+	test("is split out of `data` into `references`, as an array", () => {
+		const step = exampleStep();
+		assert.equal(step.entry?.data.possibility, undefined, "and it is gone from data");
+		assert.deepEqual(step.entry?.references, { possibility: ["p1"] });
+		assert.equal(step.entry?.data.title, "A specimen", "and the rest of data survives");
+	});
+
+	test("is delivered under the row's slug, not its id", () => {
+		// Everything refers to an example by slug — including the route a reader lands
+		// on and the `$ref:` above. Delivering `id` would create `ex-p1` as a slug,
+		// which nothing points at.
+		const step = exampleStep();
+		assert.equal(step.entry?.slug, "p1");
+		assert.equal(step.entry?.collection, "examples");
+	});
+
+	test("carries the seed's published state rather than defaulting to draft", () => {
+		assert.equal(exampleStep().entry?.publish, true);
+
+		const draft = planDelivery(
+			{
+				...withRelations,
+				content: {
+					possibilities: [],
+					examples: [{ ...withRelations.content.examples[0], status: "draft" }],
+					collections: [],
+				},
+			},
+			{ collections: new Set(), entries: new Set() },
+		).find((s) => s.entry?.collection === "examples")!;
+		assert.equal(draft.entry?.publish, false, "a draft row stays a draft");
+	});
+
+	test("an example is planned once, and never as a possibility too", () => {
+		const steps = planDelivery(withRelations, { collections: new Set(), entries: new Set() });
+		const content = steps.filter((s) => s.kind === "content");
 		assert.deepEqual(
-			steps.map((s) => s.what),
-			["field disputes.reason"],
-			"only the absent field is planned, and the collection is not recreated",
+			content.map((s) => `${s.entry?.collection}/${s.entry?.slug}`),
+			["possibilities/p1", "examples/p1"],
+			"same slug, different collections, both planned",
 		);
-	});
-
-	test("plans nothing at all when the collection is complete", () => {
-		const steps = planDelivery(only, {
-			collections: new Set(["disputes"]),
-			entries: new Set(),
-			fields: new Set(["disputes/title", "disputes/state", "disputes/reason"]),
-		});
-		assert.deepEqual(steps, []);
-	});
-
-	test("adds a field missing from a collection that already has most of them", () => {
-		// The production case: `examples` is fully built except for the five
-		// `dispute_*` fields, so the read path degrades to "no dispute recorded"
-		// rather than failing — and nothing says the feature is inert.
-		const steps = planDelivery(
-			{
-				collections: [
-					{ slug: "examples", fields: [{ slug: "title", type: "string" }, { slug: "dispute_state", type: "string" }] },
-				],
-				content: { possibilities: [], collections: [] },
-			},
-			{
-				collections: new Set(["examples"]),
-				entries: new Set(),
-				fields: new Set(["examples/title"]),
-			},
-		);
-		assert.deepEqual(steps.map((s) => s.what), ["field examples.dispute_state"]);
-		assert.equal(hasUnsafeVerb(steps), false);
-	});
-
-	test("plans every field when nothing is known about the collection", () => {
-		// `fields` is optional, so an older caller still gets the complete plan rather
-		// than silently nothing.
-		const steps = planDelivery(only, { collections: new Set(), entries: new Set() });
-		assert.equal(steps.length, 4, "one create and three fields");
 	});
 });

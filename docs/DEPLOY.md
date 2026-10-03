@@ -243,60 +243,61 @@ of a risky operation is worth recording somewhere durable.
 
 ### Applying the seed additively
 
-`emdash seed` targets a local SQLite path. There is no `--d1`, and `wrangler d1
-execute` cannot stand in for it: a collection's table is created when EmDash
-applies the schema, not by inserting a row into `_emdash_collections`, so
-hand-written INSERTs restore the metadata and leave the table missing — verified
-against a local database by dropping `ec_disputes`, re-inserting the collection
-row, and finding no table.
+`emdash seed` targets a local SQLite path, and `wrangler d1 execute` cannot stand in
+for it: a collection's table is created when EmDash applies schema, not by inserting
+a row into `_emdash_collections` — verified by dropping `ec_disputes`, re-inserting
+the collection row, and finding no table.
 
-The supported remote path is the CLI over HTTP, which creates rather than
-overwrites and so is additive by construction:
+So delivery goes over HTTP, and **not uniformly**. Schema uses the CLI; content uses
+the API. That split is not a preference:
+
+- `emdash schema create` / `add-field` are the only supported way to add a collection
+  or a field, and they work over `--url`.
+- `emdash content create --file` takes the `data` bag and nothing else, so it **cannot
+  express a relation**. The API refuses a `data` payload that sets a field bound to a
+  relation ("Reference fields bound to a relation are set through 'references', not
+  'data'"), and a `references` key inside the CLI's file is rejected as an unknown
+  field. Every example has a `possibility` relation, so every example needs the API.
 
 ```bash
-# 1. schema — one create per missing collection, then its fields
-npx emdash schema create disputes --label Disputes -u https://assets.loftwah.com -t "$EMDASH_TOKEN"
-npx emdash schema add-field disputes --name dispute_state -u … -t "$EMDASH_TOKEN"
-
-# 2. content — one create per missing entry, straight from the seed
-npx emdash content create possibilities --file row.json --slug monoline-constant-weight \
-  -u https://assets.loftwah.com -t "$EMDASH_TOKEN"
-
-# 3. prove it
-npm run deploy:parity        # must now say aligned
+node scripts/mint-delivery-token.mjs        # writes .env.delivery, gitignored, mode 600
+EMDASH_TOKEN=$(grep EMDASH_TOKEN .env.delivery | cut -d= -f2) npm run deliver:seed
+EMDASH_TOKEN=$(grep EMDASH_TOKEN .env.delivery | cut -d= -f2) npm run deliver:seed --apply
+npm run deploy:parity                       # must now say aligned
+node scripts/revoke-delivery-token.mjs      # and the token goes away
 ```
 
-`npm run deliver:seed` computes that list from the seed and the deployed
-database, prints every command, and refuses to run anything without `--apply`.
-Dry-run by default is not caution for its own sake: the alternative is a person
-assembling the list by hand against production, and the list is exactly the kind
-of thing that gets one entry wrong.
+`deliver:seed` is dry-run by default, and every step is a create or a POST — asserted
+by enumerating allowed verbs, because the useful claim is not "these commands are
+right" but "this cannot destroy anything".
 
-### One thing a plan cannot reproduce
+### Three things that are not obvious, each of which shipped a defect first
 
-`emdash seed` applies each collection's `supports`. `possibilities` declares
-`["drafts","revisions","search","seo"]`; `disputes` declares `["drafts","search"]`.
-`emdash schema create` has no flag for it, and a collection created that way
-arrives as `["drafts","revisions"]` — it gains revision history nobody declared
-and loses its FTS table. Measured against a throwaway collection on a local
-instance rather than assumed.
+**A content row's identity is its `slug`, not its `id`.** An example is
+`id: "ex-adaptive-mark"`, `slug: "adaptive-mark"`, and it is the slug everything
+refers to — including the `possibility: "$ref:adaptive-mark"` pointing at it and the
+route a reader lands on. Possibilities happen to have `id === slug`, which is why
+delivering by `id` was correct for them and wrong for examples.
 
-For the three collections missing here that is benign: nothing searches a dispute,
-and the dispute state a reader sees is a field on the example row rather than a
-row in that collection. It would **not** be benign for `possibilities`, which is
-why `deliver-seed` never plans a collection that already exists — the only
-collections it will create are ones this repository has just introduced. If a
-future change needs to recreate an existing collection, the seed has to be
-re-applied rather than delivered.
+**A relation is written as an array, and lives outside `data`.**
+`references: { possibility: ["adaptive-mark"] }` — a scalar is rejected as "expected
+array".
+
+**Existing rows are read from the database, not from the public API.**
+`/api/catalogue.json` publishes one example per possibility and gives it the
+*possibility's* slug as its `id`, so every example looks absent through it. A flat set
+of slugs is not enough either: a slug is unique only *within* a collection, so
+unioned across three tables every example looks delivered the moment its possibility
+exists, and the delivery reports nothing to do.
 
 ### Why create, and never an update
 
 `--on-conflict=update` would bring the missing rows in **and** overwrite every
-editorial change made since the last seed. Content a person edited in the admin
-is not reproducible from `seed/seed.json` — the seed is the source for what has
-never been touched, not for what has. Creating is additive: it cannot delete a
-row and cannot overwrite one. `skip` is EmDash's own default for the same reason,
-and the destructive alternative is one flag away and reads as harmless.
+editorial change made since the last seed. Content a person edited in the admin is
+not reproducible from `seed/seed.json` — the seed is the source for what has never
+been touched, not for what has. Creating is additive: it cannot delete a row and
+cannot overwrite one. `skip` is EmDash's own default for the same reason, and the
+destructive alternative is one flag away and reads as harmless.
 
 ## Related
 

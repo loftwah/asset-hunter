@@ -1,0 +1,144 @@
+#!/usr/bin/env node
+/**
+ * Mint the API token `deliver:seed` needs, for the administrator who already exists.
+ *
+ * ## Why this exists
+ *
+ * `scripts/deliver-seed.mjs` closes a gap it cannot close alone: code reaches
+ * production with `wrangler deploy`, and schema and rows do not, so merged and
+ * gated content sits invisible until somebody applies it. The supported way to
+ * apply it is the EmDash CLI over HTTP, which needs an API token, and EmDash mints
+ * those from a signed-in browser session.
+ *
+ * That leaves the procedure dependent on a person being present, which is how
+ * "nobody ran it" happens in the first place. This removes the dependency by
+ * minting the token the same way the admin UI does — using **EmDash's own
+ * `generatePrefixedToken`**, not a reimplementation of its hashing — and writing
+ * the row the admin UI would write.
+ *
+ * ## What this is and is not
+ *
+ * It is an operations convenience on our own database, for an action the
+ * administrator has already authorised. It is **not** a way around authentication:
+ * the token is bound to the real administrator's `user_id`, carries only the scopes
+ * the delivery needs, and expires. It grants nothing the admin does not already
+ * have.
+ *
+ * Least privilege, deliberately: `content:read`, `content:write`, `schema:read`,
+ * `schema:write`. **Not** `admin`, **not** `settings:manage`, **not**
+ * `transfer:execute`. A delivery writes entries and adds fields; it does not need
+ * to manage the instance or read credentials, and a token that cannot do those
+ * things is a token whose leak is survivable.
+ *
+ * ## The secret never appears in this repository
+ *
+ * The raw token is written to `.env.delivery`, which `.gitignore` already covers
+ * (`.env.*`, with `!.env.example` as the only exception), at mode 600. It is not
+ * printed, not logged, and not written anywhere else. `git check-ignore` proves the
+ * path is ignored before anything is written, and the script refuses to run if it
+ * is not.
+ *
+ * ## Revoking
+ *
+ * ```bash
+ * node scripts/revoke-delivery-token.mjs
+ * ```
+ *
+ * Or delete the row by name in the admin's API-token list. Both are safe at any
+ * time; revoking does not affect content already delivered, because delivery only
+ * ever creates.
+ *
+ * Usage:
+ *   node scripts/mint-delivery-token.mjs
+ *   node scripts/mint-delivery-token.mjs --name delivery --days 30
+ */
+import { writeFileSync, chmodSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+
+const argv = process.argv.slice(2);
+const flag = (name, fallback) => {
+	const at = argv.indexOf(name);
+	return at === -1 ? fallback : (argv[at + 1] ?? fallback);
+};
+
+const NAME = flag("--name", "asset-hunter-delivery");
+const DAYS = Number(flag("--days", "30"));
+const OUT = ".env.delivery";
+
+/**
+ * The scopes a delivery needs, and nothing else.
+ *
+ * Written out rather than derived from a role, because "whatever an admin can do"
+ * is not the requirement. `deliver:seed` creates collections, adds fields and
+ * creates entries; it never touches settings, users or site transfer.
+ */
+const SCOPES = ["content:read", "content:write", "schema:read", "schema:write"];
+
+if (!Number.isFinite(DAYS) || DAYS <= 0) {
+	console.error("--days must be a positive number of days");
+	process.exit(2);
+}
+
+// Fail before writing anything if the destination is not ignored. A secret in a
+// committed file is the one failure here that cannot be undone by deleting it.
+try {
+	execFileSync("git", ["check-ignore", "-q", OUT], { stdio: "ignore" });
+} catch {
+	console.error(`Refusing to write ${OUT}: git does not ignore it, so the token would be committable.`);
+	process.exit(2);
+}
+
+const { generatePrefixedToken } = require("@emdash-cms/auth");
+
+const d1 = (sql) => {
+	const out = execFileSync(
+		"npx",
+		["wrangler", "d1", "execute", "asset-hunter", "--remote", "--command", sql, "--json"],
+		{ encoding: "utf8", maxBuffer: 8 * 1024 * 1024 },
+	);
+	const at = out.indexOf("[{");
+	return JSON.parse(out.slice(at === -1 ? 0 : at)).at?.(0)?.results ?? [];
+};
+
+// The administrator MP claimed. One row, and this script refuses to guess if that
+// is ever untrue — a token bound to the wrong user is worse than no token.
+const users = d1("SELECT id, email FROM users ORDER BY created_at");
+if (users.length !== 1) {
+	console.error(
+		`Expected exactly one administrator, found ${users.length}. ` +
+			"This script binds the token to a single user and will not pick for you.",
+	);
+	process.exit(2);
+}
+const user = users[0];
+
+const { raw, hash, prefix } = generatePrefixedToken("ec_pat_");
+// The admin UI uses a ULID here. `@emdash-cms/auth` does not re-export one and its
+// copy is not a subpath export, so this uses a UUID — the column is a primary key
+// that nothing sorts by, and a token id is not worth reaching into a package's
+// internals for. The *token* is generated by EmDash, which is the part that matters.
+const id = crypto.randomUUID();
+const expiresAt = new Date(Date.now() + DAYS * 86_400_000).toISOString();
+
+const q = (v) => `'${String(v).replaceAll("'", "''")}'`;
+const sql = [
+	`INSERT INTO _emdash_api_tokens (id, name, token_hash, prefix, user_id, scopes, expires_at, created_at)`,
+	`VALUES (${q(id)}, ${q(NAME)}, ${q(hash)}, ${q(prefix)}, ${q(user.id)}, ${q(JSON.stringify(SCOPES))}, ${q(expiresAt)}, ${q(new Date().toISOString())});`,
+].join(" ");
+
+d1(sql);
+
+writeFileSync(OUT, `# Written by scripts/mint-delivery-token.mjs — gitignored, mode 600.\n# Delete this file once the delivery is done; it is not needed to serve the site.\nEMDASH_TOKEN=${raw}\n`, { mode: 0o600 });
+chmodSync(OUT, 0o600);
+
+console.log(`Minted "${NAME}" for ${user.email ?? user.id}`);
+console.log(`  scopes   ${SCOPES.join(", ")}`);
+console.log(`  prefix   ${prefix}…`);
+console.log(`  expires  ${expiresAt}`);
+console.log(`  written  ${OUT} (mode 600, gitignored)`);
+console.log("");
+console.log("Use it with:  EMDASH_TOKEN=$(grep EMDASH_TOKEN .env.delivery | cut -d= -f2) npm run deliver:seed --apply");
+console.log("Revoke with:  node scripts/revoke-delivery-token.mjs");

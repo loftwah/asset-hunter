@@ -146,22 +146,26 @@ describe("a seeded entry that never arrived", () => {
 		assert.match(verdict.summary, /monoline-constant-weight/);
 	});
 
-	test("names `skip` and never `update` as the remedy", () => {
+	test("names delivery and never an update as the remedy", () => {
 		/*
 		 * The one sentence in this file that could destroy somebody's work, so it is
 		 * asserted rather than trusted.
 		 *
-		 * `--on-conflict=update` would bring the missing rows in *and* overwrite
-		 * every editorial change made since the last seed — which is the opposite of
-		 * what somebody who ran a command described as "applying a seed" expects.
+		 * `--on-conflict=update` would bring the missing rows in *and* overwrite every
+		 * editorial change made since the last seed — the opposite of what somebody who
+		 * ran a command described as "applying a seed" expects. Delivery is creates
+		 * and POSTs, which cannot overwrite, so it is what gets named.
 		 */
 		const verdict = drifted();
-		assert.match(verdict.remedy ?? "", /--on-conflict=skip/);
-		assert.doesNotMatch(
-			verdict.remedy ?? "",
-			/--on-conflict=update\b(?!.*never)/,
-			"the remedy must never be an update",
-		);
+		const remedy = verdict.remedy ?? "";
+		assert.match(remedy, /deliver:seed --apply/);
+		// The update flag may be *named*, but only to be forbidden — so the assertion
+		// is order-aware. A plain `doesNotMatch` passes or fails on word order rather
+		// than on meaning, which is how "never do X" gets rejected for containing X.
+		const at = remedy.indexOf("--on-conflict=update");
+		if (at >= 0) {
+			assert.match(remedy.slice(0, at), /Never\b/, "an update may only be named to be forbidden");
+		}
 	});
 
 	test("one missing entry is still a failure", () => {
