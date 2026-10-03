@@ -34,6 +34,7 @@ import { validatePayload, type PublishPayload } from "./publish.ts";
 import { EmDashApi, type EmDashApiError } from "./runtime/emdash.ts";
 import { mergeExample, mergePossibility, shouldPublish } from "./merge.ts";
 import { describeExclusion, parseExclusions, type Exclusion } from "./exclusions.ts";
+import { untrustedError, untrustedRepo } from "./transcript.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const engineRoot = resolve(here, "..");
@@ -233,7 +234,8 @@ function cmdSync(dryRun: boolean, env: EngineEnv) {
 			}
 			if (report.failed.length) {
 				console.error(`  failed    ${report.failed.length}`);
-				for (const f of report.failed.slice(0, 5)) console.error(`    ✖ ${f.slug}: ${f.error}`);
+				for (const f of report.failed.slice(0, 5))
+					console.error(`    ✖ ${untrustedRepo(f.slug)}: ${untrustedError(f.error)}`);
 				process.exitCode = 1;
 				return;
 			}
@@ -462,6 +464,6 @@ try {
 		process.exitCode = command ? 1 : 0;
 	}
 } catch (err) {
-	console.error(`\n✖ ${err instanceof Error ? err.message : String(err)}`);
+	console.error(`\n✖ ${untrustedError(err instanceof Error ? err.message : String(err))}`);
 	process.exitCode = 1;
 }

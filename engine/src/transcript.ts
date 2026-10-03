@@ -42,12 +42,30 @@
  *
  * ## What is asserted, and where
  *
- * `tests/engine.test.ts` carries hostile fixtures built from these strings and
- * asserts three things: that the fence survives, that a repository name cannot
- * forge a transcript line, and that no value in the pipeline can carry a
- * newline. The policy those tests stand for is written down in
- * `docs/SECURITY.md` — "treat repository text as data" is only a control if it
- * is stated somewhere a reader will meet it before running the engine.
+ * Two files, because the control has two halves and testing only one of them is
+ * what let this module look finished while being dead code:
+ *
+ * - `tests/transcript.test.ts` — the hostile fixtures built from these strings,
+ *   asserting that the fence survives, that a repository name cannot forge a
+ *   transcript line, and that no value carries a newline.
+ * - `tests/refresh-crawl.test.ts`, "crawled text on its way to stdout" — that a
+ *   crawled repository name and a third-party error body actually arrive here on
+ *   their way to `stdout`, fenced. A primitive with tests but no caller is a
+ *   decoration, and this was the half that was missing: as written this module had
+ *   **zero importers**, and `cli.ts` printed both raw.
+ *
+ * The policy those tests stand for is written down in `docs/SECURITY.md` — "treat
+ * repository text as data" is only a control if it is stated somewhere a reader
+ * will meet it before running the engine.
+ *
+ * ## What this does not cover
+ *
+ * A crawled repository description also becomes a public headline, through
+ * `leadPhrase()` in `possibility.ts`. That is the **content** boundary, defended
+ * separately by escaping at render, and nothing here defends it. Nor is a derived
+ * slug, which reaches the transcript inside a composed sentence in the sync report
+ * rather than as a bare value. Neither is a gap in this module; both are places
+ * where a reader should not assume the fence reached.
  */
 
 /**

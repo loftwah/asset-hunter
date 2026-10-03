@@ -88,6 +88,7 @@ import {
 	type FileEvidence,
 } from "./candidates.ts";
 import { describeExclusion, exclusionFor, type Exclusion } from "./exclusions.ts";
+import { untrusted, untrustedError, untrustedRepo } from "./transcript.ts";
 import { verticalTerms } from "./vocabulary.ts";
 import {
 	extractPossibilities,
@@ -292,7 +293,7 @@ export function crawl(options: CrawlOptions): Effect.Effect<CrawlOutcome> {
 		if (withheld.size) {
 			say(`  exclusions   ${withheld.size} source(s) withheld by a standing takedown\n`);
 			for (const [fullName, exclusion] of [...withheld].slice(0, 8)) {
-				say(`    ⊘ ${fullName} — ${describeExclusion(exclusion)}`);
+				say(`    ⊘ ${untrustedRepo(fullName)} — ${describeExclusion(exclusion)}`);
 			}
 		}
 		const known = latestByFullName(recorded);
@@ -324,7 +325,7 @@ export function crawl(options: CrawlOptions): Effect.Effect<CrawlOutcome> {
 		if (withheld.size) {
 			say(`  exclusions   ${withheld.size} source(s) withheld by a standing takedown\n`);
 			for (const [fullName, exclusion] of [...withheld].slice(0, 8)) {
-				say(`    ⊘ ${fullName} — ${describeExclusion(exclusion)}`);
+				say(`    ⊘ ${untrustedRepo(fullName)} — ${describeExclusion(exclusion)}`);
 			}
 		}
 
@@ -362,7 +363,7 @@ export function crawl(options: CrawlOptions): Effect.Effect<CrawlOutcome> {
 			targets.set(landed.fullName, recovery.hit);
 			if (!recovery.recovered) {
 				say(
-					`  ! ${landed.fullName} could not be described again (${recovery.reason}); recording it with no description`,
+					`  ! ${untrustedRepo(landed.fullName)} could not be described again (${untrustedError(recovery.reason)}); recording it with no description`,
 				);
 			}
 		}
@@ -414,7 +415,7 @@ export function crawl(options: CrawlOptions): Effect.Effect<CrawlOutcome> {
 						archived: seen.archived,
 						fork: seen.fork,
 					});
-					say(`  → ${fullName} is now ${seen.fullName}`);
+					say(`  → ${untrustedRepo(fullName)} is now ${untrustedRepo(seen.fullName)}`);
 				}
 				continue;
 			}
@@ -429,18 +430,18 @@ export function crawl(options: CrawlOptions): Effect.Effect<CrawlOutcome> {
 				if (recordVanished(root, record)) {
 					metrics.vanished++;
 					vanished.push(fullName);
-					say(`  ✖ ${fullName} is gone — last read at ${candidate.ref.slice(0, 7)}`);
+					say(`  ✖ ${untrustedRepo(fullName)} is gone — last read at ${candidate.ref.slice(0, 7)}`);
 				}
 				continue;
 			}
 			if (failure.rateLimited) {
 				// Said out loud, recorded as nothing. A throttle is not a fact about the
 				// repository, and writing one down would invent disappearances.
-				say(`  ! ${fullName}: ${failure.detail}`);
+				say(`  ! ${untrustedRepo(fullName)}: ${untrustedError(failure.detail)}`);
 				continue;
 			}
 			// A transport failure says the socket moved, not that the repository did.
-			say(`  ✖ ${fullName}: ${failure.detail}`);
+			say(`  ✖ ${untrustedRepo(fullName)}: ${untrustedError(failure.detail)}`);
 		}
 
 		/* -- The plan ---------------------------------------------------------- */
@@ -498,7 +499,7 @@ export function crawl(options: CrawlOptions): Effect.Effect<CrawlOutcome> {
 			.map((action) => action.fullName)
 			.filter((fullName) => !targets.has(fullName));
 		for (const fullName of renamesWithoutTarget) {
-			say(`  ! ${fullName} is new and this run has no search result for it; run \`hunt\` to discover it`);
+			say(`  ! ${untrustedRepo(fullName)} is new and this run has no search result for it; run \`hunt\` to discover it`);
 		}
 
 		const fresh = due.filter((fullName) => !known.has(fullName));
@@ -525,7 +526,7 @@ export function crawl(options: CrawlOptions): Effect.Effect<CrawlOutcome> {
 				inspect({ github, hit, brief, lane: laneOf(fullName), budget, root, say }),
 			);
 			if (Result.isFailure(read)) {
-				say(`  ✖ ${fullName}: ${read.failure.detail}`);
+				say(`  ✖ ${untrustedRepo(fullName)}: ${untrustedError(read.failure.detail)}`);
 				continue;
 			}
 			inspected.push(fullName);
@@ -553,11 +554,11 @@ export function crawl(options: CrawlOptions): Effect.Effect<CrawlOutcome> {
 		}
 		if (vanished.length) {
 			say("\n  gone upstream, kept here with the commit last read:");
-			for (const fullName of vanished) say(`    ✖ ${fullName}`);
+			for (const fullName of vanished) say(`    ✖ ${untrustedRepo(fullName)}`);
 		}
 		if (renamed.length) {
 			say("\n  moved upstream:");
-			for (const [from, to] of renamed) say(`    → ${from} → ${to}`);
+			for (const [from, to] of renamed) say(`    → ${untrustedRepo(from)} → ${untrustedRepo(to)}`);
 		}
 
 		const extracted = toPossibilities(
@@ -586,7 +587,7 @@ export function crawl(options: CrawlOptions): Effect.Effect<CrawlOutcome> {
 			say(
 				`\n  ! ${n} inspected ${n === 1 ? "source fits" : "sources fit"} none of the declared verticals (${brief.verticals.join(", ")}) and ${n === 1 ? "was" : "were"} not filed:`,
 			);
-			for (const repo of extracted.unfiled) say(`    · ${repo}`);
+			for (const repo of extracted.unfiled) say(`    · ${untrustedRepo(repo)}`);
 			say(
 				"    nothing was lost — they stay in candidates.json — but the brief's\n" +
 					"    vertical list or its wording may be wrong. See engine/src/vocabulary.ts.",
@@ -734,7 +735,7 @@ const discover = (options: DiscoverOptions) =>
 				// hunt that quietly searched less than it claims produces a catalogue that
 				// looks complete and is not.
 				if (Result.isFailure(found)) {
-					say(`  ✖ ${query} p${page}: ${found.failure.detail}`);
+					say(`  ✖ ${untrusted(query)} p${page}: ${untrustedError(found.failure.detail)}`);
 					break;
 				}
 				const hits = [...found.success];
