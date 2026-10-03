@@ -42,6 +42,7 @@
  */
 import type { APIRoute } from "astro";
 import { Cause, Effect, Exit } from "effect";
+import { describeCauseForLog } from "../../lib/effect/errors.ts";
 import { RuntimeConfig } from "../../lib/effect/config.ts";
 import { runAppExit } from "../../lib/effect/root.ts";
 import { COOKIE_NAME, MAX_PER_BOARD, parseBoards } from "../../lib/board.ts";
@@ -143,7 +144,7 @@ export const GET: APIRoute = async ({ site, request, cookies }) => {
 			// A handoff that cannot be built from the catalogue is not a handoff.
 			// Serving an empty one with a 200 would be the exact dishonesty this
 			// document exists to prevent.
-			console.error("handoff.json: build failed", Cause.pretty(built.cause));
+			console.error("handoff.json: build failed", describeCauseForLog(built.cause));
 			return plain("Catalogue unavailable, so no handoff could be built.", 503);
 		}
 		const document = built.value;
