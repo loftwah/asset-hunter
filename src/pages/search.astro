@@ -22,13 +22,24 @@ import {
 import { SEARCH_PLACEHOLDER, verticalLabel } from "../lib/vocabulary";
 import { Effect } from "effect";
 import { runApp } from "../lib/effect/root";
-import { excerpt, safeSnippet } from "../lib/search-text";
+import { excerpt, safeSnippet, searchSuggestions } from "../lib/search-text";
 
 const query = (Astro.url.searchParams.get("q") ?? "").trim();
 const all = query.length > 0 ? await search(query, { limit: 60 }) : { items: [] };
 
 const { possibilities } = await runApp(loadPossibilities(), { signal: Astro.request.signal });
 const bySlug = new Map(possibilities.map((p) => [p.slug, p]));
+
+/**
+ * Terms this page offers that are guaranteed to return something.
+ *
+ * Derived from the catalogue rather than written here, because the hand-written
+ * version had already rotted: it suggested "show confidence honestly", which returns
+ * no match, on the page whose entire job is helping a reader find a thing.
+ */
+const suggestions = searchSuggestions(
+	possibilities.map((p) => ({ verticalLabel: verticalLabel(p.vertical) })),
+);
 
 // Only possibilities and collections are surfaced as results; examples and
 // pages are reachable through their parent rather than as separate hits.
@@ -185,8 +196,20 @@ const counted = parts.length > 0 ? `${parts.join(" · ")} · ` : "";
 			!query && (
 				<div class="blank">
 					<p class="lede">
-						Search by what you are trying to do rather than what you think it is called —
-						"readability at small size", "loop without a seam", "show confidence honestly".
+						Full-text search over every title, summary and technique note in the catalogue.
+						{suggestions.length > 0 && (
+							<>
+								{" "}
+								Try a word the catalogue actually uses:
+								<ul class="words">
+									{suggestions.map((term) => (
+										<li>
+											<a href={`/search?q=${encodeURIComponent(term)}`}>{term}</a>
+										</li>
+									))}
+								</ul>
+							</>
+						)}
 					</p>
 					<h2 class="tag tag-rule">Browse instead</h2>
 					<div class="suggest">
@@ -207,10 +230,31 @@ const counted = parts.length > 0 ? `${parts.join(" · ")} · ` : "";
 						{verticalCount === 1 ? "vertical" : "verticals"} and is deliberately partial, so
 						the absence of a result is more likely a gap than an error.
 					</p>
+					{/*
+					 * Every line has to be true of this search, and the previous set was
+					 * not. It said "full-text search wants keywords, not sentences" directly
+					 * underneath an empty state that suggested three sentences, and told
+					 * readers to "search for the problem rather than the solution" on a
+					 * catalogue whose entries are filed by technique. A page that argues both
+					 * sides in one scroll is worse than a page that admits what it does.
+					 */}
 					<ul class="tries">
-						<li>Try a shorter phrase — full-text search wants keywords, not sentences.</li>
-						<li>Search for the problem rather than the solution.</li>
-						<li>Browse a vertical instead of guessing the vocabulary.</li>
+						<li>Try one or two words rather than a whole sentence.</li>
+						{suggestions.length > 0 && (
+							<li>
+								Use a word the catalogue uses:
+								<ul class="words">
+									{suggestions.map((term) => (
+										<li>
+											<a href={`/search?q=${encodeURIComponent(term)}`}>{term}</a>
+										</li>
+									))}
+								</ul>
+							</li>
+						)}
+						<li>
+							Browse <a href="/verticals">by vertical</a> instead of guessing the vocabulary.
+						</li>
 					</ul>
 					<div class="none__links">
 						{/*
@@ -816,5 +860,42 @@ const counted = parts.length > 0 ? `${parts.join(" · ")} · ` : "";
 
 	.pages-found__snippet {
 		max-width: 78ch;
+	}
+</style>
+
+<style>
+	/*
+	 * The suggested words.
+	 *
+	 * A list rather than comma-joined inline text, for one concrete reason: the obvious
+	 * `{i > 0 && ", "}` separator renders here as "Logos , Games , Motion / Video .",
+	 * because Astro keeps the whitespace between two JSX expressions where JSX would
+	 * strip it. A separator written in markup is a separator you then have to fight.
+	 *
+	 * A list of short words needs no separator at all — the gap reads as the list — and
+	 * the middot is a pseudo-element, so nothing in the markup can leave a stray space
+	 * beside it. The tap floor is kept because these are real links, not decoration.
+	 */
+	.words {
+		display: inline;
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+
+	.words li {
+		display: inline;
+	}
+
+	.words li + li::before {
+		content: "\00b7";
+		margin: 0 0.4em;
+		color: var(--ink-3);
+	}
+
+	.words a {
+		display: inline-block;
+		min-height: var(--tap);
+		line-height: var(--tap);
 	}
 </style>
