@@ -16,6 +16,10 @@ worker-configuration.d.ts
 # Visual QA output — regenerate with `npm run check:visual`
 screenshots/
 
+# Browser-driven review scratch — accessibility snapshots and page dumps written
+# by the MCP browser while inspecting a rendered route. Evidence, not source.
+.playwright-mcp/
+
 # Environment and secrets
 .env
 .env.*
