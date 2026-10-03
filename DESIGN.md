@@ -192,6 +192,32 @@ and the plate is a texture rather than an illustration. Two consequences:
   `/use/<slug>`, the surface §9.6 singles out as the one where the preview has to
   do work.
 
+### 6a. Plate size is one decision, and it depends on where the plate is
+
+A plate is not one thing. It is a full-page illustration on the drill-in, the
+*subject* of `/use/<slug>`, an identifier in a `/search` row, and an identifier in
+a `/collections` row. One number cannot serve all four, and three routes picking
+three numbers independently is how `/use/<slug>` ended up at 104px in the first
+place. So:
+
+| Surface                 | Rendered width             | At 1280px          |
+| ----------------------- | -------------------------- | ------------------ |
+| Drill-in, `/use/<slug>` | `min(100%, 40rem)`          | 560px (0.70 floor) |
+| `/collections` cover    | `clamp(9rem, 26vw, 22rem)`  | 320px (0.40)       |
+| `/search` thumbnail     | `clamp(5.5rem, 12vw, 9rem)` | 128px (0.16)       |
+
+The two row thumbnails are **identifiers, not illustrations**, and the 0.7 floor
+above does not apply to them: a reader is asking "which of these is the one", and
+that is legible at 128px because the title beside it carries the meaning. What must
+not happen is a fixed `rem` cap — `max-width: 7rem` made the collections cover 9%
+of its row at 1280 and the same 9% at 1920, so the row's width did nothing at all.
+Both are proportional to the viewport now, so a plate grows with the row it is in.
+
+`npm run check:visual` prints the rendered width and the effective annotation size
+for every plate on every route in the matrix. So those numbers are measurements
+rather than intentions, and a route that quietly returns to a fixed cap shows up
+as a row whose width stops moving with the viewport.
+
 ## 7. Interaction
 
 - Hover on a tile: plate lifts 2px, border warms to `--ember-line`, media scales

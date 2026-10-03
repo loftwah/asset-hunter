@@ -147,9 +147,25 @@ const orphaned = possibilities.filter(
 		align-items: start;
 	}
 
-	.collection__cover {
+	/*
+	 * `clamp(9rem, 26vw, 22rem)`, not `max-width: 7rem` (#73).
+	 *
+	 * The cover was fixed at 7rem, so it rendered 112px at every viewport from 360
+	 * to 1920 — 34% of the row on a phone and 9% at 1280, where the row is 1,206px
+	 * wide. The row's width did nothing at all, and that is the actual defect: a
+	 * fixed `rem` cap is not a size decision, it is the absence of one.
+	 *
+	 * This is a *thumbnail identifying a row*, not an illustration, so §6's 0.7
+	 * annotation floor deliberately does not apply — a reader is asking "which of
+	 * these is the one", and the title beside the plate carries the meaning. What
+	 * §6a requires instead is that the plate grow with the row, and `26vw` does
+	 * that from 9rem on a phone to 22rem on a wide screen.
+	 *
+	 * The 4:5 ratio and the `object-fit` both stay, so the plate is never
+	 * distorted. The change is how much of it there is.
+	 */	.collection__cover {
 		width: 100%;
-		max-width: 7rem;
+		max-width: clamp(9rem, 26vw, 22rem);
 		aspect-ratio: 4 / 5;
 		overflow: hidden;
 		border: 1px solid var(--line);
@@ -254,7 +270,7 @@ const orphaned = possibilities.filter(
 
 	@media (width >= 760px) {
 		.collection__link {
-			grid-template-columns: 7rem minmax(0, 1fr);
+			grid-template-columns: clamp(9rem, 26vw, 22rem) minmax(0, 1fr);
 			gap: var(--sp-5);
 		}
 	}
