@@ -14,6 +14,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 
 const asJson = process.argv.includes("--json");
 const root = new URL("../", import.meta.url).pathname;
@@ -34,15 +35,36 @@ function read(path) {
 	return existsSync(full) ? readFileSync(full, "utf8") : null;
 }
 
+/**
+ * The installed version of a package, or `null` if it is not installed.
+ *
+ * This asks Node where the package is, rather than asking npm. `npm ls <name>
+ * --json` was the original implementation and it reported **`emdash` and
+ * `@astrojs/cloudflare` as "not installed"** in a working tree where both are
+ * declared dependencies and both are present: `npm ls` exits non-zero when it finds
+ * *anything* wrong with the tree — an unmet peer, an extraneous package — and this
+ * repository has both, so the exit code arrived before the parse and the `catch`
+ * returned `null`. The two checks meant to prove EmDash and the Cloudflare adapter
+ * are present were reporting their absence, which is the failure mode this whole
+ * project keeps finding: a gate that cries wolf until someone stops reading it.
+ *
+ * Resolution is by path, because `require.resolve("emdash/package.json")` does not
+ * work — the package does not export `./package.json` in its `exports` map, so the
+ * obvious fix fails too. Falls back to "is it resolvable at all" so a package laid
+ * out unusually is still reported as installed rather than missing.
+ */
 function pkgVersion(name) {
+	const manifest = `${root}node_modules/${name}/package.json`;
+	if (existsSync(manifest)) {
+		try {
+			return JSON.parse(readFileSync(manifest, "utf8")).version ?? "unknown";
+		} catch {
+			return "unreadable";
+		}
+	}
 	try {
-		const out = execFileSync("npm", ["ls", name, "--depth=0", "--json"], {
-			cwd: root,
-			encoding: "utf8",
-			stdio: ["ignore", "pipe", "ignore"],
-		});
-		const parsed = JSON.parse(out);
-		return parsed.dependencies?.[name]?.version ?? null;
+		createRequire(`${root}scripts/doctor.mjs`).resolve(name);
+		return "installed";
 	} catch {
 		return null;
 	}
@@ -363,12 +385,34 @@ if (asJson) {
 	}
 	console.log(`${checks.length - failed.length}/${checks.length} checks passed`);
 
-	if (failed.some((c) => c.group === "EmDash")) {
+	/*
+	 * One verdict, from the integration checks only.
+	 *
+	 * These two lines used to be `if (any EmDash check failed)` and `if (the dev
+	 * server answered)` — unrelated conditions that both fired, so a single run
+	 * printed "EmDash is installed but not integrated" immediately above "EmDash is
+	 * installed AND integrated". A reader cannot act on both, and the pairing is
+	 * what made it worth fixing: the first line was triggered by the *installed*
+	 * checks, which is how a false negative in `pkgVersion` turned into a claim
+	 * about integration.
+	 *
+	 * Installation and integration stay separate because `AGENTS.md` requires it: a
+	 * dependency that resolves is not proof the product uses it. So this verdict
+	 * deliberately reads only the integration checks.
+	 */
+	const emdashChecks = checks.filter((c) => c.group === "EmDash");
+	const integrationChecks = emdashChecks.filter(
+		(c) => !c.name.includes("installed") && !c.name.includes("adapter"),
+	);
+	const notIntegrated = integrationChecks.some((c) => !c.ok);
+
+	if (notIntegrated) {
+		const installed = emdashChecks.find((c) => c.name.includes("installed"))?.ok;
 		console.log(
-			"\nEmDash is installed but not integrated. The public catalogue must be served\nthrough EmDash — a dependency that resolves is not proof the product uses it.",
+			`\nEmDash is ${installed ? "installed but not integrated" : "not integrated"}. ` +
+				"The public catalogue must be served\nthrough EmDash — a dependency that resolves is not proof the product uses it.",
 		);
-	}
-	if (serverUp) {
+	} else if (serverUp) {
 		console.log("\nEmDash is installed AND integrated. Confirm usage with: npm run smoke");
 	}
 }
