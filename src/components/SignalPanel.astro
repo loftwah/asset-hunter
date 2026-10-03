@@ -157,6 +157,22 @@ const SIGN_IN = "/_emdash/admin";
 			</fieldset>
 		</form>
 		{
+			/* The withdraw control, and only for a reader who has something to withdraw.
+			   It is the other half of the sentence below: that copy has always argued a
+			   rating must be revisable and withdrawable, and only the revising existed. */
+			viewer && community.mine !== null && (
+				<form class="rate rate--withdraw" method="post" action="/api/signal">
+					<input type="hidden" name="intent" value="withdraw" />
+					<input type="hidden" name="subject_type" value={subjectType} />
+					<input type="hidden" name="subject_slug" value={subjectSlug} />
+					<input type="hidden" name="back" value={back} />
+					<button type="submit" class="rate__withdraw">
+						Withdraw your {community.mine}★ rating
+					</button>
+				</form>
+			)
+		}
+		{
 			!viewer && (
 				<p class="signal__note">
 					A rating you cannot revise or withdraw is not an opinion, it is a vote, so signing in
@@ -409,6 +425,34 @@ const SIGN_IN = "/_emdash/admin";
 	.rate__star:has(input:focus-visible) {
 		outline: 2px solid var(--ember);
 		outline-offset: 3px;
+	}
+
+	/*
+	 * The withdraw control is deliberately quieter than the rate button and sits under
+	 * the fieldset rather than inside it: it is the opposite action, and a reader who
+	 * wants it should find it without a second button competing with "Change" for the
+	 * eye. `--quiet` keeps the tap target — a 32px control is below WCAG 2.5.8's floor
+	 * and the visual QA matrix measures that.
+	 */
+	.rate--withdraw {
+		margin-top: 0.5rem;
+	}
+
+	.rate__withdraw {
+		min-height: var(--tap);
+		padding: 0.35rem 0.9rem;
+		background: transparent;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		color: var(--ink-3);
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		cursor: pointer;
+	}
+
+	.rate__withdraw:hover {
+		border-color: var(--line-loud);
+		color: var(--ink-2);
 	}
 
 	.rate button {

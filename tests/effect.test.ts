@@ -617,16 +617,17 @@ describe("the composition root", () => {
 				typeof api.create,
 				typeof api.update,
 				typeof api.publish,
+				typeof api.unpublish,
 				typeof api.read,
 				config.readTimeoutMs,
 			];
 		});
 		const shape = await runApp(program, { env: {} });
 		assert.deepEqual(
-			shape.slice(0, 8),
-			Array.from({ length: 8 }, () => "function"),
+			shape.slice(0, 9),
+			Array.from({ length: 9 }, () => "function"),
 		);
-		assert.equal(shape[8], 8000);
+		assert.equal(shape[9], 8000);
 	});
 });
 
