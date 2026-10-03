@@ -159,6 +159,56 @@ export function verticalLabel(slug: string | null | undefined): string {
 }
 
 /**
+ * What an example is called on a page that lists several of them (#69).
+ *
+ * An example's recorded title is usually its *possibility's* title — the seed
+ * writes `title` from the technique it demonstrates, so `/use/<slug>` printed the
+ * same string three times: in the breadcrumb, in the `h1`, and as the heading over
+ * each example block. On a page with one example that reads as repetition. On a
+ * page with several it is worse than repetition, because there is then no way to
+ * tell the blocks apart.
+ *
+ * So the identity is the first thing that is actually *about this example*, in
+ * this order:
+ *
+ * 1. its path within the source repository, which is what distinguishes two files
+ *    in one project;
+ * 2. its origin, which distinguishes a preview from the thing it previews;
+ * 3. its recorded title, when that is not simply its parent's;
+ * 4. and if none of those exist, it says so — `No name recorded for this example` —
+ *    rather than repeating the parent.
+ *
+ * Rule 4 is `DESIGN.md` §1.5's honest zero applied to a name. An unnamed example
+ * printed as its parent's title is a claim about the record that the record does
+ * not support, and it is the one that makes two blocks indistinguishable.
+ *
+ * Returns null when the example *is* its parent and has nothing else, so the
+ * caller can decide whether to print a heading at all rather than printing an
+ * empty one.
+ */
+export function exampleIdentity(example: {
+	title?: string | null;
+	origin?: string | null;
+	sourcePath?: string | null;
+	sourceRepo?: string | null;
+}): string | null {
+	const path = example.sourcePath?.trim();
+	if (path) return path;
+
+	const origin = originLabelFor(example.origin);
+	if (origin) return origin;
+
+	const title = example.title?.trim();
+	// A title that is only whitespace or punctuation is not a name.
+	if (title && /[\p{L}\p{N}]/u.test(title)) return title;
+
+	return null;
+}
+
+/** The sentence for an example that has no name of its own. */
+export const UNNAMED_EXAMPLE = "No name recorded for this example";
+
+/**
  * One sentence saying what a vertical is, for the vertical's own page.
  *
  * `docs/VOCABULARY.md` owns what the words mean; this owns the sentence that

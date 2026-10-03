@@ -1303,7 +1303,22 @@ async function auditLayoutShift(browser, viewport, route, url) {
 				`This route's layout-shift check did not complete, so nothing is known about it.`,
 		];
 	} finally {
-		await context.close();
+		/*
+		 * Closing has to tolerate an already-closed context.
+		 *
+		 * When the browser dies underneath the run — which is what the SIGTERM of an
+		 * interrupted run does, and what a crashed browser does on its own — every
+		 * `finally` fires with a context that no longer exists. `context.close()` then
+		 * rejects with "Target page, context or browser has been closed", and because
+		 * that rejection is *not* the measurement's error it escapes the `catch` above
+		 * entirely.
+		 *
+		 * So the harness died with a message about closing a browser rather than with
+		 * anything about the page it was auditing — the same silence as crashing on
+		 * the measurement, except that it happens on the way out and discards whatever
+		 * had already been found.
+		 */
+		await context.close().catch(() => {});
 	}
 }
 
@@ -1368,7 +1383,7 @@ async function auditDarkOnly(browser, url) {
 				};
 			});
 		} finally {
-			await context.close();
+			await context.close().catch(() => {});
 		}
 	};
 
@@ -1573,7 +1588,7 @@ async function auditReducedMotion(browser) {
 			return issues;
 		});
 	} finally {
-		await context.close();
+		await context.close().catch(() => {});
 	}
 }
 
@@ -1765,7 +1780,7 @@ async function auditStickyFits(browser, viewport, route) {
 			return issues;
 		});
 	} finally {
-		await context.close();
+		await context.close().catch(() => {});
 	}
 }
 
@@ -1991,7 +2006,7 @@ async function auditSelfCheck(browser) {
 			);
 		}
 	} finally {
-		await context.close();
+		await context.close().catch(() => {});
 	}
 
 	/*
@@ -2404,7 +2419,7 @@ async function main() {
 				for (const err of [...new Set(serverErrors)].slice(0, 3)) {
 					failures.push(`${viewport.name} ${route.name}: server ${err}`);
 				}
-				await context.close();
+				await context.close().catch(() => {});
 				continue;
 			}
 
@@ -2800,7 +2815,7 @@ async function main() {
 			}
 
 			record(viewport.name, route, issues);
-			await context.close();
+			await context.close().catch(() => {});
 		}
 	}
 
@@ -2817,7 +2832,7 @@ async function main() {
 			file: "wall--iphone13.png",
 			kind: "device-profile",
 		});
-		await context.close();
+		await context.close().catch(() => {});
 		captured++;
 	}
 
@@ -2906,7 +2921,7 @@ async function main() {
 		);
 	}
 
-	await browser.close();
+	await browser.close().catch(() => {});
 
 	/*
 	 * The artefact set, described and then checked.

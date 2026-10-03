@@ -481,6 +481,20 @@ const usePossibility = (slug: string, over: Partial<Possibility> & { title: stri
 	...over,
 });
 
+/*
+ * Two examples, which is the only state where #69 is visible.
+ *
+ * Every other use-page fixture has exactly one example, so the entry's own title
+ * is the only name in play and the repetition reads as a quirk rather than a
+ * defect. With two, the blocks sit side by side and the question the issue asks —
+ * *can a reader tell these apart?* — has an answer you can look at. The
+ * `/use/fixture-use-page-*` routes render all of this at all eleven viewports,
+ * which is the only reason the state is checkable at all.
+ *
+ * Deliberately uneven: the first example has a path and the second has none, so
+ * the page shows a block named by its path and one identified by its origin alone —
+ * the second fallback in the identity rule.
+ */
 export const USE_PAGE_FIXTURES: UsePageFixture[] = [
 	{
 		slug: "fixture-use-page-reference",
@@ -589,6 +603,42 @@ export const USE_PAGE_FIXTURES: UsePageFixture[] = [
 				sourceRepo: "example/noise-floor",
 				sourceRef: "beef123",
 				sourcePath: "audio/floor.wav",
+			}),
+		],
+	},
+	{
+		slug: "fixture-use-page-two-examples",
+		note: "two examples on one entry — the state where an example needs a name of its own (#69)",
+		possibility: usePossibility("fixture-use-page-two-examples", {
+			title: "Two readings of the same plate",
+			rightsStatus: "review",
+		}),
+		examples: [
+			exampleOf({
+				slug: "fixture-use-page-two-examples-a",
+				title: "Two readings of the same plate",
+				rightsStatus: "review",
+				licenceSpdx: "LicenseRef-unstated",
+				licenceEvidence:
+					'"No licence file was found. The repository has no LICENSE and no terms in its README."\n— absence of evidence, recorded at the commit below.',
+				sourceUrl: "https://github.com/example/two-readings",
+				sourceRepo: "example/two-readings",
+				sourceRef: "d4d4d4d",
+				sourcePath: "plates/morning-reading.png",
+			}),
+			exampleOf({
+				slug: "fixture-use-page-two-examples-b",
+				title: "Two readings of the same plate",
+				rightsStatus: "review",
+				licenceSpdx: "LicenseRef-unstated",
+				licenceEvidence:
+					'"No licence file was found. The repository has no LICENSE and no terms in its README."\n— absence of evidence, recorded at the commit below.',
+				sourceUrl: "https://github.com/example/two-readings",
+				sourceRepo: "example/two-readings",
+				sourceRef: "d4d4d4d",
+				// No `sourcePath` on purpose: this block is identified by its
+				// origin alone, which is what makes the two visibly different.
+				origin: "derived",
 			}),
 		],
 	},
