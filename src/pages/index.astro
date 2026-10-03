@@ -11,7 +11,7 @@ import Base from "../layouts/Base.astro";
 import PossibilityTile from "../components/PossibilityTile.astro";
 import OutcomeFlash from "../components/OutcomeFlash.astro";
 import { PortableText } from "emdash/ui";
-import { loadPossibilities, tallyVerticals } from "../lib/catalogue";
+import { EAGER_TILES, loadPossibilities, tallyVerticals } from "../lib/catalogue";
 import { loadIntro } from "../lib/site-shell";
 import { runApp } from "../lib/effect/root";
 import { COOKIE_NAME, boardOutcome, boardTotals, parseBoards } from "../lib/board";
@@ -310,7 +310,7 @@ for (const p of filtered) {
 							featured={i === 0 && !activeVertical}
 							hideVertical={Boolean(activeVertical)}
 							hideFacets={uniformFacets}
-							eager={i < 4}
+							eager={i < EAGER_TILES}
 							board={board}
 							savedToBoard={savedHere.has(p.slug)}
 						/>

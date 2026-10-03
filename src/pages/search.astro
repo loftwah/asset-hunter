@@ -17,6 +17,7 @@ import {
 	loadPossibilities,
 	mediaSrc,
 	type Possibility,
+	EAGER_TILES,
 } from "../lib/catalogue";
 import { SEARCH_PLACEHOLDER, verticalLabel } from "../lib/vocabulary";
 import { Effect } from "effect";
@@ -190,7 +191,7 @@ const counted = parts.length > 0 ? `${parts.join(" · ")} · ` : "";
 					<h2 class="tag tag-rule">Browse instead</h2>
 					<div class="suggest">
 						{possibilities.slice(0, 8).map((p: Possibility, i) => (
-							<PossibilityTile possibility={p} eager={i < 4} />
+							<PossibilityTile possibility={p} eager={i < EAGER_TILES} />
 						))}
 					</div>
 				</div>

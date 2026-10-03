@@ -1,7 +1,7 @@
 ---
 import Base from "../layouts/Base.astro";
 import PossibilityTile from "../components/PossibilityTile.astro";
-import { loadPossibilities, tallyVerticals } from "../lib/catalogue";
+import { EAGER_TILES, loadPossibilities, tallyVerticals } from "../lib/catalogue";
 import { runApp } from "../lib/effect/root";
 import { MEDIA_LABEL, VERTICAL_LABEL } from "../lib/vocabulary";
 
@@ -35,6 +35,15 @@ const rows = verticals.map((v) => {
 });
 
 const maxCount = Math.max(...rows.map((r) => r.count), 1);
+/**
+ * Eager-image budget for this page, spent across every group as it renders.
+ *
+ * Declared here, above the markup, because it is *consumed* by the loop below and a
+ * counter that starts inside the loop it is counted by cannot be right. A mutable
+ * module-scope value in a template is unremarkable: this page renders once per
+ * request, in order, with no concurrency.
+ */
+let eagerBudget = EAGER_TILES;
 const unmapped =
 	possibilities.length - rows.reduce((n, r) => n + r.count, 0);
 ---
@@ -98,14 +107,24 @@ const unmapped =
 					</ul>
 
 					<ul class="row__items">
-						{r.items.map((p, i) => (
-							<li>
-								{/* Eager for the first row: a lazy image above the fold is the
-								    slowest thing on the page, which is the wrong way round on
-								    a wall whose whole argument is that the media comes first. */}
-								<PossibilityTile possibility={p} eager={i < 4} />
-							</li>
-						))}
+						{r.items.map((p) => {
+							/* Eager for the first row **of the page**, counted across every
+							   group. The obvious `i < EAGER_TILES` inside this map reads as
+							   "the first row" and is not: `i` restarts for each vertical, so
+							   thirteen groups each eagerly loaded their own first six tiles and
+							   `check:perf` measured **30 eager images** on a page that needs
+							   six. A lazy image above the fold is the slowest thing on the page,
+							   which is the wrong way round on a wall whose whole argument is
+							   that the media comes first — but loading thirty images to avoid
+							   loading one is the same mistake with the sign flipped. */
+							const eager = eagerBudget > 0;
+							eagerBudget -= 1;
+							return (
+								<li>
+									<PossibilityTile possibility={p} eager={eager} />
+								</li>
+							);
+						})}
 					</ul>
 				</li>
 			))
