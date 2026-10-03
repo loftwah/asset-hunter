@@ -9,7 +9,7 @@
 import Base from "../layouts/Base.astro";
 import { loadPossibilities, tallyVerticals } from "../lib/catalogue";
 import { runApp } from "../lib/effect/root";
-import { VERTICAL_LABEL } from "../lib/vocabulary";
+import { SEARCH_PLACEHOLDER, VERTICAL_LABEL } from "../lib/vocabulary";
 
 const { possibilities } = await runApp(loadPossibilities());
 const verticals = tallyVerticals(possibilities);
@@ -35,7 +35,16 @@ const verticals = tallyVerticals(possibilities);
 				id="lost-q"
 				type="search"
 				name="q"
-				placeholder="Try a technique, a treatment, a problem"
+				{/*
+					The same words `/search` uses, from `SEARCH_PLACEHOLDER`.
+
+					Was "Try a technique, a treatment, a problem" — the same four nouns
+					in a different order and one more word, invented separately (#80). Two
+					pages asking the same question in two sentences means a reader who
+					learns the phrasing on one does not recognise it on the other, and it
+					is 43 characters where `/search`'s is 39.
+				*/}
+				placeholder={SEARCH_PLACEHOLDER}
 				autocomplete="off"
 				spellcheck="false"
 				autofocus

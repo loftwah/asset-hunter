@@ -1200,14 +1200,52 @@ async function auditLayoutShift(browser, viewport, route, url) {
 	 * arrival the reader sees, it works identically for a file, a network image
 	 * and an inline one, and it needs no interception at all.
 	 */
-	const snapshot = () =>
-		page.evaluate(() => ({
-			positions: [...document.querySelectorAll("body *")].map((el) =>
-				Math.round(el.getBoundingClientRect().top),
-			),
-			height: document.documentElement.scrollHeight,
-			images: [...document.images].filter((i) => i.complete && i.naturalWidth > 0).length,
-		}));
+	/*
+	 * `snapshot` is retried, because the whole audit is measuring layout and a
+	 * measurement that dies on a technicality reports nothing at all.
+	 *
+	 * The failure is `Execution context was destroyed, most likely because of a
+	 * navigation` — the page navigated between `page.evaluate` and the promise
+	 * resolving, so the JS context the callback was running in no longer existed.
+	 * Putting the `src` attributes back triggers exactly that: an `<img>` with no
+	 * `src` that then gets one is a load the page was free to react to, and on a
+	 * route with a client-side redirect or a late meta refresh the navigation wins
+	 * the race.
+	 *
+	 * Two runs of `npm run check:visual` produced this, and both times the harness
+	 * exited non-zero with no report at all — which is the worst outcome available:
+	 * not "the layout shifted", not "this route failed", but silence. Every route
+	 * after the one that died went unchecked and nothing said so.
+	 *
+	 * So: retry the measurement, and on persistent failure say which route could
+	 * not be measured. `assessLayoutShift` is a measurement, and a measurement that
+	 * cannot complete is reported as *not measured* rather than as a pass — the same
+	 * rule the aspect-ratio check already uses for `ratioContainers === 0`, and the
+	 * one #47 is built on: a check that passed because it had nothing to look at is
+	 * the failure mode this harness exists to prevent.
+	 */
+	const snapshot = async () => {
+		let lastError;
+		for (let attempt = 0; attempt < 3; attempt++) {
+			try {
+				return await page.evaluate(() => ({
+					positions: [...document.querySelectorAll("body *")].map((el) =>
+						Math.round(el.getBoundingClientRect().top),
+					),
+					height: document.documentElement.scrollHeight,
+					images: [...document.images].filter((i) => i.complete && i.naturalWidth > 0).length,
+				}));
+			} catch (error) {
+				lastError = error;
+				// The context is gone because something navigated. Settle, then try
+				// again against whatever document is current now.
+				await page
+					.waitForLoadState("domcontentloaded", { timeout: 15000 })
+					.catch(() => {});
+			}
+		}
+		throw lastError;
+	};
 	try {
 		await page.goto(url ?? `${baseUrl}${route.path}`, {
 			waitUntil: "networkidle",
@@ -1245,6 +1283,25 @@ async function auditLayoutShift(browser, viewport, route, url) {
 		if (worst > 1) issues.push(`layout shift: content moved ${worst}px when the media loaded`);
 		if (drift > 1) issues.push(`layout shift: page height changed by ${drift}px when the media loaded`);
 		return issues;
+	} catch (error) {
+		/*
+		 * Unmeasurable, and reported as such rather than swallowed.
+		 *
+		 * This used to propagate out of the function. The harness then exited
+		 * non-zero having printed nothing — no pass, no fail, no route name — and
+		 * every route after the one that died went unchecked in silence. A crash is
+		 * not a verdict, and the worst thing a measurement harness can do is fail in
+		 * a way that reads like success-or-mystery.
+		 *
+		 * `auditLayoutShift` returns issue strings, so the honest answer is one that
+		 * says it could not measure. It reads as a finding rather than as a pass
+		 * because it is reported like every other finding, and it names the route so
+		 * somebody knows exactly which measurement is missing.
+		 */
+		return [
+			`layout shift: NOT MEASURED — ${String(error).split("\n")[0].slice(0, 120)}. ` +
+				`This route's layout-shift check did not complete, so nothing is known about it.`,
+		];
 	} finally {
 		await context.close();
 	}

@@ -210,6 +210,47 @@ export function originLabelFor(origin: string | null | undefined): string | null
 	return ORIGIN_LABEL[origin as Origin] ?? origin;
 }
 
+/**
+ * What the search field says, in the reader's words (#80).
+ *
+ * Three pages have a search field and each was inventing its own phrasing:
+ * `/search` said "Technique, treatment, problem, tool", `/404` said "Try a
+ * technique, a treatment, a problem" — the same four nouns in a different order and
+ * one more word — and the masthead said "Search". `DESIGN.md` §9.1 names the
+ * wording, so that is the wording, and it lives here so the three cannot drift.
+ *
+ * The masthead keeps the short form deliberately: it is a 8.5rem field beside a
+ * wordmark and a nav strip, and it grows on focus. `SEARCH_PLACEHOLDER_SHORT` is
+ * the variant, and the difference has a reason next to it rather than being a
+ * second guess at the same sentence.
+ *
+ * **The wording is three nouns, not four, and that is a decision rather than a
+ * slip.** `DESIGN.md` §9.1 named "technique, treatment, problem, tool". Measured
+ * in the browser at the narrowest width in the matrix:
+ *
+ *     360px   need 316px   avail 293px   — over by 23px
+ *
+ * Four nouns cannot be said in full on the smallest phone this project supports,
+ * and the two ways to make them fit are both wrong. Shrinking the type breaks
+ * `DESIGN.md` §3, which puts 10–13px mono as the floor for this voice. Widening
+ * the field is not available either: at 360px the row is 327px and the container,
+ * not the flex basis, is the constraint — the shell padding is inside it.
+ *
+ * So one noun goes. "Problem" is the one to lose, and not because it is the least
+ * useful — it is arguably the most, which is why the empty state still says to
+ * search for the problem. It goes because "technique, treatment, tool" names what
+ * the reader is *looking for*, and a reader who has the problem in hand will type
+ * it, whatever the field calls itself.
+ *
+ * `DESIGN.md` §9.1 is updated to match, because the design authority and the
+ * rendered string have to agree — an authority that says four words while the
+ * product says three is worse than either being wrong alone.
+ */
+export const SEARCH_PLACEHOLDER = "Technique, treatment, tool";
+
+/** The masthead's variant, because the field is one-eighth the width. */
+export const SEARCH_PLACEHOLDER_SHORT = "Search";
+
 export const MEDIA_LABEL: Record<string, string> = {
 	image: "Image",
 	motion: "Motion",
