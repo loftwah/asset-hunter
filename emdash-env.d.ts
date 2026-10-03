@@ -5,6 +5,29 @@
 
 import type { BylineSummary, ContentBylineCredit, TaxonomyTerm, PortableTextBlock, ReferencePage } from "emdash";
 
+export interface AuditEvent {
+  id: string;
+  slug: string | null;
+  status: string;
+  title: string;
+  action: string;
+  subject_type: string;
+  subject_slug: string;
+  field?: string;
+  before?: string;
+  after?: string;
+  reason?: string;
+  detail?: string;
+  actor_id?: string;
+  occurred_at?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  publishedAt: Date | null;
+  byline?: BylineSummary | null;
+  bylines?: ContentBylineCredit[];
+  terms?: Record<string, TaxonomyTerm[]>;
+}
+
 export interface Collection {
   id: string;
   slug: string | null;
@@ -14,6 +37,30 @@ export interface Collection {
   summary: string;
   image?: { id: string; src?: string; alt?: string; width?: number; height?: number; filename?: string; mimeType?: string; blurhash?: string; dominantColor?: string; focalX?: number; focalY?: number; provider?: string; previewUrl?: string; meta?: Record<string, unknown>; darkVariant?: { id: string; src?: string; alt?: string; width?: number; height?: number; filename?: string; mimeType?: string; blurhash?: string; dominantColor?: string; focalX?: number; focalY?: number; provider?: string; previewUrl?: string; meta?: Record<string, unknown> } };
   featured?: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  publishedAt: Date | null;
+  byline?: BylineSummary | null;
+  bylines?: ContentBylineCredit[];
+  terms?: Record<string, TaxonomyTerm[]>;
+}
+
+export interface Dispute {
+  id: string;
+  slug: string | null;
+  status: string;
+  title: string;
+  subject_type: string;
+  subject_slug: string;
+  reason: string;
+  state: string;
+  detail?: string;
+  report_id?: string;
+  reporter_id?: string;
+  reported_at?: string;
+  resolution?: string;
+  resolved_at?: string;
+  resolved_by?: string;
   createdAt: Date;
   updatedAt: Date;
   publishedAt: Date | null;
@@ -45,11 +92,40 @@ export interface Example {
   technical?: unknown;
   downloadable?: boolean;
   featured?: boolean;
+  dispute_state?: string;
+  dispute_reason?: string;
+  dispute_note?: string;
+  dispute_reported_at?: string;
+  dispute_resolved_at?: string;
   source_id?: string;
   source_revision?: string;
   source_hash?: string;
   machine_synced_at?: string;
   visibility?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  publishedAt: Date | null;
+  byline?: BylineSummary | null;
+  bylines?: ContentBylineCredit[];
+  terms?: Record<string, TaxonomyTerm[]>;
+}
+
+export interface Exclusion {
+  id: string;
+  slug: string | null;
+  status: string;
+  title: string;
+  scope: string;
+  match: string;
+  reason?: string;
+  detail?: string;
+  state: string;
+  dispute_slug?: string;
+  recorded_at?: string;
+  recorded_by?: string;
+  lifted_at?: string;
+  lifted_by?: string;
+  lift_reason?: string;
   createdAt: Date;
   updatedAt: Date;
   publishedAt: Date | null;
@@ -158,8 +234,11 @@ export interface ExampleReferences {
 
 declare module "emdash" {
   interface EmDashCollections {
+    audit_events: AuditEvent;
     collections: Collection;
+    disputes: Dispute;
     examples: Example;
+    exclusions: Exclusion;
     pages: Page;
     possibilities: Possibility;
     ratings: Rating;

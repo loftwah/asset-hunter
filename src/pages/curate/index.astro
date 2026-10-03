@@ -22,8 +22,21 @@
  * information about the catalogue.
  */
 import Base from "../../layouts/Base.astro";
+import OutcomeFlash from "../../components/OutcomeFlash.astro";
 import { loadReports, loadRatings, aggregateBySubject, actorFrom } from "../../lib/signals.ts";
-import { REPORTS, type Report, type ReportReason } from "../../lib/rating.ts";
+import {
+	REPORTS,
+	reportRank,
+	type Report,
+} from "../../lib/rating.ts";
+import { EXCLUSION_SCOPE_LABEL, isRightsSensitive } from "../../lib/disputes.ts";
+import {
+	buildRightsQueue,
+	disputeSummary,
+	loadAuditEvents,
+	loadDisputes,
+	loadExclusions,
+} from "../../lib/takedown.ts";
 import { loadPossibilities } from "../../lib/catalogue.ts";
 import { Effect } from "effect";
 import { EmDashContent } from "../../lib/effect/emdash.ts";
@@ -32,6 +45,25 @@ import { runApp } from "../../lib/effect/root.ts";
 /** EmDash's roles, by level. Editor is the threshold for curation. */
 const EDITOR = 40;
 
+/**
+ * The viewer's role level, or 0 for anything this gate cannot read.
+ *
+ * ## Why this is not `Number(user.role ?? 0)` (#53)
+ *
+ * `Number("editor")` is `NaN`, and `NaN < 40` is `false` — so the previous
+ * expression *granted* access to any session whose `role` was not the numeric
+ * level it expected, which is precisely the case a check like this exists for.
+ * A gate that fails open on an unrecognised value is worse than no gate, because
+ * it looks like one.
+ *
+ * So the reading fails closed: only a finite number in EmDash's own range counts,
+ * and everything else is 0, which is below the threshold and therefore a 404.
+ */
+const roleLevel = (user: unknown): number => {
+	const raw = (user as { role?: unknown } | undefined)?.role;
+	return typeof raw === "number" && Number.isFinite(raw) && raw >= 0 ? raw : 0;
+};
+
 /** A row's fields, read as a bag. One narrowing, shared by both direct reads. */
 const draftFieldsOf = (data: unknown): Record<string, unknown> =>
 	typeof data === "object" && data !== null && !Array.isArray(data)
@@ -39,11 +71,24 @@ const draftFieldsOf = (data: unknown): Record<string, unknown> =>
 		: {};
 
 const viewer = actorFrom(Astro.locals?.user);
-const level = Number((Astro.locals?.user as { role?: unknown } | undefined)?.role ?? 0);
+const level = roleLevel(Astro.locals?.user);
 if (!viewer || level < EDITOR) {
 	// A 404 rather than a 403: this page is not a thing that exists for you, and
 	// a 403 confirms it exists.
-	return new Response("Not found", { status: 404 });
+	//
+	// And it is the *site's* 404, rendered, rather than a bare
+	// `new Response("Not found")` (#53). The bare body was its own oracle: it
+	// answered `404` with `text/plain` and nine bytes, where a URL that genuinely
+	// does not exist answers `404` with `text/html` and the whole not-found page —
+	// so an anonymous visitor could tell "a gated page I may not see" from "no
+	// such page", and enumerate the protected routes by content length. Measured
+	// against production: `/curate` was `text/plain`, 9 bytes; `/no-such-page` was
+	// `text/html`, 14,028 bytes.
+	//
+	// `Astro.rewrite` renders `/404` without changing the URL, so the status is
+	// 404, the body is the page a missing page gets, and there is nothing left to
+	// distinguish the two.
+	return Astro.rewrite("/404");
 }
 
 // Three independent reads, one program. `Effect.all` keeps each branch's type,
@@ -54,10 +99,42 @@ if (!viewer || level < EDITOR) {
 // that reads the collection without that filter — which is what a curator needs,
 // because "what did I hide and why" is precisely the question. The rows carry
 // their visibility so the answer is visible rather than inferred.
-const [{ possibilities }, reports, ratings] = await runApp(
-	Effect.all([loadPossibilities(), loadReports(), loadRatings()]),
+const [{ possibilities }, reports, ratings, disputes, exclusions, audit] = await runApp(
+	Effect.all([
+		loadPossibilities(),
+		loadReports(),
+		loadRatings(),
+		loadDisputes(),
+		loadExclusions(),
+		loadAuditEvents(),
+	]),
 	{ signal: Astro.request.signal },
 );
+
+// The rights queue (#54). Live cases first, because a dispute is a claim about
+// somebody else's work and a closed one is history. Both are shown: "what did we
+// do about this" is as much a question for a curator as "what is open".
+const rights = buildRightsQueue({ disputes, exclusions });
+
+// The last twenty changes, newest first. Append-only and never public — this is
+// the "what changed and why" half of the audit trail, and it is the answer to a
+// question a reader of `/pages/licensing` is entitled to be asked.
+const recentChanges = audit.slice(-20).reverse();
+
+/*
+ * The outcome of the last action, if there was one.
+ *
+ * A form POST answers with a redirect, so without this the curator clicks
+ * "exclude" and the page reloads with no sign that anything happened — which on a
+ * rights workflow is the difference between a decision and a guess.
+ */
+const note = Astro.url.searchParams.get("note");
+const outcome = note
+	? {
+			tone: Astro.url.searchParams.get("problem") === "1" ? ("problem" as const) : ("ok" as const),
+			message: note.slice(0, 400),
+		}
+	: null;
 
 // Hidden entries, read directly. A curator's own decisions are the one thing a
 // curation queue must not hide from the curator.
@@ -75,15 +152,14 @@ const hidden = hiddenPage.entries
 		rightsStatus: (e.fields.rights_status as string) ?? null,
 	}));
 
-// Queue 1: open reports, grouped by reason with the licence concern first,
-// because it is the one where being wrong makes the catalogue unsafe.
-const priority: ReportReason[] = ["licence-changed", "dead-source", "broken-preview", "duplicate"];
+// Queue 1: open reports, ordered by the reason's own priority. The order lives in
+// `rating.ts` rather than here, because a priority that belongs to a view is a
+// priority the next view re-decides — and a rights matter sorting below a typo is
+// the failure #54 exists to prevent.
 const open = reports.filter((r) => !r.resolution);
-const ordered = [...open].sort((a, b) => {
-	const ai = priority.indexOf(a.reason);
-	const bi = priority.indexOf(b.reason);
-	return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi) || a.subjectSlug.localeCompare(b.subjectSlug);
-});
+const ordered = [...open].sort(
+	(a, b) => reportRank(a.reason) - reportRank(b.reason) || a.subjectSlug.localeCompare(b.subjectSlug),
+);
 
 // Queue 2: machine drafts the crawl created. They are held, unranked and
 // unpublished, which is correct — but nothing surfaces them for a decision, so
@@ -136,7 +212,9 @@ const linkFor = (report: Report) =>
 
 const totals = {
 	reports: open.length,
-	licences: open.filter((r) => r.reason === "licence-changed").length,
+	licences: open.filter((r) => isRightsSensitive(r.reason)).length,
+	rights: rights.live.length,
+	exclusions: rights.exclusions.filter((e) => e.active).length,
 	drafts: drafts.length,
 	hidden: hidden.length,
 	unmeasured: unmeasured.length,
@@ -158,6 +236,7 @@ const totals = {
 			the <a href="/_emdash/admin">EmDash admin</a>, which has the revisions and the audit
 			trail. This page exists so nothing sits in the catalogue unexamined.
 		</p>
+		{outcome && <OutcomeFlash tone={outcome.tone} message={outcome.message} />}
 		<dl class="tally">
 			<div>
 				<dt class="tag">Open reports</dt>
@@ -166,8 +245,24 @@ const totals = {
 				</dd>
 			</div>
 			<div>
-				<dt class="tag">Licence concerns</dt>
-				<dd class="tally__n">{totals.licences}</dd>
+				<dt class="tag">Rights matters</dt>
+				<dd class="tally__n" class:list={{ "tally__n--warn": totals.licences > 0 }}>
+					{totals.licences}
+				</dd>
+			</div>
+			<div>
+				<dt class="tag">Rights disputes</dt>
+				<dd class="tally__n" class:list={{ "tally__n--warn": totals.rights > 0 }}>
+					{totals.rights}
+				</dd>
+			</div>
+			<div>
+				<dt class="tag">Excluded sources</dt>
+				<dd class="tally__n">{totals.exclusions}</dd>
+			</div>
+			<div>
+				<dt class="tag">Recorded changes</dt>
+				<dd class="tally__n">{audit.length}</dd>
 			</div>
 			<div>
 				<dt class="tag">Held drafts</dt>
@@ -185,6 +280,88 @@ const totals = {
 	</header>
 
 	<div class="queues shell">
+		<section aria-labelledby="q-rights">
+			<h2 id="q-rights" class="section__title">
+				Rights disputes
+				<span class="tag">{rights.live.length} open · {rights.resolved.length} closed</span>
+			</h2>
+			<p class="section__why">
+				A dispute is an open rights correction, not a rating: somebody said a licence,
+				an attribution or the fact of this catalogue's using their work is wrong. Filing
+				one of those withdraws the download immediately, and the record, the licence
+				evidence and the digest stay exactly where they are — so a correction can still be
+				made from them. Each row opens the case, where the decisions live.
+			</p>
+			{
+				rights.live.length === 0 ? (
+					<p class="empty-note">
+						Nothing contested. That is a real answer: no reader has said anything here is
+						wrong about somebody else's work.
+					</p>
+				) : (
+					<ul class="queue">
+						{rights.live.map((dispute) => (
+							<li class:list={["row", { "row--urgent": dispute.subjectType === "possibility" }]}>
+								<p class="row__head">
+									<a class="row__title" href={`/curate/disputes/${dispute.id}`}>
+										{dispute.subjectSlug}
+									</a>
+									<span class="tag">{dispute.subjectType}</span>
+									<span class="tag">{disputeSummary(dispute)}</span>
+								</p>
+								{dispute.detail && <p class="row__detail">“{dispute.detail}”</p>}
+								<p class="row__foot">
+									{dispute.reportedAt.slice(0, 10)} ·{" "}
+									<a href={`/curate/disputes/${dispute.id}`}>open the case</a> ·{" "}
+									<a href="/_emdash/admin/disputes">the case list in the admin</a>
+								</p>
+							</li>
+						))}
+					</ul>
+				)
+			}
+		</section>
+
+		<section aria-labelledby="q-excluded">
+			<h2 id="q-excluded" class="section__title">
+				Excluded from future ingestion
+				<span class="tag">
+					{rights.exclusions.filter((e) => e.active).length} active · {rights.exclusions.length}{" "}
+					recorded
+				</span>
+			</h2>
+			<p class="section__why">
+				An exclusion is a standing instruction the crawl reads before it ingests anything,
+				which is what makes a takedown survive a refresh: the same repository, path or
+				digest is skipped on the next run without anybody remembering this page. A lifted
+				exclusion is kept rather than deleted, so “was this ever excluded?” stays
+				answerable.
+			</p>
+			{
+				rights.exclusions.length === 0 ? (
+					<p class="empty-note">No source has been excluded from ingestion.</p>
+				) : (
+					<ul class="queue">
+						{rights.exclusions.map((exclusion) => (
+							<li class="row">
+								<p class="row__head">
+									<span class="row__title row__title--plain">{exclusion.match}</span>
+									<span class="tag">{EXCLUSION_SCOPE_LABEL[exclusion.scope]}</span>
+									<span class="tag">{exclusion.active ? "in force" : "lifted"}</span>
+								</p>
+								{exclusion.detail && <p class="row__means">{exclusion.detail}</p>}
+								<p class="row__foot">
+									recorded {exclusion.recordedAt.slice(0, 10)}
+									{exclusion.liftedAt ? ` · lifted ${exclusion.liftedAt.slice(0, 10)}` : ""} ·{" "}
+									<a href="/_emdash/admin/exclusions">the exclusion list in the admin</a>
+								</p>
+							</li>
+						))}
+					</ul>
+				)
+			}
+		</section>
+
 		<section aria-labelledby="q-reports">
 			<h2 id="q-reports" class="section__title">
 				Open reports
@@ -199,7 +376,7 @@ const totals = {
 				) : (
 					<ul class="queue">
 						{ordered.map((report) => (
-							<li class:list={["row", { "row--urgent": report.reason === "licence-changed" }]}>
+							<li class:list={["row", { "row--urgent": isRightsSensitive(report.reason) }]}>
 								<p class="row__head">
 									<a class="row__title" href={linkFor(report)}>
 										{report.subjectSlug}
@@ -308,6 +485,19 @@ const totals = {
 				\`coverage\` are null because nothing measured them, and \`distinct_sources\` is 0 because
 				no licence has been read. Publishing an estimate in any of those fields would be
 				fabricated evidence, which is the one thing this project will not do.
+				{/*
+					Measuring an entry is an edit, and EmDash owns every edit. This queue
+					used to be forty links to public drill-ins and nothing else, which
+					meant the queue could not be worked: the page's own rule is that it
+					queues decisions rather than making them, and it had no route to the
+					place the decision is made. It also dead-ended twice over — the list is
+					capped at forty, so the overflow had nowhere to go but nowhere.
+				*/}
+			</p>
+			<p class="section__why">
+				{" "}
+				<a href="/_emdash/admin/possibilities">Open the possibility list in the admin</a> to
+				measure, feature or withdraw any of these, including the ones below the fold.
 			</p>
 			<ul class="tags">
 				{unmeasured.slice(0, 40).map((p) => (
@@ -321,6 +511,59 @@ const totals = {
 			{unmeasured.length > 40 && (
 				<p class="section__why">…and {unmeasured.length - 40} more.</p>
 			)}
+		</section>
+
+		<section aria-labelledby="q-audit">
+			<h2 id="q-audit" class="section__title">
+				What changed, and why
+				<span class="tag">{audit.length} recorded</span>
+			</h2>
+			<p class="section__why">
+				The rights audit trail, append-only and never published. Each row names the field
+				that moved, what it held before, what it holds now, and the reason it was
+				moved — so "your work was removed and nothing was said" is not a state this
+				catalogue can be in. A disputed payload stops being served the moment a case
+				opens; the record and its evidence stay, and the withdrawal is written down
+				here.
+			</p>
+			{
+				recentChanges.length === 0 ? (
+					<p class="empty-note">
+						Nothing has been changed by a rights case yet. Every row here was written by a
+						decision, not by the crawl.
+					</p>
+				) : (
+					<ul class="queue">
+						{recentChanges.map((event) => (
+							<li class="row">
+								<p class="row__head">
+									<span class="row__title row__title--plain">{event.subjectSlug}</span>
+									<span class="tag">{event.label}</span>
+									{event.field && <span class="tag">{event.field}</span>}
+								</p>
+								<p class="row__means">
+									{event.field
+										? `${event.field}: ${event.before ?? "unset"} → ${event.after ?? "unset"}`
+										: event.detail ?? ""}
+								</p>
+								<p class="row__foot">
+									{event.occurredAt.slice(0, 10)}
+									{event.reason ? ` · ${REPORTS[event.reason].label}` : ""} ·{" "}
+									<a href={`/curate/disputes/${event.subjectSlug}`}>the case</a>
+								</p>
+							</li>
+						))}
+					</ul>
+				)
+			}
+			{
+				audit.length > recentChanges.length && (
+					<p class="section__why">
+						…and {audit.length - recentChanges.length} earlier, in the{" "}
+						<a href="/_emdash/admin/audit_events">audit trail in the admin</a>.
+					</p>
+				)
+			}
 		</section>
 
 		{

@@ -28,6 +28,7 @@ import type { Candidate } from "../engine/src/candidates.ts";
 
 /** A candidate as the store would hold it after one crawl. */
 const candidate = (overrides: Partial<Candidate> = {}): Candidate => ({
+	briefFingerprint: null,
 	id: "0123456789abcdef",
 	fullName: "owner/repo",
 	owner: "owner",

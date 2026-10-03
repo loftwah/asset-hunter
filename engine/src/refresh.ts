@@ -29,6 +29,15 @@
  * someone starred it would make "unchanged sources do minimal work on the
  * second run" false in practice rather than only in the fixture.
  *
+ * ## Explicit exclusions (#54)
+ *
+ * An exclusion is not a hint about this run. It is a standing instruction written by
+ * a person through the rights workflow, and a refresh that re-reads an excluded
+ * source is doing the thing the takedown stopped. So the plan consults the exclusion
+ * list first and reports what it skipped *because* of one, separately from the
+ * ordinary skips — a run that reports "12 unchanged" and says nothing about the
+ * exclusion reads as though nothing was special about it.
+ *
  * ## Honesty about what disappeared
  *
  * A source that 404s is not the same as a source that was never there. The
@@ -39,6 +48,7 @@
  */
 
 import type { Candidate } from "./candidates.ts";
+import { exclusionFor, targetOfCandidate, type Exclusion } from "./exclusions.ts";
 
 /** What a cheap metadata read told us about a repository right now. */
 export interface SourceObservation {
@@ -73,7 +83,18 @@ export type InspectReason =
 	| "missing-before";
 
 /** Why a source is being left alone. */
-export type SkipReason = "unchanged" | "not-usable" | "fork";
+export type SkipReason = "unchanged" | "not-usable" | "fork" | "excluded";
+
+/**
+ * What a refresh plan needs to know about standing exclusions (#54).
+ *
+ * Optional and last, so every existing call is unchanged and a run that knows
+ * nothing about exclusions behaves exactly as it did before #54.
+ */
+export interface RefreshOptions {
+	/** Exclusions read from EmDash before the run. See `./exclusions.ts`. */
+	exclusions?: readonly Exclusion[];
+}
 
 /** Why a source is no longer reachable. Recorded, never deleted. */
 export interface Vanished {
@@ -101,19 +122,37 @@ export function planRefresh(
 	candidates: readonly Candidate[],
 	observations: ReadonlyMap<string, SourceObservation>,
 	now: string,
+	options: RefreshOptions = {},
 ): {
 	inspect: SourceAction[];
 	skip: SourceAction[];
 	vanished: Vanished[];
 	unchanged: number;
+	excluded: { fullName: string; exclusion: Exclusion }[];
 } {
 	const inspect: SourceAction[] = [];
 	const skip: SourceAction[] = [];
 	const vanished: Vanished[] = [];
+	const excluded: { fullName: string; exclusion: Exclusion }[] = [];
 	let unchanged = 0;
+	// Only active exclusions can skip anything, and they are consulted before every
+	// other rule below — including the "is it new?" branch at the end. A takedown that
+	// only stopped re-*inspecting* a known repository would still let a search result
+	// bring it straight back, which is the "the crawler must not ingest the same exact
+	// resource again" half of #54.
+	const exclusions = (options.exclusions ?? []).filter((entry) => entry.active);
+	const excludedNames = new Set<string>();
 
 	for (const candidate of candidates) {
 		const seen = observations.get(candidate.fullName);
+
+		const exclusion = exclusions.length ? exclusionFor(exclusions, targetOfCandidate(candidate)) : null;
+		if (exclusion) {
+			excluded.push({ fullName: candidate.fullName, exclusion });
+			excludedNames.add(candidate.fullName.toLowerCase());
+			skip.push({ kind: "skip", reason: "excluded", fullName: candidate.fullName });
+			continue;
+		}
 
 		// Not observed this run. Left out of the plan entirely rather than
 		// reported as vanished — see the module comment.
@@ -154,14 +193,24 @@ export function planRefresh(
 
 	// Observations we have never recorded become work immediately: a repository
 	// that appeared in a search result is new material whether or not this run
-	// was asked to find it.
+	// was asked to find it — unless it has been excluded, which is checked here as
+	// well as above so a first sighting of an excluded repository is skipped rather
+	// than inspected and then quietly dropped.
 	const known = new Set(candidates.map((c) => c.fullName));
 	for (const seen of observations.values()) {
 		if (known.has(seen.fullName)) continue;
+		const exclusion = exclusions.length
+			? exclusionFor(exclusions, { fullName: seen.fullName })
+			: null;
+		if (exclusion) {
+			excluded.push({ fullName: seen.fullName, exclusion });
+			excludedNames.add(seen.fullName.toLowerCase());
+			continue;
+		}
 		inspect.push({ kind: "inspect", reason: "new-source", fullName: seen.fullName });
 	}
 
-	return { inspect, skip, vanished, unchanged };
+	return { inspect, skip, vanished, unchanged, excluded };
 }
 
 /**
@@ -212,6 +261,16 @@ export function needsLicenceReread(
  * from a transcript, and every one of them can be zero. `unchanged` matters as
  * much as `inspected`: a refresh that re-read everything reports the same
  * numbers forever and gives no signal.
+ */
+/**
+ * What a run measured.
+ *
+ * `excluded` is deliberately *not* one of these. The metrics are the crawl's own
+ * observations — what it checked, what changed, what it read — and a source a
+ * takedown stopped it from reading was never observed at all. Counting it here
+ * would put a decision somebody else made into a column headed "what this run
+ * measured". The exclusions a plan skipped are reported by the plan instead,
+ * where they can be named.
  */
 export interface RefreshMetrics {
 	sourcesChecked: number;

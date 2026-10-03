@@ -171,6 +171,48 @@ describe("the queues", () => {
 	});
 });
 
+describe("the rights queue (#54)", () => {
+	withEditor("render the rights queues an editor works from", async () => {
+		const html = await (await fetch(`${baseUrl}/curate`, { headers: { cookie: editorCookie! } })).text();
+		for (const id of ["q-rights", "q-excluded", "q-audit"]) {
+			assert.ok(html.includes(`id="${id}"`), `missing queue: ${id}`);
+		}
+		const body = text(html);
+		assert.match(body, /Rights disputes\s+\d+ open/);
+		assert.match(body, /Excluded from future ingestion\s+\d+ active/);
+	});
+
+	withEditor("queue it as a question, never as an edit of its own", async () => {
+		// The same rule the report queue follows: the cockpit says what needs a
+		// decision and where to go. A form inside the queues that wrote
+		// `rights_status` or `licence_evidence` would be an admin action outside the
+		// revision history, and #54 added a case page precisely so the decisions live
+		// somewhere that can carry an audit trail.
+		const html = await (await fetch(`${baseUrl}/curate`, { headers: { cookie: editorCookie! } })).text();
+		const queues = html.match(/<div class="queues[\s\S]*?<\/main>/)?.[0] ?? "";
+		assert.ok(queues.length > 0, "could not isolate the queue region");
+		assert.equal(
+			(queues.match(/<form[\s\S]*?<\/form>/g) ?? []).length,
+			0,
+			"the cockpit must not post edits of its own",
+		);
+	});
+
+	withEditor("a case page is as gated as the cockpit", async () => {
+		// A queue is information about the catalogue, and so is the case behind it.
+		const anonymous = await fetch(`${baseUrl}/curate/disputes/dis-example-anything`);
+		assert.equal(anonymous.status, 404);
+		assert.doesNotMatch(text(await anonymous.text()), /Audit trail|Decide/);
+	});
+
+	withEditor("a case that does not exist is a 404, not an empty form", async () => {
+		const res = await fetch(`${baseUrl}/curate/disputes/dis-example-no-such-case`, {
+			headers: { cookie: editorCookie! },
+		});
+		assert.equal(res.status, 404);
+	});
+});
+
 describe("honesty about the catalogue's own gaps", () => {
 	withEditor("count held crawl drafts as real rows", async () => {
 		const html = await (await fetch(`${baseUrl}/curate`, { headers: { cookie: editorCookie! } })).text();

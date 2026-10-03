@@ -491,10 +491,29 @@ export class EmDashContentApi extends Context.Service<
 				slug: string,
 			) {
 				const operation = `read ${collection}/${slug}`;
-				const response = yield* call(operation, url(request, itemPath(collection, slug)), {
-					method: "GET",
-					headers: { ...request.headers },
-				});
+				/**
+				 * A 404 is an answer, not a refusal.
+				 *
+				 * `call` turns every non-2xx into an `EmDashWriteError`, which is right for a
+				 * write and wrong for a read-back: "this entry does not exist yet" is the
+				 * normal state of a first create. Reporting it as a failure is what stopped a
+				 * rights report from opening its case — the report was filed and the
+				 * withdrawal silently was not.
+				 *
+				 * So the 404 is caught here and answered as `null`, which is what this
+				 * method's signature has always said it returns. Every other status is still a
+				 * refusal, and still typed as one with the status attached.
+				 */
+				const response = yield* call(
+					operation,
+					url(request, itemPath(collection, slug)),
+					{ method: "GET", headers: { ...request.headers } },
+				).pipe(
+					Effect.catchTag("EmDashWriteError", (error) =>
+						error.status === 404 ? Effect.succeed(null) : Effect.fail(error),
+					),
+				);
+				if (response === null) return null;
 				const body = yield* decodeResponse(EntryResponse, operation)(response);
 				// The record is nested at `data.item.data` and the revision token sits
 				// *beside* the item at `data._rev`. Reading `item._rev` yields

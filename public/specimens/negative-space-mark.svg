@@ -1,75 +1,39 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Negative-space mark plate: a single form legible only where two shapes meet">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Negative-space mark plate: two solid wedges whose shared diagonal is the mark">
 	<defs>
-		<radialGradient id="nsbg" cx="50%" cy="34%" r="72%">
+		<radialGradient id="bg" cx="50%" cy="32%" r="74%">
 			<stop offset="0%" stop-color="#1a1e22"/>
 			<stop offset="100%" stop-color="#08090a"/>
 		</radialGradient>
 	</defs>
-	<rect width="800" height="1000" fill="url(#nsbg)"/>
+	<rect width="800" height="1000" fill="url(#bg)"/>
 
-	<!-- construction: the mark is two solids and the gap between them.
-	     Nothing is drawn where the eye wants to see a shape. -->
-	<g transform="translate(0,-6)">
-		<!-- solid A: descending wedge -->
-		<path d="M148 300 L330 300 L224 520 L148 300 Z" fill="#f4f2ee"/>
-		<!-- solid B: ascending wedge, mirrored in counter-form -->
-		<path d="M652 300 L470 300 L576 520 L652 300 Z" fill="#ff5a1f"/>
-		<!-- the shared diagonal: this IS the mark -->
-		<path d="M330 300 L470 300 L224 520 L224 520 Z" fill="none"/>
-		<g stroke="#4cc2f0" stroke-width="1" opacity=".55" stroke-dasharray="3 5">
-			<path d="M224 300 L224 520"/>
-			<path d="M330 300 L470 300"/>
-			<path d="M148 300 L330 300 M470 300 L652 300"/>
-		</g>
-	</g>
+	<!-- The mark. This is the content; everything below is its evidence. -->
+	<g transform="translate(400,300)">
+		<path d="M2 -50 L46 -50 L24 50 L2 50 Z" fill="#f4f2ee"/>
+		<path d="M98 -50 L54 -50 L76 50 L98 50 Z" fill="#ff5a1f"/></g>
+	<text x="400" y="556" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="23" fill="#f4f2ee">two solids, and the gap between them is the figure</text>
 
-	<!-- reduction ladder: does it survive being made smaller? -->
-	<g>
-		<g fill="none" stroke="#2c3238">
-			<path d="M96 616 H704" stroke-dasharray="2 6"/>
-		</g>
-		<!-- 48 -->
-		<g transform="translate(120,660)">
-			<path d="M0 0 L28 0 L14 30 Z" fill="#f4f2ee"/>
-			<path d="M84 0 L56 0 L70 30 Z" fill="#ff5a1f"/>
-		</g>
-		<text x="228" y="690" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">48px</text>
-		<!-- 24 -->
-		<g transform="translate(320,672)">
-			<path d="M0 0 L14 0 L7 15 Z" fill="#f4f2ee"/>
-			<path d="M42 0 L28 0 L35 15 Z" fill="#ff5a1f"/>
-		</g>
-		<text x="386" y="690" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">24px</text>
-		<!-- 16 -->
-		<g transform="translate(470,678)">
-			<path d="M0 0 L10 0 L5 10 Z" fill="#f4f2ee"/>
-			<path d="M28 0 L18 0 L23 10 Z" fill="#ff5a1f"/>
-		</g>
-		<text x="516" y="690" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">16px</text>
-		<!-- 12 — the honest failure -->
-		<g transform="translate(590,680)">
-			<path d="M0 0 L8 0 L4 7 Z" fill="#f4f2ee"/>
-			<path d="M22 0 L14 0 L18 7 Z" fill="#ff5a1f"/>
-		</g>
-		<text x="628" y="690" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#f2a33c">12px ✕</text>
-	</g>
+	<path d="M96 600 H704" stroke="#2c3238" stroke-dasharray="2 6"/>
+	<text x="96" y="636" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">the same geometry, reduced</text>
 
-	<!-- inverse proof: the same geometry, swapped figure/ground -->
-	<g>
-		<rect x="96" y="740" width="286" height="180" rx="4" fill="#f4f2ee"/>
-		<g transform="translate(150,800)">
-			<path d="M0 0 L64 0 L32 68 Z" fill="#08090a"/>
-			<path d="M192 0 L128 0 L160 68 Z" fill="#08090a"/>
-		</g>
-		<text x="398" y="800" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">inverted</text>
-		<text x="398" y="830" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">one colour, two plates</text>
-		<text x="398" y="860" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">no gradient, no shadow</text>
-	</g>
+<g transform="translate(190,712)">
+		<path d="M2 -50 L46 -50 L24 50 L2 50 Z" fill="#f4f2ee"/>
+		<path d="M98 -50 L54 -50 L76 50 L98 50 Z" fill="#ff5a1f"/></g>
+	<text x="190" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">100px</text>
+<g transform="translate(400,724)">
+		<path d="M2 -50 L46 -50 L24 50 L2 50 Z" fill="#f4f2ee"/>
+		<path d="M98 -50 L54 -50 L76 50 L98 50 Z" fill="#ff5a1f"/></g>
+	<text x="400" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">58px</text>
+<g transform="translate(610,734)">
+		<path d="M2 -50 L46 -50 L24 50 L2 50 Z" fill="#f4f2ee"/>
+		<path d="M98 -50 L54 -50 L76 50 L98 50 Z" fill="#ff5a1f"/></g>
+	<text x="610" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">32px</text>
 
-	<!-- misfit cases, so the constraint is documented -->
-	<g font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">
-		<path d="M96 946 H704" stroke="#1c2126"/>
-		<text x="96" y="976">holds: flat · reverse · one ink · stitch</text>
-		<text x="728" y="976" text-anchor="end" fill="#ff8a4c">breaks below 16px</text>
-	</g>
+	<path d="M96 846 H704" stroke="#2c3238" stroke-dasharray="2 6"/>
+<text x="96" y="888" font-family="ui-monospace,Menlo,monospace" font-size="19" fill="#6a7178">Nothing is drawn where the eye wants to see a shape.</text>
+<text x="96" y="920" font-family="ui-monospace,Menlo,monospace" font-size="19" fill="#4c545c">Flat, one ink, no outline needed to hold it together.</text>
+
+	<path d="M96 958 H704" stroke="#1c2126"/>
+	<text x="96" y="988" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">holds: flat · reverse · one ink</text>
+	<text x="728" y="988" text-anchor="end" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#f2a33c">breaks below 16px</text>
 </svg>

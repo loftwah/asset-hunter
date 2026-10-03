@@ -324,6 +324,26 @@ if (engineExists) {
 	}
 }
 
+// --- Agent contract --------------------------------------------------------
+
+/*
+ * The routing in AGENTS.md is prose, and prose does not fail anything when it
+ * rots. This is the section that makes it a gate: a canonical document that goes
+ * missing, a root link that stops resolving, the MP model becoming unreachable
+ * from the entry point, or a superseded prompt file coming back.
+ *
+ * The checks live in their own module because they are also a test
+ * (`tests/agent-contract.test.ts`), and one implementation reported in two places
+ * beats two implementations that disagree. Called from here rather than being a
+ * second command, so `npm run doctor` stays the single report.
+ */
+section("Agent contract");
+
+const { checkAgentContract } = await import("./agent-contract.mjs");
+for (const c of checkAgentContract(root)) {
+	check(c.name, c.ok, c.detail, c.hint);
+}
+
 // --- Report ----------------------------------------------------------------
 
 const groups = [...new Set(checks.map((c) => c.group))];

@@ -75,6 +75,7 @@ import {
 	activeCandidates,
 	candidateId,
 	latestByFullName,
+	candidatesForBrief,
 	loadCandidates,
 	loadWaves,
 	markRenamed,
@@ -86,7 +87,14 @@ import {
 	type Candidate,
 	type FileEvidence,
 } from "./candidates.ts";
-import { extractPossibilities, kindFor, type ExtractedPossibility } from "./possibility.ts";
+import { describeExclusion, exclusionFor, type Exclusion } from "./exclusions.ts";
+import { verticalTerms } from "./vocabulary.ts";
+import {
+	extractPossibilities,
+	kindFor,
+	mediaKindsOf,
+	type ExtractedPossibility,
+} from "./possibility.ts";
 import { buildPayload, type PublishPayload } from "./publish.ts";
 import {
 	emptyMetrics,
@@ -165,6 +173,18 @@ export interface CrawlOptions {
 	 * from a real change.
 	 */
 	readonly payloadExists?: boolean;
+	/**
+	 * Standing takedowns (#54).
+	 *
+	 * Applied inside the crawl rather than after it, and *before* the plan, because
+	 * a skipped repository must cost nothing — no metadata round trip, no tree
+	 * listing, no bytes. Filtering at the end would still have re-downloaded
+	 * everything on the way to discarding it.
+	 *
+	 * Optional, so a run with no catalogue in reach behaves exactly as it did
+	 * before exclusions existed rather than failing closed on a missing list.
+	 */
+	readonly exclusions?: readonly Exclusion[];
 	/**
 	 * The transcript sink.
 	 *
@@ -247,7 +267,34 @@ export function crawl(options: CrawlOptions): Effect.Effect<CrawlOutcome> {
 		// candidate superseded by a later commit is history, and planning against
 		// history would re-read a repository forever on the strength of a commit that
 		// was replaced weeks ago.
-		const recorded = activeCandidates(loadCandidates(root).values());
+		/*
+		 * Standing takedowns (#54), resolved to full names before anything is
+		 * fetched.
+		 *
+		 * `exclusionFor` takes the same target shape the engine already carries for a
+		 * repository, so a takedown can name a repository, a path inside one, or a
+		 * digest — and this is the point at which a repository-level exclusion drops
+		 * the source entirely, before the metadata round trip below spends a request
+		 * to learn something already decided.
+		 */
+		const exclusions = options.exclusions ?? [];
+		const withheld = new Map<string, Exclusion>();
+
+		const recordedAll = activeCandidates(loadCandidates(root).values());
+		// An excluded source is dropped from the record the planner reads, not from
+		// the store: the evidence of what was once read is kept, so lifting an
+		// exclusion restores the history instead of requiring a re-crawl.
+		const recorded = recordedAll.filter((c) => {
+			const exclusion = exclusionFor(exclusions, { fullName: c.fullName });
+			if (exclusion) withheld.set(c.fullName, exclusion);
+			return !exclusion;
+		});
+		if (withheld.size) {
+			say(`  exclusions   ${withheld.size} source(s) withheld by a standing takedown\n`);
+			for (const [fullName, exclusion] of [...withheld].slice(0, 8)) {
+				say(`    ⊘ ${fullName} — ${describeExclusion(exclusion)}`);
+			}
+		}
 		const known = latestByFullName(recorded);
 		const knownNames = new Set(known.keys());
 
@@ -268,8 +315,21 @@ export function crawl(options: CrawlOptions): Effect.Effect<CrawlOutcome> {
 			});
 		}
 
+		// Search hits a takedown names are dropped here, before they become targets.
+		// Discovery already cost the query; the repository costs nothing more.
+		for (const landed of queue) {
+			const exclusion = exclusionFor(exclusions, { fullName: landed.fullName });
+			if (exclusion) withheld.set(landed.fullName, exclusion);
+		}
+		if (withheld.size) {
+			say(`  exclusions   ${withheld.size} source(s) withheld by a standing takedown\n`);
+			for (const [fullName, exclusion] of [...withheld].slice(0, 8)) {
+				say(`    ⊘ ${fullName} — ${describeExclusion(exclusion)}`);
+			}
+		}
+
 		const laneByHit = new Map<string, Lane>();
-		for (const hit of queue) {
+		for (const hit of queue.filter((l) => !withheld.has(l.fullName))) {
 			// The first wave wins, so a repository two queries both found is attributed
 			// to the one that found it first — the order the operator wrote them in,
 			// which is the order that means something.
@@ -283,6 +343,7 @@ export function crawl(options: CrawlOptions): Effect.Effect<CrawlOutcome> {
 		// discover, and the wave attribution is carried on the candidate instead.
 		const targets = new Map<string, SearchHit>();
 		for (const landed of queue) {
+			if (withheld.has(landed.fullName)) continue;
 			// A hit the store already holds is rebuilt from the recorded evidence. The
 			// search is not re-run for it, so there is nothing else to build it from —
 			// and using the placeholder would throw away the description that explains
@@ -499,12 +560,38 @@ export function crawl(options: CrawlOptions): Effect.Effect<CrawlOutcome> {
 			for (const [from, to] of renamed) say(`    → ${from} → ${to}`);
 		}
 
-		const payload = buildPayload(toPossibilities(activeCandidates(loadCandidates(root).values()), brief), [], {
+		const extracted = toPossibilities(
+			activeCandidates(loadCandidates(root).values()),
+			brief,
+		);
+		const payload = buildPayload(extracted.possibilities, [], {
 			huntId: `${briefFingerprint(brief)}:${mode === "hunt" ? (brief.queries[0] ?? "hunt") : "refresh"}`,
 			// The one non-deterministic input to the payload, and the one the merge
 			// policy treats as bookkeeping rather than as change.
 			syncedAt: now,
 		});
+
+		/*
+		 * Say what was inspected and not filed, and say it as a finding rather than
+		 * a footnote.
+		 *
+		 * This is the one place a run can quietly do nothing. `validatePayload`
+		 * accepts an empty possibility list, so a matcher that refuses every
+		 * candidate produces a green run, an empty payload, and a fingerprint the
+		 * next run will treat as already synced. Naming the repositories turns "this
+		 * brief found nothing" into something a reader can check.
+		 */
+		if (extracted.unfiled.length) {
+			const n = extracted.unfiled.length;
+			say(
+				`\n  ! ${n} inspected ${n === 1 ? "source fits" : "sources fit"} none of the declared verticals (${brief.verticals.join(", ")}) and ${n === 1 ? "was" : "were"} not filed:`,
+			);
+			for (const repo of extracted.unfiled) say(`    · ${repo}`);
+			say(
+				"    nothing was lost — they stay in candidates.json — but the brief's\n" +
+					"    vertical list or its wording may be wrong. See engine/src/vocabulary.ts.",
+			);
+		}
 
 		// The client's own record of whether GitHub throttled us. The honesty rule: a
 		// run that read less than it claims must not produce a payload that looks
@@ -938,6 +1025,7 @@ function inspect(options: InspectOptions) {
 			firstSeen: now,
 			lastSeen: now,
 			observations: 1,
+			briefFingerprint: briefFingerprint(brief),
 		};
 		const { isNew } = recordCandidate(root, candidate);
 		const lfsNote = lfsPointers ? ` (${lfsPointers} LFS pointer skipped)` : "";
@@ -949,12 +1037,197 @@ function inspect(options: InspectOptions) {
 	});
 }
 
-/** Groups the recorded evidence, one vertical at a time. */
-function toPossibilities(candidates: Candidate[], brief: HuntBrief): ExtractedPossibility[] {
-	const relevant = candidates.filter((c) => c.files.some((f) => f.kind !== "licence"));
+/**
+ * Groups the recorded evidence, one vertical at a time.
+ *
+ * Two things this deliberately does **not** do, both of which it used to do and
+ * both of which put false claims on the public catalogue:
+ *
+ * 1. **It does not see other briefs' candidates.** `candidates.json` is shared
+ *    across hunts, so extracting the whole store meant a run of the logos brief
+ *    filed the audio candidates the SFX brief had recorded — a logos entry with a
+ *    Java tic-tac-toe game listed as its evidence. The store is now filtered by
+ *    the brief's fingerprint, so an entry's examples are the sources that hunt
+ *    actually inspected.
+ * 2. **It does not file one candidate under every declared vertical.** It did,
+ *    which meant one repository produced four entries differing only by a slug
+ *    segment: a wall of the same mark four times with four different examples
+ *    lists, none of them more correct than the others. Each candidate is now
+ *    filed under the single declared vertical it fits best, so a brief produces
+ *    one entry per treatment and the taxonomy is a statement rather than a
+ *    multiplication. `verticalFit` is the rule, and a candidate that fits none of
+ *    the declared terms is refused rather than filed under the nearest.
+ *
+ * ## A refusal is reported, never silent
+ *
+ * `unfiled` comes back alongside the entries so the caller can say so. This used
+ * to be a bare `continue`, so a run that inspected 24 repositories, refused all
+ * 24 and wrote an empty payload reported:
+ *
+ *     checked 24 / changed 24 / new 24
+ *     ✔ payload 7f3a91c2 — 0 possibilities, 0 examples
+ *
+ * Every number there is true and the conclusion is completely misleading.
+ * `validatePayload` accepts an empty possibility list, so the hunt *succeeded*.
+ * An operator cannot distinguish "this brief found nothing" from "this brief's
+ * vertical matcher is wrong" — and the second is likelier, because a matcher that
+ * refuses everything looks exactly like a quiet afternoon.
+ *
+ * `engine/src/vocabulary.ts` states the rule this was violating: "silently
+ * dropping the entry would hide a hunt's results without saying why".
+ */
+interface Extraction {
+	readonly possibilities: ExtractedPossibility[];
+	/** Candidates that were inspected and filed under no declared vertical. */
+	readonly unfiled: string[];
+}
+
+function toPossibilities(candidates: Candidate[], brief: HuntBrief): Extraction {
+	const mine = candidatesForBrief(
+		new Map(candidates.map((c) => [c.id, c])),
+		briefFingerprint(brief),
+	);
+	const relevant = mine.filter((c) => c.files.some((f) => f.kind !== "licence"));
+	const byVertical = new Map<string, Candidate[]>();
+	const unfiled: string[] = [];
+	for (const candidate of relevant) {
+		const vertical = verticalFit(candidate, brief.verticals);
+		if (!vertical) {
+			unfiled.push(candidate.repo);
+			continue;
+		}
+		const bucket = byVertical.get(vertical) ?? [];
+		bucket.push(candidate);
+		byVertical.set(vertical, bucket);
+	}
 	const out: ExtractedPossibility[] = [];
 	for (const vertical of brief.verticals) {
-		out.push(...extractPossibilities(relevant, { vertical, intent: brief.intent }));
+		const bucket = byVertical.get(vertical);
+		if (!bucket?.length) continue;
+		out.push(...extractPossibilities(bucket, { vertical, intent: brief.intent }));
 	}
+	return { possibilities: out, unfiled };
+}
+
+/**
+ * A deliberately crude stem, and deliberately so.
+ *
+ * The failure it exists to fix was arithmetic, not linguistics: `Logos` split
+ * into `["logos"]`, and a repository or a query that said `logo` matched nothing,
+ * so a hunt whose whole intent was marks refused every mark it found. A real
+ * stemmer would be more code than this problem deserves and a place to be wrong
+ * quietly, so this collapses the two endings that actually cause it (`-s` and
+ * `-es`) and nothing else. Words shorter than three characters are dropped
+ * because they cannot discriminate.
+ */
+function stem(word: string): string {
+	const w = word.toLowerCase().replace(/[^a-z0-9]/g, "");
+	if (w.length <= 2) return "";
+	if (w.endsWith("ies")) return `${w.slice(0, -3)}y`;
+	if (w.endsWith("es") && w.length > 4) return w.slice(0, -2);
+	if (w.endsWith("s")) return w.slice(0, -1);
+	return w;
+}
+
+const stemAll = (text: string): Set<string> =>
+	new Set(
+		text
+			.split(/[^a-z0-9]+/)
+			.map(stem)
+			.filter((w) => w.length > 2),
+	);
+
+/**
+ * A vertical's matching terms, stemmed once and deduped.
+ *
+ * The dedupe is the point. `verticalTerms` merges three sources — the label, the
+ * extra terms, and the slug's own words — so it routinely holds both `logo` and
+ * `logos`, and both stem to `logo`. Scoring the surface forms independently gave
+ * one occurrence of "logo" twice the weight for `logos` that it earned for
+ * `branding`, which manufactured a tie between two verticals that overlap
+ * legitimately — and a tie is a refusal.
+ *
+ * Cached because it is called once per declared vertical per candidate, and a
+ * hunt scores hundreds of candidates against the same handful of slugs.
+ */
+const stemmedCache = new Map<string, Set<string>>();
+
+function stemmedTerms(vertical: string): Set<string> {
+	const cached = stemmedCache.get(vertical);
+	if (cached) return cached;
+	const out = new Set<string>();
+	for (const term of verticalTerms(vertical)) {
+		const word = stem(term);
+		if (word.length > 2) out.add(word);
+	}
+	stemmedCache.set(vertical, out);
 	return out;
+}
+
+/**
+ * The one declared vertical a candidate belongs in, or null for none.
+ *
+ * Scored from three places, in this order of authority:
+ *
+ * 1. **The candidate's own words** — its name, description and topics. Strongest,
+ *    because it is evidence about the repository rather than about the hunt.
+ * 2. **The query that found it.** The operator wrote the queries, the brief
+ *    records them, and `discoveredBy.query` says which one surfaced this
+ *    repository. A favicon generator found by `"logo generator svg"` said
+ *    "logo" in the only sentence anyone wrote about the intent to find it, and
+ *    using that is not a guess — it is the brief doing its job.
+ * 3. **The medium the vertical produces.** A `vector` result is evidence about
+ *    an `icons` entry independently of what anybody called it.
+ *
+ * Refuses on no signal and on a tie. Filing under the first declared vertical
+ * because it happened to be listed first is exactly how a Java game ends up in a
+ * wall of logos, and a refusal is recoverable in a way a wrong entry is not.
+ */
+function verticalFit(candidate: Candidate, verticals: string[]): string | null {
+	const own = stemAll(
+		[
+			candidate.repo,
+			candidate.description ?? "",
+			...(candidate.topics ?? []),
+		].join(" "),
+	);
+	const via = stemAll(candidate.discoveredBy?.query ?? "");
+	const media = mediaKindsOf(candidate);
+	// The terms, not just the label. `audio-music`'s label words are *audio* and
+	// *music*; the repositories that brief is sent after say *sound*, *sfx* and
+	// *granular*. Matching the label alone refused a granular texture generator
+	// from a hunt for procedural sound effects — see `VERTICAL_TERMS`.
+	//
+	// The term set is stemmed **once**, here, and each term scores at most once.
+	// It used to be stemmed per-occurrence against a set built from three sources,
+	// so a set holding both `logos` and `logo` — which it does, from the label and
+	// from the terms — scored one occurrence of "logo" as +6 for `logos` and +3
+	// for `branding`, and the two tied. `branding` and `logos` share `logo`,
+	// `mark` and `wordmark`, and a brief declaring both refused a realistic "A
+	// vector mark design toolkit for identities and lockups" at 14–14. Scoring the
+	// stem rather than the surface fixes the inflation; `stemmedTerms` also dedupes
+	// so a word in both a label and a term list cannot be counted twice for the
+	// same vertical.
+	const scored = verticals.map((vertical) => {
+		let score = 0;
+		for (const word of stemmedTerms(vertical)) {
+			if (own.has(word)) score += 3;
+			if (via.has(word)) score += 2;
+		}
+		// The medium, in the vocabulary `kindFor` actually produces: `image`,
+		// `motion`, `3d`, `audio`, `type`, `shader`, `code`, `generic`.
+		//
+		// This used to test for `vector` and `model`, neither of which is a member
+		// of that set — an SVG maps to `image` and a `.glb` maps to `3d` — so all
+		// three lines were dead for every candidate, including the worked example in
+		// this function's own docstring. A rule that can never fire reads as a rule.
+		if (vertical === "motion-video" && media.includes("motion")) score += 2;
+		if (vertical === "audio-music" && media.includes("audio")) score += 2;
+		if (vertical === "3d" && media.includes("3d")) score += 2;
+		return { vertical, score };
+	});
+	scored.sort((a, b) => b.score - a.score);
+	if (!scored[0] || scored[0].score <= 0) return null;
+	if (scored[1] && scored[0].score === scored[1].score) return null;
+	return scored[0].vertical;
 }

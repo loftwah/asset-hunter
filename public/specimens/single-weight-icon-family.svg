@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Icon family plate: one line mark on one stroke weight and one cap height">
+	<defs>
+		<radialGradient id="bg" cx="50%" cy="32%" r="74%">
+			<stop offset="0%" stop-color="#1a1e22"/>
+			<stop offset="100%" stop-color="#08090a"/>
+		</radialGradient>
+	</defs>
+	<rect width="800" height="1000" fill="url(#bg)"/>
+
+	<!-- The mark. This is the content; everything below is its evidence. -->
+	<g transform="translate(400,300)">
+		<g fill="none" stroke="#f4f2ee" stroke-width="28.8">
+			<rect x="-140.8" y="-140.8" width="281.6" height="281.6" rx="54.400000000000006"/>
+		</g></g>
+	<text x="400" y="556" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="19" fill="#f4f2ee">one weight, one cap height, one radius — checked, not advised</text>
+
+	<path d="M96 600 H704" stroke="#2c3238" stroke-dasharray="2 6"/>
+	<text x="96" y="636" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">the same geometry, reduced</text>
+
+<g transform="translate(190,712)">
+		<g fill="none" stroke="#f4f2ee" stroke-width="9">
+			<rect x="-44" y="-44" width="88" height="88" rx="17"/>
+		</g></g>
+	<text x="190" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">100px</text>
+<g transform="translate(400,724)">
+		<g fill="none" stroke="#f4f2ee" stroke-width="5.22">
+			<rect x="-25.52" y="-25.52" width="51.04" height="51.04" rx="9.86"/>
+		</g></g>
+	<text x="400" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">58px</text>
+<g transform="translate(610,734)">
+		<g fill="none" stroke="#f4f2ee" stroke-width="2.88">
+			<rect x="-14.08" y="-14.08" width="28.16" height="28.16" rx="5.44"/>
+		</g></g>
+	<text x="610" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">32px</text>
+
+	<path d="M96 846 H704" stroke="#2c3238" stroke-dasharray="2 6"/>
+<text x="96" y="888" font-family="ui-monospace,Menlo,monospace" font-size="18" fill="#6a7178">The gate is the deliverable; the icons are an instance.</text>
+<text x="96" y="920" font-family="ui-monospace,Menlo,monospace" font-size="20" fill="#4c545c">A guideline nobody runs is not a constraint.</text>
+
+	<path d="M96 958 H704" stroke="#1c2126"/>
+	<text x="96" y="988" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">holds: one weight · one gate</text>
+	<text x="728" y="988" text-anchor="end" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#f2a33c">breaks when the gate is skipped</text>
+</svg>

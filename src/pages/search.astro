@@ -11,6 +11,7 @@ import { search } from "emdash";
 import Base from "../layouts/Base.astro";
 import PossibilityTile from "../components/PossibilityTile.astro";
 import ProvenanceMarkers from "../components/ProvenanceMarkers.astro";
+import FacetTags from "../components/FacetTags.astro";
 import {
 	loadCollections,
 	loadPossibilities,
@@ -20,7 +21,7 @@ import {
 import { verticalLabel } from "../lib/vocabulary";
 import { Effect } from "effect";
 import { runApp } from "../lib/effect/root";
-import { excerpt, facetLabels } from "../lib/search-text";
+import { excerpt, safeSnippet } from "../lib/search-text";
 
 const query = (Astro.url.searchParams.get("q") ?? "").trim();
 const all = query.length > 0 ? await search(query, { limit: 60 }) : { items: [] };
@@ -93,6 +94,40 @@ for (const h of hits) {
 	if (v) verticalsInResults.set(v, (verticalsInResults.get(v) ?? 0) + 1);
 }
 const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a[1]);
+/**
+ * How many verticals the catalogue actually covers.
+ *
+ * From the loaded possibilities, so the empty state's sentence cannot go stale.
+ * A possibility with no vertical is not one a reader can browse, so it is not
+ * counted; the `""` stands in for it only so it can be excluded below.
+ */
+const verticalCount = new Set(
+	possibilities.map((p) => p.vertical).filter((v): v is string => Boolean(v)),
+).size;
+
+/**
+ * What the results line says, and — just as important — what it does not say.
+ *
+ * Each kind is counted separately and joined with a middle dot, so a mismatch in
+ * one cannot cancel out the other (`DESIGN.md` §9.1). The separator used to be
+ * appended unconditionally, which meant the zero-result page — the one state
+ * where nothing is found — rendered its `role="status"` line as
+ *
+ *     · for zzqqxxwwnothing
+ *
+ * A status line that opens with a separator reads as a rendering fault, and it
+ * only happened on the emptiest state, which is the state nobody looks at twice.
+ * With nothing found the line is just "for *query*", and it is still a status
+ * region, so a screen reader is still told the answer.
+ */
+const parts = [
+	possibilityHits > 0 &&
+		`${possibilityHits} ${possibilityHits === 1 ? "possibility" : "possibilities"}`,
+	collectionHits > 0 &&
+		`${collectionHits} ${collectionHits === 1 ? "collection" : "collections"}`,
+	pages.length > 0 && `${pages.length} ${pages.length === 1 ? "page" : "pages"}`,
+].filter(Boolean);
+const counted = parts.length > 0 ? `${parts.join(" · ")} · ` : "";
 ---
 
 <Base
@@ -109,10 +144,20 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 		<p class="tag tag--ember">Search</p>
 		<h1 class="display head__title">{query ? `“${query}”` : "Find a possibility"}</h1>
 
+		{/*
+		 * `q-page`, not `q`.
+		 *
+		 * The masthead carries a search field with `id="q"` on every page, and the
+		 * page's own field used the same id: two elements with one id, a
+		 * `<label for="q">` that labelled the masthead's input rather than this
+		 * one, and `getElementById("q")` — the `/` shortcut in `Base.astro` —
+		 * resolving to the masthead's field even here, where the reader is already
+		 * looking at the one they want.
+		 */}
 		<form class="finder" action="/search" method="get" role="search">
-			<label class="visually-hidden" for="q">Search possibilities</label>
+			<label class="visually-hidden" for="q-page">Search possibilities</label>
 			<input
-				id="q"
+				id="q-page"
 				type="search"
 				name="q"
 				value={query}
@@ -127,17 +172,7 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 		{
 			query && (
 				<p class="count" role="status">
-					{[
-						possibilityHits > 0 &&
-							`${possibilityHits} ${possibilityHits === 1 ? "possibility" : "possibilities"}`,
-						collectionHits > 0 &&
-							`${collectionHits} ${collectionHits === 1 ? "collection" : "collections"}`,
-						pages.length > 0 &&
-							`${pages.length} ${pages.length === 1 ? "page" : "pages"}`,
-					]
-						.filter(Boolean)
-						.join(" · ")}
-					{" · "}
+					{counted}
 					for <strong>{query}</strong>
 				</p>
 			)
@@ -167,9 +202,9 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 				<div class="none">
 					<h2 class="display none__title">No match for “{query}”</h2>
 					<p class="lede">
-						Nothing in the catalogue matches that. The catalogue covers 13 verticals and is
-						deliberately partial, so the absence of a result is more likely a gap than an
-						error.
+						Nothing in the catalogue matches that. The catalogue covers {verticalCount}{" "}
+						{verticalCount === 1 ? "vertical" : "verticals"} and is deliberately partial, so
+						the absence of a result is more likely a gap than an error.
 					</p>
 					<ul class="tries">
 						<li>Try a shorter phrase — full-text search wants keywords, not sentences.</li>
@@ -177,7 +212,21 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 						<li>Browse a vertical instead of guessing the vocabulary.</li>
 					</ul>
 					<div class="none__links">
-						<a class="button" href="/verticals">
+						{/*
+						 * Ghost, both of them (#71).
+						 *
+						 * `DESIGN.md` §2 allows one accent per viewport, and this
+						 * state had two solid `--ember` blocks 570px apart: the finder
+						 * form's own `Search` submit, and this link. The decision, made
+						 * once and written into §2 so the next empty state does not
+						 * re-open it: **a form's submit is the accent; a state's own
+						 * way out is a link.** You came here to search again, so the
+						 * search is the action; browsing is a different page with its
+						 * own accent. That is the same split `/board`'s empty state
+						 * already makes, where the way in is solid and the way past it
+						 * is not.
+						 */}
+						<a class="button button--ghost" href="/verticals">
 							Browse verticals
 						</a>
 						<a class="button button--ghost" href="/">
@@ -261,19 +310,17 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 												</span>
 												<span class="found__meta">
 													{/*
-													 * The vertical and the media kind are not the same
-													 * fact. `Motion / Video` and `Motion` both label a
-													 * motion entry, so printing both says one thing
-													 * twice — the exact duplication `docs/UNSLOP.md`
-													 * rejects. `facetLabels` drops the subsumed one
-													 * and keeps both when they genuinely differ.
+													 * `FacetTags`, so this row and the wall tile derive
+													 * the vertical and media-kind labels from one rule (#67).
+													 * This markup was a third copy of it, which is how the
+													 * same `Motion / Video  Motion` line was fixed here in
+													 * #63 and was still on the wall tile two commits later.
 													 */}
-													{facetLabels(
-														possibility?.vertical,
-														possibility?.mediaKind,
-													).map((label) => (
-														<span class="tag">{label}</span>
-													))}
+													<FacetTags
+														vertical={possibility?.vertical}
+														mediaKind={possibility?.mediaKind}
+														class="found__facets"
+													/>
 													<ProvenanceMarkers
 														rights={possibility?.rightsStatus}
 														origin={possibility?.representativeOrigin}
@@ -282,15 +329,28 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 												</span>
 											</span>
 										</a>
+										{/*
+										 * The reason line is a *sibling* of the link, not inside it (#72).
+										 *
+										 * It was measured at 36–55% of every row — the reason line and the
+										 * padding under it were simply not a target, while the title above them
+										 * was. The reason line is the part of the row that answers the question
+										 * that brought someone here, so it is the worst possible thing to leave
+										 * dead.
+										 *
+										 * It stays outside the link so the link's accessible name is the title
+										 * and not a 190-character excerpt; `.found__link::after` covers the whole
+										 * row instead, so the row is one target and one keyboard stop either way.
+										 */}
 										{reasonFor(possibility?.summary ?? collection?.summary) && (
-											<p
-												class="found__snippet"
-												// Built here from escaped text: `markTerms` escapes the
-												// source and only wraps whole matched groups, so no
-												// query text can reach the page as markup.
-												set:html={reasonFor(
-													possibility?.summary ?? collection?.summary,
-												)}
+										<p
+											class="found__snippet"
+											// Built here from escaped text: `markTerms` escapes the
+											// source and only wraps whole matched groups, so no
+											// query text can reach the page as markup.
+											set:html={reasonFor(
+												possibility?.summary ?? collection?.summary,
+											)}
 											/>
 										)}
 									</li>
@@ -311,7 +371,9 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 							<li>
 								<a href={`/pages/${p.slug}`}>
 									<span class="pages-found__title">{p.title}</span>
-									{p.snippet && <span class="pages-found__snippet" set:html={p.snippet} />}
+									{p.snippet && (
+										<span class="pages-found__snippet" set:html={safeSnippet(p.snippet)} />
+									)}
 								</a>
 							</li>
 						))}
@@ -343,8 +405,22 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 		max-width: 40rem;
 	}
 
+	/*
+	 * `1 1 20rem`, not `1 1 14rem`.
+	 *
+	 * The hint is the field's own explanation of itself, and a 13px mono sentence
+	 * needs 300–317px. Beside a 120px button on a 360px line the field got 192px and
+	 * the sentence was cut mid-word — "Try a technique, a treatmen" — with no
+	 * ellipsis and no way to see the rest. A 20rem basis means the pair needs 448px,
+	 * so below about 460px the button takes its own row and the field gets the whole
+	 * line; above it, side by side, the field has 600px+.
+	 *
+	 * This is a layout answer rather than a copy one: the words are `DESIGN.md`
+	 * §9.1's, and the alternative — shortening them — would edit the design authority
+	 * to fit a box. The box was the thing that was wrong.
+	 */
 	.finder input {
-		flex: 1 1 16rem;
+		flex: 1 1 20rem;
 		min-height: 3rem;
 		padding: 0.7rem 1rem;
 		background: var(--surface);
@@ -426,6 +502,34 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 
 	.found__row {
 		border-bottom: 1px solid var(--line);
+		/* The stretched link below needs a containing block, and the row is the
+		   element whose whole area it covers. */
+		position: relative;
+	}
+
+	/*
+	 * One convention, stated once (#72).
+	 *
+	 * The reason line is a sibling of the link rather than inside it, so the
+	 * pseudo-element below is what makes the whole row a target: 36–55% of each
+	 * row used to be dead space under a live title. The `Documentation` rows
+	 * further down put their excerpt *inside* the link, which achieves the same
+	 * thing by a different mechanism — one page, one pattern, two answers for a
+	 * reader trying to work out what is clickable.
+	 *
+	 * The link keeps its own text content, so the accessible name is the title
+	 * and its markers rather than a 190-character excerpt, and the row is still
+	 * one Tab stop.
+	 */
+	.found__link::after {
+		content: "";
+		position: absolute;
+		inset: 0;
+	}
+
+	.found__link:focus-visible::after {
+		outline: 2px solid var(--ember-line);
+		outline-offset: -2px;
 	}
 
 	.found__link {
@@ -434,11 +538,20 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 		gap: var(--sp-4);
 		align-items: center;
 		padding-block: var(--sp-3);
-		transition: background var(--dur-fast) var(--ease-out);
 	}
 
-	.found__link:hover {
+	/*
+	 * Hover on the *row*, not the link box.
+	 *
+	 * The background now covers the reason line too, which is the feedback that
+	 * tells a reader the excerpt they are pointing at is part of the link.
+	 */
+	.found__row:hover {
 		background: var(--surface);
+	}
+
+	.found__link:hover .found__title {
+		color: var(--ember);
 	}
 
 	.found__thumb {
@@ -481,7 +594,8 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 		color: var(--ink);
 	}
 
-	.found__link:hover .found__title {
+	.found__link:hover .found__title,
+	.found__row:hover .found__title {
 		color: var(--ember);
 	}
 
@@ -498,11 +612,24 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 		margin-top: 0.2rem;
 	}
 
-	.found__snippet {
-		padding: 0 0 var(--sp-3) calc(4.5rem + var(--sp-4));
+	/*
+	 * One excerpt style for both result lists (#72).
+	 *
+	 * `.found__snippet` and `.pages-found__snippet` were the same paragraph with
+	 * two class names, two sets of numbers and one difference that was not a
+	 * difference: the search excerpt sat *outside* its link and the documentation
+	 * excerpt inside it, on the same page. They now share a rule so a change to
+	 * how a marked term reads cannot land on one list and miss the other.
+	 */
+	.found__snippet,
+	.pages-found__snippet {
 		font-size: var(--step--1);
 		line-height: 1.5;
 		color: var(--ink-3);
+	}
+
+	.found__snippet {
+		padding: 0 0 var(--sp-3) calc(4.5rem + var(--sp-4));
 		max-width: 78ch;
 	}
 
@@ -518,8 +645,10 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 	}
 
 	/* EmDash emits <mark> around matched terms; make the highlight legible on
-	   this dark ground rather than leaving browser defaults. */
-	.found__snippet :global(mark) {
+	   this dark ground rather than leaving browser defaults. Both result lists
+	   share it, for the reason above. */
+	.found__snippet :global(mark),
+	.pages-found__snippet :global(mark) {
 		background: var(--ember-wash);
 		color: var(--ink);
 		border-radius: 2px;
@@ -628,15 +757,6 @@ const verticalFacets = [...verticalsInResults.entries()].sort((a, b) => b[1] - a
 	}
 
 	.pages-found__snippet {
-		font-size: var(--step--1);
-		line-height: 1.5;
-		color: var(--ink-3);
-	}
-
-	.pages-found__snippet :global(mark) {
-		background: var(--ember-wash);
-		color: var(--ink);
-		border-radius: 2px;
-		padding: 0 0.15em;
+		max-width: 78ch;
 	}
 </style>

@@ -136,9 +136,59 @@ export function leadPhrase(description: string | null | undefined, fallback: str
 	while (words.length > 3 && DANGLING.has(words[words.length - 1].toLowerCase().replace(/\W/g, ""))) {
 		words = words.slice(0, -1);
 	}
-	const phrase = words.join(" ").replace(/[,:;]+$/, "");
-	if (phrase.length < 4) return fallback;
+	let phrase = words.join(" ").replace(/[,:;]+$/, "");
+	/*
+	 * Cut on a word, and close what is left open.
+	 *
+	 * Nine words is not nine words: a README that opens with a sentence of
+	 * bracketed formats runs past the cap mid-phrase and the tile reads
+	 *
+	 *     EasyQRCodeJS-NodeJS is a NodeJS server side javascript QRCode
+	 *     image(PNG/JPEG/SVG/Base64
+	 *
+	 * which is the whole repository description with the ends taken off, and it
+	 * is what `h1` on the drill-in and the title on the wall both print. So the
+	 * cap is applied to characters rather than words, and then an unbalanced
+	 * bracket or quote is closed — a half-open parenthesis in a title reads as a
+	 * rendering fault, which it is.
+	 *
+	 * `search-text.ts` does the same thing for a search excerpt, deliberately
+	 * restated rather than imported: the engine does not import app code.
+	 */
+	if (phrase.length > MAX_TITLE_CHARS) {
+		const cut = phrase.slice(0, MAX_TITLE_CHARS);
+		const lastSpace = cut.lastIndexOf(" ");
+		phrase = (lastSpace > MAX_TITLE_CHARS / 2 ? cut.slice(0, lastSpace) : cut).trimEnd();
+		phrase += "\u2026";
+	}
+	phrase = closeBrackets(phrase);
+	if (phrase.replace(/\u2026$/, "").length < 4) return fallback;
 	return phrase.charAt(0).toUpperCase() + phrase.slice(1);
+}
+
+/** How long a title may be before it is cut, in characters. */
+const MAX_TITLE_CHARS = 72;
+
+const OPENERS: Record<string, string> = { "(": ")", "[": "]", "{": "}", "\u201c": "\u201d" };
+
+/**
+ * Closes whatever the cut left open, and drops a stray closer.
+ *
+ * Only one level, on purpose: a description with unbalanced brackets in it is
+ * repaired here so the title is readable, and left alone everywhere else so the
+ * repair is visible rather than silent across the record.
+ */
+function closeBrackets(phrase: string): string {
+	let out = phrase.replace(/[\u2026]$/, (m) => m);
+	const stack: string[] = [];
+	for (const ch of out) {
+		if (OPENERS[ch]) stack.push(OPENERS[ch]);
+		else if (stack.length && stack[stack.length - 1] === ch) stack.pop();
+	}
+	while (stack.length) out += stack.pop();
+	// A closer with nothing open is noise the cap can leave behind.
+	if (!/[([\u201c]/.test(out)) out = out.replace(/[)\]]/g, "");
+	return out;
 }
 
 const DANGLING = new Set([
@@ -381,6 +431,7 @@ export function extractPossibilities(
 		[...mediaTally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "image";
 
 	const out: ExtractedPossibility[] = [];
+	const taken = new Set<string>();
 	for (const members of groups.values()) {
 		const sorted = [...members].sort((a, b) => a.fullName.localeCompare(b.fullName));
 		const { candidate: representative, why } = chooseRepresentative(sorted);
@@ -388,7 +439,29 @@ export function extractPossibilities(
 		// The slug is derived from the title, so the URL a reader sees matches
 		// the words on the tile and stays stable while the title is stable.
 		const slugBase = slugify(title);
-		const slug = `${slugBase || slugify(representative.fullName)}-${techniqueKey(representative).slice(0, 4)}`;
+		/*
+		 * The vertical is part of the slug, and it has to be.
+		 *
+		 * `toPossibilities` extracts the *whole* candidate set once per vertical in
+		 * the brief, because the same repository genuinely demonstrates more than
+		 * one treatment — a QR generator is both a `logos` technique and an `icons`
+		 * one, and filing it twice is the right answer. But the slug was
+		 * `title + techniqueKey`, and neither of those mentions the vertical, so
+		 * every multi-vertical brief produced the same slug once per vertical.
+		 *
+		 * That is not a cosmetic collision. `validatePayload` refuses a payload
+		 * with a duplicate possibility slug and `crawl` writes nothing, so **any
+		 * brief naming two verticals could never sync at all** — the run looked
+		 * successful and the catalogue stayed exactly as it was. The first
+		 * acceptance brief named one vertical, so nothing caught it.
+		 *
+		 * The vertical also makes the URL say what the entry is: a reader who
+		 * arrives at `/possibilities/<slug>` can see which field it belongs to
+		 * without going back.
+		 */
+		const slug =
+			`${slugBase || slugify(representative.fullName)}-${options.vertical}-` +
+			`${techniqueKey(representative).slice(0, 4)}`;
 
 		// The terms that actually put this group together, named rather than
 		// implied — a reader should be able to check the grouping.
@@ -396,13 +469,37 @@ export function extractPossibilities(
 			sorted.every((c) => keywordsOf(c).includes(term)),
 		);
 
+		// Structural uniqueness inside one vertical: the vertical fixed the
+		// cross-vertical case, and this fixes the case it cannot — two genuinely
+		// different groups whose representative shares a title and a technique key.
+		// A counter keeps the slug readable and the URL stable for a given ordering.
+		let unique = slug;
+		for (let n = 2; taken.has(unique); n++) unique = `${slug}-${n}`;
+		taken.add(unique);
+
 		out.push({
-			slug,
+			slug: unique,
 			title,
 			tagline: representative.description,
-			summary:
-				representative.description ??
-				`Found while hunting for: ${options.intent}`,
+			/*
+			 * The summary says what the entry *is*; the tagline is what the source
+			 * repository says about itself.
+			 *
+			 * They were the same string, character for character, which put the same
+			 * sentence twice on the tile and the drill-in — the #67 duplication again,
+			 * one layer up, and worse here because both halves are the *same* sentence
+			 * rather than two overlapping ones. A repository description is also a
+			 * feature list rather than a description of a technique: "browser/node.js,
+			 * transparency, logo, border-radius, opacity, PNG/SVG/PDF" tells a reader
+			 * nothing about what the technique is.
+			 *
+			 * So the summary is composed here — what was found, from what, and at what
+			 * commit — and the source's own words stay in the tagline where they
+			 * belong.
+			 */
+			summary: sorted.length === 1
+				? `One source found for this treatment: ${representative.fullName} at ${representative.ref.slice(0, 7)}. Nothing else in the hunt was close enough to merge with it, so it stands alone.`
+				: `Grouped from ${sorted.length} sources that all demonstrate the same treatment (${sharedTerms.slice(0, 4).join(", ") || "matched on media kind"}). A group is a judgement about the technique, not about the files.`,
 			technique:
 				sorted.length === 1
 					? `One source found for this treatment: ${representative.fullName} at ${representative.ref.slice(0, 7)}. Nothing else in the hunt was close enough to merge with it, so it stands alone.`

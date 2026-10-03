@@ -29,7 +29,15 @@
  */
 import type { Effect } from "effect";
 import type { Example } from "./catalogue.ts";
+import {
+	DISPUTE_STATE_LABEL,
+	WITHHELD_STATEMENT,
+	parseDisputeState,
+	withholdsAsset,
+	type DisputeState,
+} from "./disputes.ts";
 import { runApp, type AppServices, type RunOptions } from "./effect/root.ts";
+import { parseReason, type ReportReason } from "./rating.ts";
 import {
 	USE_STATE_LABEL,
 	USE_STATE_MEANING,
@@ -37,6 +45,7 @@ import {
 	type RightsStatus,
 	type UseState,
 } from "./vocabulary.ts";
+import { safeContentType, safeHttpUrl } from "./security.ts";
 
 /**
  * Rights status → use state.
@@ -119,13 +128,34 @@ export const runRead = <A, E>(
  * Ordered from the most to the least alarming, because the first one that
  * applies is the one the reader is told about: a licence that forbids use
  * matters more than a copy we happen not to hold.
+ *
+ * `disputed` is first in the check order for the same reason — an open rights
+ * concern outranks everything else about the record, including a licence that
+ * would have permitted the handover. The asset is withheld *because somebody
+ * asked*, not because the evidence says no, and a reader who is told the licence
+ * forbade it has been told something untrue (#54).
  */
 export type HandoffBlock =
+	| "disputed"
 	| "rights"
 	| "obligation"
 	| "not-retained"
 	| "unverified"
 	| null;
+
+/** The dispute as the gate sees it. Null when there is no field at all. */
+export interface DisputeNotice {
+	/** The raw stored state, so an unrecognised one is visible rather than hidden. */
+	state: string;
+	/** Null when the value is not one this build knows. */
+	known: DisputeState | null;
+	/** The label for the state, or the stored value when it is not a known one. */
+	label: string;
+	/** Which report reason opened it, when it was opened by a report. */
+	reason: ReportReason | null;
+	/** What the reporter said. Reproduced, never summarised or generated. */
+	note: string | null;
+}
 
 export interface Handoff {
 	/**
@@ -153,6 +183,15 @@ export interface UseDecision {
 	creditReady: boolean;
 	/** Why the credit is not ready, when it is not. */
 	creditGap: string | null;
+	/**
+	 * An open rights dispute, when the record carries one (#54).
+	 *
+	 * Separate from `rightsStatus` on purpose. The licence evidence is still what
+	 * it always was and is still shown — that is the point of preserving it — so a
+	 * reader is told both things: what the licence says, and that the file is not
+	 * being handed over while somebody's objection is examined.
+	 */
+	dispute: DisputeNotice | null;
 	handoff: Handoff;
 }
 
@@ -304,12 +343,14 @@ const CREDIT_GAP =
  * The use decision for one example: what a reader may do, what they owe, and
  * what is actually available to take.
  *
- * The order of the checks is the argument. Rights come first, because a
- * licence that forbids reuse is the answer whatever else is true. The
- * obligation comes second, because a permitted use whose condition cannot be met
- * is not a permitted use. Retention and the recorded hash come last, because
- * they are facts about this deployment rather than about the author's
- * permission.
+ * The order of the checks is the argument, and #54 added a step to the front of
+ * it. Rights come after the dispute check because an open dispute is a different
+ * claim from a licence: "somebody has said this should not be served and nobody
+ * has looked yet" is *not* "the licence forbids this", and a reader told the
+ * second thing has been told something untrue. The obligation comes next,
+ * because a permitted use whose condition cannot be met is not a permitted use.
+ * Retention and the recorded hash come last, because they are facts about this
+ * deployment rather than about the author's permission.
  */
 export function useDecision(example: Example): UseDecision {
 	const status = RIGHTS_TO_USE.has(example.rightsStatus as RightsStatus)
@@ -317,15 +358,34 @@ export function useDecision(example: Example): UseDecision {
 		: null;
 	const state = useStateFor(example);
 	const credit = creditReady(example);
+	const dispute = disputeFor(example);
 
 	const handoff: Handoff = (() => {
+		if (dispute && withholdsAsset(dispute.state)) {
+			// A gate, never a deletion. Everything below `dispute_state` — the
+			// licence evidence, the commit, the digest, the attribution — is
+			// untouched, so the correction that follows is made from the same
+			// evidence as the withdrawal. Only the payload handoff goes.
+			return { as: "record", blockedBy: "disputed", statement: WITHHELD_STATEMENT };
+		}
 		if (!isReusable(state)) {
 			return {
 				as: "record",
 				blockedBy: "rights",
-				statement:
-					`${USE_STATE_LABEL[state]}. ${USE_STATE_OBLIGATION[state]} ` +
-					"No file is served from this record, at this address or any other.",
+				/*
+				 * The handoff fact and nothing else.
+				 *
+				 * This used to be `${label}. ${USE_STATE_OBLIGATION[state]} No file is
+				 * served…`, because `handoff.statement` doubles as the whole answer in the
+				 * plain-text body `/api/payload/<example>` returns for a refusal. On the
+				 * page it is not the whole answer: `ExampleUse` renders the state and the
+				 * obligation on their own lines directly above it, so the same sentence
+				 * was printed twice, three lines apart, on the one page whose entire job
+				 * is an unambiguous decision (DESIGN.md §9.6). The obligation is still on
+				 * the record — `recordDocument()` carries `obligation` and `label`
+				 * separately — and the refusal body still reads as a refusal.
+				 */
+				statement: "No file is served from this record, at this address or any other.",
 			};
 		}
 		if (!credit) {
@@ -373,7 +433,36 @@ export function useDecision(example: Example): UseDecision {
 		obligation: USE_STATE_OBLIGATION[state],
 		creditReady: credit,
 		creditGap: credit ? null : CREDIT_GAP,
+		dispute,
 		handoff,
+	};
+}
+
+/**
+ * The dispute recorded against an example, or null when there is none.
+ *
+ * Plain and synchronous: it narrows four CMS strings into one answer, and it is
+ * called from `.astro` frontmatter, from the payload route and from unit tests
+ * with fixtures. Nothing about it is effectful, so an Effect here would add a
+ * runtime for no gain — the same reasoning as `actorFrom` in `./signals.ts`.
+ *
+ * A resolved dispute still returns a notice. The record says "this was examined
+ * and this is what happened", which is the difference between a withdrawn asset
+ * and an asset nobody can say anything about. It withholds nothing.
+ */
+export function disputeFor(
+	example: Pick<Example, "disputeState" | "disputeReason" | "disputeNote"> | null | undefined,
+): DisputeNotice | null {
+	const state = example?.disputeState;
+	if (state === null || state === undefined || String(state).trim() === "") return null;
+	const known = parseDisputeState(state);
+	const reason = String(example?.disputeReason ?? "");
+	return {
+		state: String(state),
+		known,
+		label: known ? DISPUTE_STATE_LABEL[known] : String(state),
+		reason: parseReason(reason),
+		note: example?.disputeNote?.trim() ? example.disputeNote.trim() : null,
 	};
 }
 
@@ -617,6 +706,25 @@ export function recordDocument(example: Example) {
 		handoffStatement: decision.handoff.statement,
 		/** The retained original, as a fact about the record rather than a promise. */
 		payloadRetained: example.downloadable,
+		/**
+		 * An open rights dispute (#54), and only ever one.
+		 *
+		 * Present on a withheld record and absent otherwise, because a consumer
+		 * should be able to say "this asset is contested" without parsing prose.
+		 * Everything the dispute does *not* do is still in this document: the
+		 * provenance, the licence evidence and the digest are untouched, which is
+		 * what makes a later correction possible and is the honest answer to "did
+		 * you delete my work".
+		 */
+		dispute: decision.dispute
+			? {
+					state: decision.dispute.state,
+					label: decision.dispute.label,
+					reason: decision.dispute.reason,
+					note: decision.dispute.note,
+					withholding: withholdsAsset(decision.dispute.state),
+				}
+			: null,
 	};
 }
 
@@ -665,6 +773,43 @@ export function payloadFilename(example: Example): string {
 const NO_STORE = { "cache-control": "no-store" } as const;
 
 /**
+ * A refusal as plain text: which rule fired, what it obliges, and what is on
+ * offer instead.
+ *
+ * Kept beside `payloadResult` rather than inside `useDecision` because the
+ * decision has three parts and each surface shows a different subset. The page
+ * shows them as three labelled lines; a refusal body has to state them in one
+ * sentence each, in that order, or it says only that the rule fired.
+ */
+function refusalText(decision: UseDecision): string {
+	return [decision.label, decision.obligation, decision.handoff.statement]
+		.filter((part): part is string => Boolean(part))
+		.join(" ");
+}
+
+/**
+ * The header set on every response this module produces, bytes or refusal.
+ *
+ * `nosniff` and a sandboxing `Content-Security-Policy` are what make
+ * `content-disposition: attachment` a *second* line of defence rather than the
+ * only one. EmDash's own media route sets exactly this pair on R2 objects
+ * (`node_modules/emdash/src/astro/routes/api/media/file/[...key].ts`), so a file
+ * this app hands over is inert by the same rules as one uploaded through the CMS
+ * — including the case where the recorded content type is `text/html`, which
+ * `attachment` alone would be trusting the browser to honour.
+ *
+ * `object-src 'none'` and `base-uri 'none'` are inside the sandbox for the same
+ * reason: an HTML payload with `<base href>` or a `<object>` should not get to
+ * rewrite where its own relative URLs point even if a future client ignored the
+ * disposition.
+ */
+const PAYLOAD_HEADERS = {
+	...NO_STORE,
+	"x-content-type-options": "nosniff",
+	"content-security-policy":
+		"sandbox; default-src 'none'; style-src 'unsafe-inline'; object-src 'none'; base-uri 'none'",
+} as const;
+/**
  * What `/api/payload/<example>` serves.
  *
  * The gate is `useDecision`, recomputed here from the record rather than taken
@@ -675,8 +820,11 @@ const NO_STORE = { "cache-control": "no-store" } as const;
  *
  * The status codes are chosen to say different things:
  *
- * - `403` the licence does not permit the handover. The record exists; the
- *   answer is no.
+ * - `403` the licence does not permit the handover, **or a rights concern is
+ *   open** (#54). The record exists; the answer is no. The two are the same status
+ *   because they are the same answer, and they are told apart by the
+ *   `x-ah-blocked-by` header and the sentence — `disputed` says somebody asked
+ *   and nobody has looked yet, `rights` says the evidence says no.
  * - `409` the handover is permitted but there is nothing here to hand over —
  *   the record says no payload is retained, or none is recorded that can be
  *   verified. A `404` would say the record does not exist, which is a different
@@ -693,16 +841,29 @@ export async function payloadResult(input: {
 	const { example, retained } = input;
 	const decision = useDecision(example);
 	const headers: Record<string, string> = {
-		...NO_STORE,
+		...PAYLOAD_HEADERS,
 		"x-ah-use-state": decision.state,
 		"x-ah-record": assetUsePaths.record(example.slug),
 	};
 
-	if (decision.handoff.blockedBy === "rights" || decision.handoff.blockedBy === "obligation") {
+	if (
+		decision.handoff.blockedBy === "rights" ||
+		decision.handoff.blockedBy === "obligation" ||
+		decision.handoff.blockedBy === "disputed"
+	) {
 		return {
 			status: 403,
 			headers: { ...headers, "x-ah-blocked-by": decision.handoff.blockedBy, "content-type": "text/plain; charset=utf-8" },
-			body: `${decision.handoff.statement}\n`,
+			/*
+			 * The rule around the handoff fact, because here it *is* the whole
+			 * answer. On a page the state, the obligation and the handoff are three
+			 * labelled lines, so `handoff.statement` carries only the last of them and
+			 * repeating the other two would print the obligation twice (#64). A plain
+			 * text refusal has no labels, so it says which rule fired and why — which
+			 * is what `tests/asset-use.test.ts` asserts: a refusal has to say what the
+			 * rule is, not just that the rule fired.
+			 */
+			body: `${refusalText(decision)}\n`,
 			bytes: null,
 		};
 	}
@@ -739,11 +900,13 @@ export async function payloadResult(input: {
 			"x-ah-sha256": digest,
 			// No Content-Type is invented: `application/octet-stream` plus an
 			// attachment disposition makes the browser save it rather than try to
-			// render it, which is the safe answer for an unknown asset type.
-			"content-type": retained.contentType || "application/octet-stream",
+			// render it, which is the safe answer for an unknown asset type. A
+			// recorded type is used when it is a well-formed MIME type, and the
+			// sandbox above holds even if that type turns out to be one a browser
+			// would render.
+			"content-type": safeContentType(retained.contentType) ?? "application/octet-stream",
 			"content-length": String(retained.bytes.byteLength),
 			"content-disposition": `attachment; filename="${payloadFilename(example)}"`,
-			"x-content-type-options": "nosniff",
 		},
 		body: null,
 		bytes: retained.bytes,

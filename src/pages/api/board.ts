@@ -25,37 +25,83 @@
  * `normaliseBoardName`, `applyAction` and `serialiseBoards` are synchronous
  * functions over strings, and `tests/board.test.ts` exercises them with no server
  * and no Effect runtime. Only the catalogue read is effectful.
+ *
+ * ## What #53 added here
+ *
+ * A board cookie is `httpOnly` and per-browser, so the worst a cross-origin
+ * write can do is overwrite one reader's own shortlist. It is still a
+ * state-changing endpoint backed by a CMS read per request, so it now makes the
+ * three checks the signal endpoint makes — {@link sameOrigin}, a resolved
+ * {@link safeReturnPath}, and the {@link RateLimits} window — rather than being
+ * the one write path that has none of them. The board's window is deliberately
+ * much looser than a rating's: it writes a cookie and no row.
  */
 import type { APIRoute } from "astro";
-import { Exit } from "effect";
+import { Effect, Exit } from "effect";
 import {
 	COOKIE_NAME,
 	COOKIE_OPTIONS,
 	applyAction,
-	boardCanManage,
+	moveRefusal,
 	normaliseBoardName,
 	parseBoards,
 	serialiseBoards,
 	type BoardAction,
 } from "../../lib/board";
 import { loadPossibilities } from "../../lib/catalogue";
+import { BOARD_LIMIT, RateLimits } from "../../lib/effect/limits.ts";
 import { runAppExit } from "../../lib/effect/root.ts";
+import { crossOriginResponse, safeReturnPath, sameOrigin } from "../../lib/security.ts";
 
 const ACTIONS: BoardAction[] = ["save", "unsave", "remove", "clear", "rename"];
 
 export const POST: APIRoute = async ({ request, redirect, cookies }) => {
+	const origin = new URL("/", request.url).origin;
+	const verdict = sameOrigin({ headers: request.headers, origin });
+	if (!verdict.sameOrigin) {
+		console.warn(`board: refused a cross-origin write (${verdict.why})`);
+		return crossOriginResponse();
+	}
+
 	const form = await request.formData();
 	const action = String(form.get("action") ?? "") as BoardAction;
 	const slug = String(form.get("slug") ?? "");
 	const board = normaliseBoardName(String(form.get("board") ?? ""));
 	const to = String(form.get("to") ?? "");
-	// Where to return to. Only same-origin paths, so the endpoint cannot be used
-	// as an open redirect.
+	// Where to return to. Only same-origin paths, proved by resolving rather than
+	// by a prefix test — see `safeReturnPath` for the `/\evil.com` form that a
+	// `startsWith("/")` check waves through.
 	const back = String(form.get("back") ?? "/board");
-	const returnTo = back.startsWith("/") && !back.startsWith("//") ? back : "/board";
+	const returnTo = safeReturnPath(back, origin, "/board");
 
 	if (!ACTIONS.includes(action)) {
 		return new Response("Unknown action", { status: 400 });
+	}
+
+	// A short window over the reader (or their address), because every board POST
+	// costs a catalogue read below. See `src/lib/effect/limits.ts` for why this is
+	// the second layer under a Cloudflare rate-limiting rule rather than the only one.
+	const limited = await runAppExit(
+		Effect.flatMap(RateLimits, (limits) =>
+			limits.take({
+				identity: `ip:${request.headers.get("cf-connecting-ip") ?? "unknown"}`,
+				limit: BOARD_LIMIT.limit,
+				windowMs: BOARD_LIMIT.windowMs,
+				subject: "shortlist",
+			}),
+		),
+		{ signal: request.signal },
+	);
+	if (Exit.isSuccess(limited) && !limited.value.allowed) {
+		return new Response(limited.value.reason, {
+			status: 429,
+			headers: {
+				"content-type": "text/plain; charset=utf-8",
+				"cache-control": "no-store",
+				"x-content-type-options": "nosniff",
+				"retry-after": String(limited.value.retryAfterSeconds),
+			},
+		});
 	}
 
 	// Every slug is checked against the catalogue. This is what makes an
@@ -67,15 +113,6 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
 	const known = new Set(loaded.value.possibilities.map((p) => p.slug));
 
 	const current = parseBoards(cookies.get(COOKIE_NAME)?.value);
-	/*
-	 * Whether there is anything on the board being acted on, decided by the same
-	 * rule the page uses to decide whether to offer the control (#65). The form is
-	 * not rendered on an empty board, but a request can still arrive from a tab
-	 * that was rendered before the board was emptied — and a copy of nothing has
-	 * to be answered as the refusal it is rather than as a copy.
-	 */
-	const sourceEntries = (current[board] ?? []).filter((s) => known.has(s)).length;
-	const manageable = boardCanManage(sourceEntries);
 	const next = applyAction(current, action, { slug, board, to, known });
 
 	// Clearing the last entry removes the cookie rather than leaving an empty one
@@ -83,6 +120,10 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
 	const hasAnything = Object.values(next).some((slugs) => slugs.length > 0);
 	cookies.set(COOKIE_NAME, serialiseBoards(next), {
 		...COOKIE_OPTIONS,
+		// `Secure` only where the request itself is secure. Set unconditionally it
+		// would be silently dropped over plain HTTP — including on localhost in
+		// Safari, which is a confusing way to lose a reader's shortlist.
+		secure: new URL(request.url).protocol === "https:",
 		maxAge: hasAnything ? COOKIE_OPTIONS.maxAge : 0,
 	});
 
@@ -102,19 +143,45 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
 	}
 	if (action === "clear") url.searchParams.set("cleared", "1");
 	/*
-	 * A copy names the board it copied into, because the reader is sent back to
-	 * the board they copied *from* — which is now empty — and "copied to a new
-	 * board" left them with no idea where their entries went. A copy of an empty
-	 * board says it did nothing instead.
+	 * The control is called **Move**, because `applyAction` moves: the entries
+	 * leave the board being renamed and join the destination. It used to be called
+	 * *Copy* over the same code, and `?copied=` said so in the URL, so a reader who
+	 * pressed *Copy* and watched their shortlist disappear had to read the
+	 * confirmation to learn the verb (#68).
+	 *
+	 * Four answers, because there are four different failures, and the refusal is
+	 * computed by `moveRefusal` — the *same* function `applyAction` consults, so
+	 * the sentence cannot describe a refusal the code did not make:
+	 *
+	 * - `nocopy` — nothing on this board (posted from a stale tab);
+	 * - `nomove` — the name is blank, punctuation-only, or the board's own name.
+	 *   The blank case used to succeed, because `normaliseBoardName("")` is the
+	 *   default board rather than an empty string, so an empty field merged a
+	 *   named board into `default` and reported success;
+	 * - `fullmove` — the destination is at the per-board cap, and the old code
+	 *   sliced the merged array so a full destination silently *deleted* the
+	 *   reader's entries rather than refusing;
+	 * - `moved` — it happened, and the reader is sent to the board that now holds
+	 *   their entries rather than the one that no longer does.
+	 *
+	 * `board` is set on every one of them. It used to be set only on success, so
+	 * every refusal bounced the reader to `default` — including "Nothing to move:
+	 * this board is empty", rendered over a full Shortlist they had never emptied.
+	 * A refusal about the board you are on belongs on that board.
 	 */
 	if (action === "rename") {
-		const destination = normaliseBoardName(to);
-		// A name that normalises to the board itself, or to nothing, changes
-		// nothing — so it is answered as the refusal it is too.
-		if (manageable && destination && destination !== board) {
-			url.searchParams.set("copied", destination);
-		} else {
+		const refusal = moveRefusal(current, board, to);
+		url.searchParams.set("board", normaliseBoardName(board));
+		if (refusal === "no-entries") {
 			url.searchParams.set("nocopy", "1");
+		} else if (refusal === "destination-full") {
+			url.searchParams.set("fullmove", "1");
+		} else if (refusal) {
+			url.searchParams.set("nomove", "1");
+		} else {
+			const destination = normaliseBoardName(to);
+			url.searchParams.set("moved", destination);
+			url.searchParams.set("board", destination);
 		}
 	}
 	return redirect(url.pathname + url.search, 303);

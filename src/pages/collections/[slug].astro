@@ -1,5 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
+import Crumbs from "../../components/Crumbs.astro";
 import PossibilityTile from "../../components/PossibilityTile.astro";
 import { loadCollection, loadCollections } from "../../lib/catalogue";
 import { runApp } from "../../lib/effect/root.ts";
@@ -41,13 +42,13 @@ for (const m of collection.members) {
 	path={`/collections/${collection.slug}`}
 >
 	<header class="head shell">
-		<nav class="crumbs" aria-label="Breadcrumb">
-			<a href="/">Catalogue</a>
-			<span aria-hidden="true">/</span>
-			<a href="/collections">Collections</a>
-			<span aria-hidden="true">/</span>
-			<span class="crumbs__here">{collection.title}</span>
-		</nav>
+		<Crumbs
+			steps={[
+				{ label: "Catalogue", href: "/" },
+				{ label: "Collections", href: "/collections" },
+				{ label: collection.title },
+			]}
+		/>
 		{collection.tagline && <p class="tag tag--ember">{collection.tagline}</p>}
 		<h1 class="display head__title">{collection.title}</h1>
 		{collection.summary && <p class="lede">{collection.summary}</p>}
@@ -110,39 +111,6 @@ for (const m of collection.members) {
 		display: grid;
 		gap: var(--sp-4);
 		padding-block: var(--sp-5) var(--sp-6);
-	}
-
-	.crumbs {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 0.1rem 0.5rem;
-		font-family: var(--font-mono);
-		font-size: var(--step--2);
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-		color: var(--ink-4);
-	}
-
-	.crumbs a {
-		display: inline-flex;
-		align-items: center;
-		min-height: var(--tap);
-		padding-inline: 0.15rem;
-	}
-
-	.crumbs a,
-	.crumbs__here {
-		color: var(--ink-2);
-	}
-
-	.crumbs a {
-		color: var(--ink-3);
-		transition: color var(--dur-fast) var(--ease-out);
-	}
-
-	.crumbs a:hover {
-		color: var(--ink);
 	}
 
 	.head__title {
@@ -293,7 +261,23 @@ for (const m of collection.members) {
 			gap: var(--sp-4) var(--sp-5);
 		}
 
-		.crumbs {
+		/*
+		 * `:global()`, and not by accident.
+		 *
+		 * This rule is about the *page's* grid, not about the breadcrumb, so it
+		 * cannot live in `Crumbs.astro` — but since the trail became a component, a
+		 * plain `.crumbs` selector in a page's `<style>` no longer matches it: Astro
+		 * scopes both the rule and the markup to a `data-astro-cid`, and the two are
+		 * now different ones. Without the global the rule is dead code, the trail
+		 * stops spanning both columns, and the header grows by 26px — which is what
+		 * pushed the first plate from 74% to 81% of the fold at 844×390 and failed
+		 * `check:visual`'s `DESIGN.md` §5b gate.
+		 *
+		 * A page-scoped rule that targets a class a child component renders is
+		 * invisible: nothing warns, and the layout changes without a diff. The way to
+		 * spot it is to measure the page, which is what the fold gate is for.
+		 */
+		:global(.crumbs) {
 			grid-column: 1 / -1;
 		}
 

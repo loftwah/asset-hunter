@@ -133,11 +133,7 @@ seed needs a fresh database or an edit in the admin.
 
 ```bash
 npm run verify            # typecheck + seed + plates + tests (no server needed)
-<<<<<<< HEAD
-npm run verify:full       # verify + smoke + admin-edit + visual + perf (needs dev server)
-=======
-npm run verify:full       # verify + smoke + admin-edit + nav + visual (needs dev server)
->>>>>>> lane/17
+npm run verify:full       # verify + smoke + admin-edit + nav + visual + perf (needs dev server)
 npm run smoke             # proves the public catalogue is served by EmDash
 npm run check:admin-edit  # writes through the CMS, publishes, reads the public page
 npm run check:nav         # edits the menu through the CMS, reads the public masthead
@@ -154,21 +150,21 @@ local database seeded (`curl "http://localhost:4321/_emdash/api/setup/dev-bypass
 | `verify`                 | Types, seed validity, every plate renders, unit + route tests. Route tests skip with no server and **fail** on a server that answers errors |
 | `smoke`                  | The public catalogue reads EmDash, not a shadow data source          |
 | `check:admin-edit`       | An EmDash edit reaches the public site, then is restored             |
-<<<<<<< HEAD
-| `check:visual`           | Layout, contrast, tap targets, images, headings, focus, fold, crop, gutter — on the real wall *and* on a 5,000-entry one |
-| `check:perf`             | Transfer, requests, DOM size, eager-vs-fetched media, CLS, filter and drill-in latency and main-thread cost on a long wall, against recorded ceilings |
-=======
 | `check:nav`              | The masthead is the EmDash menu, and editing it changes the site     |
-| `check:visual`           | Layout, contrast, tap targets, images, headings, focus, fold, crop, gutter |
-| `check:perf`             | Transfer, requests, DOM size, CLS and interaction latency against recorded ceilings |
->>>>>>> lane/17
+| `check:visual`           | Layout, contrast, tap targets, images, headings, focus, fold, crop, gutter, duplicate ids — on the real wall *and* on a 5,000-entry one |
+| `check:perf`             | Transfer, requests, DOM size, eager-vs-fetched media, CLS, filter and drill-in latency and main-thread cost on a long wall, against recorded ceilings |
 | `check:specimens`        | Plates are well-formed XML with usable viewBox and alt text          |
 | `check:plates`           | Plates render without text collisions or cropped marks                |
 | `doctor`                 | What is installed versus what is integrated and used                 |
 
-`check:visual` captures every public route at five viewports plus an iPhone
+`check:visual` captures every public route at eleven viewports plus an iPhone
 profile into `screenshots/`, and asserts in the rendered page rather than on the
-source — so it catches what a stylesheet review cannot.
+source — so it catches what a stylesheet review cannot. It also writes
+`screenshots/manifest.json`, which records the commit, the origin, the matrix and
+a digest per file, so a run is identifiable without keeping ~200 PNGs in the
+repository. The artefacts are wiped per run and never committed;
+`docs/VISUAL_QA.md` is the authority on that, on what the matrix covers, and on
+what it deliberately does not.
 
 `check:perf` also measures `/?scale=5000`, the same wall with a synthetic
 catalogue of five thousand entries. It is development-only (`?scale=` is refused
@@ -182,8 +178,10 @@ wall size, which is exactly why they are measured rather than reviewed.
 
 `check:visual` also fails if the first plate starts below three quarters of the
 fold, if a tile renders at a shape other than the plate's own 4:5 (which crops
-annotations off a diagram), or if an element has lost the shell gutter. Those
-three were each a real bug found by reading captures rather than source.
+annotations off a diagram), if an element has lost the shell gutter, or if two
+elements share an id — which silently points every `<label for>` at the wrong
+control. Those four were each a real bug found by reading captures rather than
+source.
 
 ## Commands
 
@@ -263,6 +261,17 @@ components.
 
 Cloudflare Workers + D1 + R2. See [docs/DEPLOY.md](docs/DEPLOY.md) for the
 required resources, secrets, migrations and first-deploy procedure.
+
+**If this site has never had an administrator account created, do that before
+anything else.** The first-run wizard is unauthenticated and the session it
+creates is a same-origin cookie; see [docs/SECURITY.md](docs/SECURITY.md) §1.
+
+## Security
+
+[docs/SECURITY.md](docs/SECURITY.md) is the review of the public catalogue: what
+was attacked, what was found, what was fixed, what is accepted and what is open.
+The parts worth knowing before you touch the code are §4 (hostile content — the
+whole product is other people's text) and §11 (what is still open).
 
 ## Licence
 

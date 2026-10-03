@@ -12,7 +12,7 @@
  * exists as a screenshot is a state nobody has checked.
  */
 import ProvenanceMarkers from "./ProvenanceMarkers.astro";
-import { MEDIA_LABEL, verticalLabel } from "../lib/vocabulary";
+import FacetTags from "./FacetTags.astro";
 import { mediaSrc, type Possibility } from "../lib/catalogue";
 
 interface Props {
@@ -21,6 +21,16 @@ interface Props {
 	featured?: boolean;
 	/** Dominant vertical across the current view; hidden on that tile. */
 	hideVertical?: boolean;
+	/**
+	 * Neither facet applies here, so print neither.
+	 *
+	 * Hiding the vertical is not the same as hiding the facets: on a vertical's
+	 * own wall every entry carries the same media kind, so "Image" eleven times
+	 * under eleven plates is the same duplication #63 removed, one level down.
+	 * The caller knows whether the view is uniform; the tile only needs to be
+	 * told.
+	 */
+	hideFacets?: boolean;
 	eager?: boolean;
 	/**
 	 * Heading level for the tile title. Must match the page hierarchy: an
@@ -58,6 +68,7 @@ const {
 	possibility: p,
 	featured = false,
 	hideVertical = false,
+	hideFacets = false,
 	eager = false,
 	headingLevel = "h3",
 	saved = false,
@@ -76,7 +87,6 @@ const Heading = headingLevel;
 // a second request, and so the DOM order still reflects the server ordering.
 const verticalAttr = p.vertical ?? "";
 const src = mediaSrc(p);
-const vertical = p.vertical ? verticalLabel(p.vertical) : null;
 // A tile with nothing to show says so rather than rendering an empty frame.
 const hasPlate = Boolean(p.image?.src || p.specimen);
 const status = brokenPreview ? "broken" : loading ? "loading" : null;
@@ -164,14 +174,21 @@ const status = brokenPreview ? "broken" : loading ? "loading" : null;
 			 * way the tile looks — title, then what it is, then where it sits.
 			 */}
 			{p.tagline && <span class="visually-hidden">{p.tagline}</span>}
-			{
-				!hideVertical && vertical && (
-					<p class="tile__meta">
-						<span class="tag">{vertical}</span>
-						{p.mediaKind && <span class="tag">{MEDIA_LABEL[p.mediaKind] ?? p.mediaKind}</span>}
-					</p>
-				)
-			}
+			{/*
+			 * `FacetTags`, not an inline pair of tags (#67). This tile rendered
+			 * `Motion / Video` and `Motion` on the same line for every motion
+			 * entry — one fact, said twice, 24 times — because it had its own copy
+			 * of the rule that #63 fixed on the search row. One component now owns
+			 * it, so the wall, search, the drill-in and the board cannot drift
+			 * apart again.
+			 */}
+			<FacetTags
+				vertical={p.vertical}
+				mediaKind={p.mediaKind}
+				hideVertical={hideVertical}
+				hide={hideFacets}
+				class="tile__meta"
+			/>
 			<ProvenanceMarkers rights={p.rightsStatus} origin={p.representativeOrigin} size="sm" />
 
 			{
@@ -442,12 +459,6 @@ const status = brokenPreview ? "broken" : loading ? "loading" : null;
 	.tile__link:hover .tile__title,
 	.tile__link.is-hovered .tile__title {
 		color: var(--ember);
-	}
-
-	.tile__meta {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--sp-2) var(--sp-3);
 	}
 
 	/* The featured tile earns its size from the wall's grid, not from a shape of

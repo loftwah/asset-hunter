@@ -137,7 +137,12 @@ export function snapEnd(text: string, index: number, limit = 40): number {
 }
 
 const escapeHtml = (value: string) =>
-	value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+	value
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&#39;");
 
 /**
  * Wraps matched terms in `<mark>`.
@@ -158,4 +163,31 @@ export function markTerms(value: string, terms: readonly string[]): string {
 		.split(re)
 		.map((part, i) => (i % 2 === 1 ? `<mark>${part}</mark>` : part))
 		.join("");
+}
+
+/**
+ * A search snippet, escaped here rather than trusted from the CMS (#53).
+ *
+ * `src/pages/search.astro` renders `snippet` with `set:html`, and that string
+ * comes out of SQLite's `snippet()` over whatever text EmDash indexed. EmDash
+ * does sanitise it — `sanitizeSnippet` in `emdash/src/search/query.ts` escapes
+ * the metacharacters and restores the `<mark>` markers it spliced in — so today
+ * this is not a hole.
+ *
+ * It is still worth a function, for one reason: **this** is the only place in the
+ * public app that asks for untrusted CMS text to be interpreted as HTML, and
+ * saying so at the sink is what stops the safety from depending on a sanitiser
+ * three packages away that a dependency bump could change. The cost is one
+ * function and one test.
+ *
+ * EmDash's contract is that the only tags in a snippet are `<mark>` and
+ * `</mark>`, so those two — and nothing else — are re-admitted after escaping.
+ * Everything else stays text. That holds even if the CMS one day hands back
+ * `<img src=x onerror=…>`: it renders as the characters it is.
+ */
+export function safeSnippet(snippet: string | null | undefined): string | null {
+	if (!snippet) return null;
+	return escapeHtml(snippet)
+		.replaceAll("&lt;mark&gt;", "<mark>")
+		.replaceAll("&lt;/mark&gt;", "</mark>");
 }

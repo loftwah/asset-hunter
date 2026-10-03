@@ -91,7 +91,7 @@ export interface ValidationResult {
 }
 
 const VALID_RIGHTS = new Set(["cleared", "attribution", "review", "reference"]);
-const VALID_ORIGINS = new Set(["upstream", "derived", "generated"]);
+const VALID_ORIGINS = new Set(["upstream", "derived", "generated", "none"]);
 
 /**
  * Validates a payload against the honesty invariants from
@@ -206,10 +206,23 @@ export function buildPayload(
 				technique: p.technique,
 				vertical: p.vertical,
 				media_kind: p.mediaKind,
-				// The plate for a crawled possibility is generated to demonstrate
-				// the technique. It is never the upstream asset, and saying so in
-				// the data is the point.
-				representative_origin: "generated",
+				/*
+				 * `generated` only when a plate was actually generated.
+				 *
+				 * This was hard-coded, and it was a false provenance claim: the engine
+				 * records what it *read*, not what it *rendered*, so a crawled entry
+				 * arrived saying its representative was newly generated while carrying no
+				 * representative at all. `DESIGN.md` and `docs/ARCHITECTURE.md` both say the
+				 * origin is what keeps generated and upstream material distinguishable, so
+				 * a hard-coded value there removes the guarantee for every discovered entry
+				 * at once.
+				 *
+				 * So: `none`, with its own meaning in the app's vocabulary, and the tile,
+				 * the use page and the JSON contract all say "no representative media yet"
+				 * rather than implying one exists. When a plate is generated for a crawled
+				 * entry later (#34), this becomes `generated` and says so again.
+				 */
+				representative_origin: "none",
 				rights_status: worstRights(p.examples.map((e) => e.rightsStatus)),
 				rights_note: rightsNoteFor(p),
 				example_count: p.examples.length,
@@ -279,11 +292,23 @@ export function buildPayload(
  * A catalogue entry that says "cleared" because one of five sources was MIT
  * while the other four had no licence at all is exactly the false certainty
  * this product is built to avoid.
+ *
+ * A status that is not one of the four counts as `reference` — the weakest thing
+ * there is. That direction is the same one the app's `weakestRights` and
+ * `useStateFor` take, and it matters here because `validatePayload` refuses an
+ * unknown status *after* this runs: an entry built from a status this build
+ * cannot read must not be described as cleared on its way to being rejected.
+ * `tests/takedown.test.ts` asserts the two implementations agree, because the
+ * architecture keeps them in separate systems.
  */
 export function worstRights(statuses: string[]): string {
 	const order = ["cleared", "attribution", "review", "reference"];
 	if (!statuses.length) return "reference";
-	return statuses.reduce((worst, s) => (order.indexOf(s) > order.indexOf(worst) ? s : worst), "cleared");
+	return statuses.reduce((worst, s) => {
+		const index = order.indexOf(s);
+		if (index === -1) return "reference";
+		return order.indexOf(worst) > index ? worst : s;
+	}, "cleared");
 }
 
 function rightsNoteFor(p: ExtractedPossibility): string {

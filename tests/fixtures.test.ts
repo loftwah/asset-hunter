@@ -15,6 +15,7 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import {
 	LAB_SECTIONS,
 	MEDIA_FIXTURES,
@@ -24,10 +25,19 @@ import {
 	STATE_FIXTURES,
 	SIGNAL_FIXTURES,
 	USE_FIXTURES,
+	USE_PAGE_FIXTURES,
+	USE_PAGE_FIXTURE_PREFIX,
 	allFixtures,
+	usePageFixtureFor,
 } from "../src/lib/fixtures.ts";
-import { MEDIA_LABEL, RIGHTS_MEANING, USE_STATE_MEANING } from "../src/lib/vocabulary.ts";
+import {
+	MEDIA_LABEL,
+	ORIGIN_MEANING,
+	RIGHTS_MEANING,
+	USE_STATE_MEANING,
+} from "../src/lib/vocabulary.ts";
 import { ratingSummary } from "../src/lib/rating.ts";
+import { useStateFor } from "../src/lib/asset-use.ts";
 
 /** Every fixture group is a plain array, so one helper covers all of them. */
 const groups = [
@@ -92,7 +102,33 @@ describe("the lab covers every state the catalogue has to survive", () => {
 		const covered = new Set(
 			ORIGIN_FIXTURES.map((f) => f.possibility.representativeOrigin).filter(Boolean),
 		);
-		assert.deepEqual([...covered].sort(), ["derived", "generated", "upstream"]);
+		/*
+		 * Driven from the vocabulary rather than from a literal list — but in *both*
+		 * directions, because a one-directional version of this loses the half the
+		 * old `deepEqual` caught.
+		 *
+		 * The hardcoded `["derived", "generated", "upstream"]` failed the moment a
+		 * fourth origin (`none` — an entry with no representative media yet) was
+		 * added, on correct behaviour. A list that has to be edited in step with the
+		 * type is a list that eventually gets pinned back instead of extended.
+		 *
+		 * Iterating `ORIGIN_MEANING` alone catches "a new origin nobody has looked
+		 * at" and silently stops catching "a fixture for an origin that does not
+		 * exist" — a stale fixture is how a retired origin keeps rendering. Both
+		 * directions, so neither failure is possible.
+		 */
+		for (const origin of Object.keys(ORIGIN_MEANING)) {
+			assert.ok(
+				covered.has(origin as never),
+				`no fixture for origin "${origin}" — it can be printed but has never been seen`,
+			);
+		}
+		for (const origin of covered) {
+			assert.ok(
+				origin != null && origin in ORIGIN_MEANING,
+				`a fixture claims origin "${origin}", which the vocabulary does not define`,
+			);
+		}
 	});
 
 	test("honest zero and not-measured are both present and distinguishable", () => {
@@ -239,6 +275,128 @@ describe("the rights vocabulary the fixtures lean on is intact", () => {
 				RIGHTS_MEANING[status as keyof typeof RIGHTS_MEANING],
 				`rights status "${status}" has no meaning sentence`,
 			);
+		}
+	});
+});
+
+describe("every plate a fixture names actually exists (#47)", () => {
+	/*
+	 * This is the check that would have caught a broken specimen before anybody
+	 * looked at a screenshot.
+	 *
+	 * The six use fixtures defaulted to a plate called `grain-field` that was never
+	 * authored, so every one of them rendered a 404 in its `<img>` on the lab and,
+	 * once `/use/<slug>` had fixtures, on the use page too. Nothing caught it: the
+	 * fixture tests assert coverage, not files on disk, and the visual matrix only
+	 * sees a page when a route points at it. A fixture that names a file is a claim
+	 * about a file, so it gets checked like one.
+	 */
+	const specimensDir = new URL("../public/specimens/", import.meta.url).pathname;
+
+	test("no fixture points at a plate that is not there", () => {
+		const missing: string[] = [];
+		const check = (path: string | null | undefined, where: string) => {
+			if (!path) return;
+			if (path.startsWith("/specimens/") && !existsSync(`${specimensDir}${path.slice("/specimens/".length)}`)) {
+				missing.push(`${where} → ${path}`);
+			}
+		};
+		for (const fixture of allFixtures()) {
+			check(fixture.possibility.specimen, fixture.possibility.slug);
+			check(fixture.possibility.image?.src, fixture.possibility.slug);
+		}
+		for (const fixture of USE_FIXTURES) {
+			check(fixture.example.specimen, fixture.example.slug);
+			check(fixture.example.image?.src, fixture.example.slug);
+		}
+		for (const fixture of USE_PAGE_FIXTURES) {
+			check(fixture.possibility.specimen, fixture.slug);
+			check(fixture.possibility.image?.src, fixture.slug);
+			for (const example of fixture.examples) {
+				check(example.specimen, example.slug);
+				check(example.image?.src, example.slug);
+			}
+		}
+		assert.deepEqual(missing, [], `fixtures name plates that do not exist: ${missing.join(", ")}`);
+	});
+});
+
+describe("the use page can be seen in every state (#47)", () => {
+	/*
+	 * `check:visual` captures `/use/fixture-use-page-*` at all eleven viewports, so
+	 * a fixture that is renamed, dropped, or moved behind a different prefix takes
+	 * five routes from 200 to 404. These assertions are the contract that the
+	 * matrix's route list is written against.
+	 */
+	test("every fixture slug is namespaced, so a fixture can never shadow a real entry", () => {
+		for (const fixture of USE_PAGE_FIXTURES) {
+			assert.ok(
+				fixture.slug.startsWith(USE_PAGE_FIXTURE_PREFIX),
+				`${fixture.slug} is not behind the ${USE_PAGE_FIXTURE_PREFIX} prefix — a fixture that could collide with a catalogue slug would shadow it in astro dev`,
+			);
+		}
+	});
+
+	test("the fixture slugs are unique", () => {
+		const slugs = USE_PAGE_FIXTURES.map((f) => f.slug);
+		assert.equal(new Set(slugs).size, slugs.length, "two fixture selections answer to one slug");
+	});
+
+	test("all four use states are reachable through a fixture selection", () => {
+		const seen = new Set(
+			USE_PAGE_FIXTURES.flatMap((fixture) => fixture.examples.map((example) => useStateFor(example))),
+		);
+		for (const state of Object.keys(USE_STATE_MEANING)) {
+			assert.ok(seen.has(state as never), `no /use fixture selection renders the "${state}" state`);
+		}
+	});
+
+	test("a selection with something to hand over exists, because otherwise the download control has never been rendered", () => {
+		// `useDecision` is the rule; this is the assertion that the rule has had at
+		// least one fixture it lets through, rather than every fixture being refused
+		// for the same reason and the page's whole accent never appearing.
+		const withPayload = USE_PAGE_FIXTURES.filter((fixture) =>
+			fixture.examples.some((example) => example.downloadable && example.contentHash),
+		);
+		assert.ok(
+			withPayload.length >= 1,
+			"no fixture selection is retained, hashed and permitted, so no use page has ever shown a download",
+		);
+		// …and one that is permitted and not retained, which is the state that
+		// separates "0 because nothing is permitted" from "0 because we do not hold
+		// it" and which the catalogue cannot reach on its own.
+		assert.ok(
+			USE_PAGE_FIXTURES.some((fixture) =>
+				fixture.examples.some((e) => e.rightsStatus === "cleared" && !e.downloadable),
+			),
+			"no fixture selection is permitted-but-not-retained",
+		);
+	});
+
+	test("usePageFixtureFor resolves only its own namespace", () => {
+		assert.equal(usePageFixtureFor("density-gradient"), null, "a real catalogue slug must never resolve to a fixture");
+		assert.equal(usePageFixtureFor(`${USE_PAGE_FIXTURE_PREFIX}nope`), null);
+		assert.equal(usePageFixtureFor(""), null);
+		assert.equal(usePageFixtureFor(null), null);
+		assert.equal(usePageFixtureFor(undefined), null);
+		for (const fixture of USE_PAGE_FIXTURES) {
+			assert.equal(usePageFixtureFor(fixture.slug)?.slug, fixture.slug);
+		}
+	});
+
+	test("the selections are deterministic, so two runs a week apart produce the same pixels", () => {
+		assert.deepEqual(USE_PAGE_FIXTURES, USE_PAGE_FIXTURES);
+		// No wall-clock value anywhere in a selection: a timestamp is the one thing
+		// that would make a screenshot diff mean nothing and look like a rendering
+		// bug rather than a fixture bug.
+		const serialised = JSON.stringify(USE_PAGE_FIXTURES);
+		assert.doesNotMatch(serialised, /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/, "a fixture selection carries a timestamp");
+	});
+
+	test("each selection says what it is proving", () => {
+		for (const fixture of USE_PAGE_FIXTURES) {
+			assert.ok(fixture.note.trim().length >= 4, `${fixture.slug} has no note`);
+			assert.ok(fixture.examples.length > 0, `${fixture.slug} has no examples, so it proves nothing`);
 		}
 	});
 });

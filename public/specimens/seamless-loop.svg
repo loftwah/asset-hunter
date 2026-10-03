@@ -89,7 +89,8 @@
 			<path d="M96 596 Q96 472 704 472" fill="none" stroke="#4fce8a" stroke-opacity=".3" stroke-dasharray="4 6"/>
 			<text x="716" y="466" font-family="ui-monospace,Menlo,monospace" font-size="13" fill="#4fce8a" text-anchor="end">same</text>
 		</g>
-		<text x="96" y="628" font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#6a7178">the dotted line is the error you are trying to eliminate — solve for the derivative, not the value</text>
+		<text x="96" y="624" font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#6a7178">the dotted line is the error you are trying to eliminate —</text>
+		<text x="96" y="646" font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#6a7178">solve for the derivative, not the value</text>
 	</g>
 
 	<!-- where this shows up across the product -->

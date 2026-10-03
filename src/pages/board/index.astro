@@ -21,7 +21,7 @@ import OutcomeFlash from "../../components/OutcomeFlash.astro";
 import BoardSwitcher from "../../components/BoardSwitcher.astro";
 import { loadPossibilities } from "../../lib/catalogue";
 import { runApp } from "../../lib/effect/root";
-import { MEDIA_LABEL, RIGHTS_MEANING, verticalLabel } from "../../lib/vocabulary";
+import { RIGHTS_MEANING } from "../../lib/vocabulary";
 import {
 	COOKIE_NAME,
 	DEFAULT_BOARD,
@@ -66,9 +66,18 @@ const manageable = boardCanManage(items.length);
  * board being looked at and leaves the reader's other boards alone, so "nothing
  * was kept anywhere else" was only ever true when they had no other boards.
  */
-const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?.title, {
-	keptElsewhere: totals.items,
-});
+const outcome = boardOutcome(
+	Astro.url.searchParams,
+	(slug) => bySlug.get(slug)?.title,
+	{ keptElsewhere: totals.items },
+	/*
+	 * After a move the reader is on the board that received their entries, so
+	 * "which now holds them" has to be counted from *this* board rather than
+	 * asserted. Passing it in is what keeps the sentence from drifting into a
+	 * claim about a board that is not the one on screen.
+	 */
+	{ heldOnDestination: slugs.length },
+);
 ---
 
 <Base
@@ -100,20 +109,52 @@ const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?
 
 				<BoardSwitcher boards={boards} active={active} manageable={manageable} />
 
+				{/*
+					One verb, and it is the verb the code performs.
+					`applyAction` moves: the entries leave this board and join the one
+					named here. The field said "Copy this board to a new name" and the
+					button said "Copy board" over that behaviour, so a reader who
+					pressed *Copy* and watched their shortlist vanish had to read the
+					confirmation to learn that it had moved (#68). `DESIGN.md` §9.5 has
+					always called this a rename.
+
+					So it is called **Move**, and the consequence is stated before the
+					press rather than after it: the entries come *from* here. A
+					destructive-sounding verb is fine when the sentence beside it says
+					exactly what leaves and where it goes.
+
+					The placeholder stays a fixed length rather than interpolating the
+					board's name. A 40-character board name would produce a 66-character
+					placeholder, and #80 is an open finding about this exact field being
+					wider than its box on three of four phone widths. The board being
+					emptied is already the heading directly above this form; the
+					confirmation states it again afterwards.
+
+					The count under the form is the cap, stated before the press. A move
+					into a board that already holds the maximum is now refused in words
+					rather than silently dropping what did not fit, and a reader who can
+					see the ceiling does not have to discover it by being refused.
+				*/}
 				<form class="newboard" method="post" action="/api/board">
 					<input type="hidden" name="action" value="rename" />
 					<input type="hidden" name="board" value={active} />
 					<input type="hidden" name="back" value={back} />
-					<label class="visually-hidden" for="to">New board name</label>
+					<label class="visually-hidden" for="to">
+						Move these entries to a board named
+					</label>
 					<input
 						id="to"
 						type="text"
 						name="to"
-						placeholder="Copy this board to a new name"
+						placeholder="Move these entries to a new name"
 						maxlength="40"
 						autocomplete="off"
 					/>
-					<button type="submit">Copy board</button>
+					<button type="submit">Move board</button>
+					<span class="newboard__count">
+						{items.length} of {MAX_PER_BOARD}
+						<span class="visually-hidden">entries on this board; a board holds at most {MAX_PER_BOARD}</span>
+					</span>
 				</form>
 			</header>
 		)
@@ -185,19 +226,25 @@ const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?
 							<article class="entry">
 								<PossibilityTile possibility={p} headingLevel="h2" />
 								<p class="entry__summary">{p.summary}</p>
-								<p class="entry__meta">
-									<span class="tag">{verticalLabel(p.vertical)}</span>
-									{p.mediaKind && (
-										<span class="tag">{MEDIA_LABEL[p.mediaKind] ?? p.mediaKind}</span>
-									)}
-									<span class="tag">
-										{p.exampleCount ?? 0} example{p.exampleCount === 1 ? "" : "s"}
-									</span>
-									<span class="tag">
-										{p.distinctSources ?? 0} verified source
-										{(p.distinctSources ?? 0) === 1 ? "" : "s"}
-									</span>
-								</p>
+									{/*
+									 *No per-entry meta line out here (#67).
+									 *
+									 *This row printed the vertical and the media kind again —
+									 *`PossibilityTile` directly above had already printed both — so a
+									 *motion entry read "Motion / Video · Motion" twice, 282px apart in
+									 *the same column. #63 removed exactly this duplication from the
+									 *search rows two commits earlier and could not remove it here,
+									 *because this was a third copy of the rule. One component
+									 *(`FacetTags`) now owns it.
+									 *
+									 *The counts moved inside the disclosure, which is the explicit
+									 *answer `DESIGN.md` §9.5 asks for: *source, licence and
+									 *technique sit behind a per-entry disclosure, because a
+									 *comparison that opens with metadata is a comparison you have
+									 *already lost.* How many examples an entry has and how many
+									 *sources back it are the first two numbers of that sentence, so
+									 *they sit with the rest of it.
+									 */}
 								<details class="entry__more">
 									<summary class="tag">Source, licence and technique</summary>
 									<dl class="facts">
@@ -395,6 +442,33 @@ const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?
 		border-color: var(--ember-line);
 	}
 
+	/*
+	 * The ceiling, beside the control it constrains.
+	 *
+	 * `var(--ink-4)` rather than `--ink-2`: this is a limit rather than content,
+	 * and it is the one number on the page that is not about the reader's actual
+	 * shortlist. Tabular figures so it does not shift width as the count climbs.
+	 */
+	.newboard__count {
+		align-self: center;
+		color: var(--ink-4);
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+
+	/* Stacks under the field rather than squeezing it on the narrowest phones. */
+	@media (max-width: 26rem) {
+		.newboard {
+			flex-wrap: wrap;
+		}
+
+		.newboard__count {
+			flex-basis: 100%;
+		}
+	}
+
 	.results {
 		padding-block: var(--sp-5) var(--sp-7);
 	}
@@ -441,12 +515,15 @@ const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?
 		color: var(--ink-2);
 	}
 
-	.entry__meta {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--sp-2) var(--sp-3);
-	}
-
+	/*
+	 * `.entry__meta` was deleted rather than left behind.
+	 *
+	 * It styled the per-entry facet line that #67 removed, because
+	 * `PossibilityTile` already printed the same two facts. CSS for an element
+	 * nothing renders is a rule that survives a fix and quietly re-applies itself
+	 * the next time someone adds a `<p class="entry__meta">` believing it is
+	 * styled on purpose.
+	 */
 	.entry__more {
 		border-top: 1px solid var(--line);
 		padding-top: var(--sp-2);

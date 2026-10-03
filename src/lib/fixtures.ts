@@ -158,7 +158,7 @@ export const RIGHTS_FIXTURES: LabState[] = (
 }));
 
 /** Origin coding. Generated must never be confused with upstream. */
-export const ORIGIN_FIXTURES: LabState[] = (["upstream", "derived", "generated"] as const).map(
+export const ORIGIN_FIXTURES: LabState[] = (["upstream", "derived", "generated", "none"] as const).map(
 	(origin) => ({
 		note: `origin: ${origin}`,
 		possibility: base({
@@ -166,6 +166,22 @@ export const ORIGIN_FIXTURES: LabState[] = (["upstream", "derived", "generated"]
 			title: ORIGIN_TITLES[origin],
 			representativeOrigin: origin,
 			rightsStatus: origin === "upstream" ? "attribution" : "reference",
+			/*
+			 * `none` has no plate, and the fixture used to inherit one.
+			 *
+			 * `base()` defaults `specimen` to a real plate, so the row that exists
+			 * to show *"no representative media has been produced for this entry yet"*
+			 * rendered that plate with the marker "No media yet" beside it. In the
+			 * deterministic lab — the thing `AGENTS.md` names as the authority in
+			 * place of taste — that is confusable in precisely the way
+			 * `LAB_SECTIONS` below says origins must never be. And a screenshot of
+			 * it is evidence somebody will read as "this is what no media looks
+			 * like", which is the opposite of the truth.
+			 *
+			 * So the row renders the hatched no-plate placeholder, which is what
+			 * the product actually does with this value.
+			 */
+			...(origin === "none" ? { specimen: null } : {}),
 		}),
 	}),
 );
@@ -275,7 +291,17 @@ const exampleOf = (over: Partial<Example> & { slug: string }): Example => ({
 	title: over.slug.replace(/-/g, " "),
 	origin: "upstream",
 	mediaKind: "image",
-	specimen: plate("grain-field"),
+	/*
+	 * `granular-texture`, not `grain-field`.
+	 *
+	 * The default named a plate that was never authored, so every one of the six
+	 * use fixtures rendered a 404 in its `<img>` — a broken image on a page whose
+	 * entire job is showing you what a file looks like. `check:visual` reported it
+	 * once `/use/<slug>` had fixtures to check, which is the argument for having
+	 * the page-level fixtures at all: a state nobody renders is a state nobody has
+	 * looked at.
+	 */
+	specimen: plate("granular-texture"),
 	image: null,
 	rightsStatus: "reference",
 	rightsNote: null,
@@ -392,6 +418,197 @@ export const USE_FIXTURES: UseFixture[] = [
 		}),
 	},
 ];
+
+/* -------------------------------------------------------------------------- */
+/* The whole use page, in every state (#47)                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A selection page per use state, not just a use block per use state.
+ *
+ * `USE_FIXTURES` above covers the four rights as *blocks* — the thing that
+ * decides what a reader may do. It does not cover the page around them, and the
+ * page is where half the copy lives: the summary line that counts states worst
+ * first, "0 retained originals to download" against "2 retained originals", the
+ * selection credit block, and the single download accent.
+ *
+ * None of that can be seen on a real route today. The catalogue is 24 of 24
+ * `reference` (`/api/catalogue.json` says so), so `/use/<slug>` renders exactly
+ * one of the four states and always with a payload count of zero. Three of the
+ * four states — and every page that has anything to download — have never been
+ * rendered by anybody.
+ *
+ * So each fixture is a whole selection: one possibility and the examples that
+ * produce the page's counts. `src/pages/use/[slug].astro` resolves these in
+ * `astro dev` only, which is how `/use/fixture-use-reusable` gets pixels without
+ * a parallel page implementation — a mockup of the use page would prove that the
+ * mockup works, which is the mistake the lab was built to stop making.
+ *
+ * One selection per state rather than one selection holding all four, because
+ * `DESIGN.md` §9.6 allows at most one download on the page: a selection with two
+ * retained originals puts two ember controls on one screen, and what that should
+ * look like is a design decision, not a fixture decision. It is filed, not
+ * rendered here.
+ */
+export interface UsePageFixture {
+	/** The slug `/use/<slug>` answers to, in `astro dev` only. */
+	slug: string;
+	note: string;
+	possibility: Possibility;
+	examples: Example[];
+}
+
+const usePossibility = (slug: string, over: Partial<Possibility> & { title: string }): Possibility => ({
+	slug,
+	summary:
+		"A fixture selection, so the use page can be seen in a state the catalogue does not hold yet.",
+	technique: "Fixture",
+	vertical: "ui-web",
+	mediaKind: "image",
+	specimen: plate("density-gradient"),
+	image: null,
+	representativeOrigin: "upstream",
+	rightsStatus: "reference",
+	rightsNote: null,
+	buildNotes: null,
+	promptScaffold: null,
+	exampleCount: 1,
+	distinctSources: 1,
+	novelty: null,
+	coverage: null,
+	editorialRank: 0.5,
+	featured: false,
+	...over,
+});
+
+export const USE_PAGE_FIXTURES: UsePageFixture[] = [
+	{
+		slug: "fixture-use-page-reference",
+		note: "the state the catalogue is actually in — one example, nothing to hand over",
+		possibility: usePossibility("fixture-use-page-reference", {
+			title: "A grain plate scanned from an uncredited archive",
+		}),
+		examples: [
+			exampleOf({
+				slug: "fixture-use-page-reference",
+				title: "A grain plate scanned from an uncredited archive",
+				rightsStatus: "reference",
+				rightsNote: "The archive published no terms. It stays because the treatment is real.",
+				note: "Newly generated to demonstrate a known possibility. Not a reproduction of any source asset.",
+			}),
+		],
+	},
+	{
+		slug: "fixture-use-page-review",
+		note: "review required — something found, nothing understood, and the evidence is quoted",
+		possibility: usePossibility("fixture-use-page-review", {
+			title: "Shared-economy icon set with a custom notice",
+			rightsStatus: "review",
+		}),
+		examples: [
+			exampleOf({
+				slug: "fixture-use-page-review",
+				title: "Shared-economy icon set with a custom notice",
+				rightsStatus: "review",
+				licenceSpdx: "LicenseRef-scene-share",
+				licenceEvidence:
+					'"Assets in this pack may be used in scenes sold to third parties, provided the pack is not redistributed in whole or in part."\n— LICENSE-NOTICE, read at the commit recorded below.',
+				sourceUrl: "https://github.com/example/shared-economy-icons",
+				sourceRepo: "example/shared-economy-icons",
+				sourceRef: "a1b2c3d",
+				sourcePath: "icons/LICENSE-NOTICE",
+			}),
+		],
+	},
+	{
+		slug: "fixture-use-page-attribution",
+		note: "reusable with attribution — the credit is reproduced and the obligation is written out",
+		possibility: usePossibility("fixture-use-page-attribution", {
+			title: "Paper texture set with a recorded credit",
+			rightsStatus: "attribution",
+		}),
+		examples: [
+			exampleOf({
+				slug: "fixture-use-page-attribution",
+				title: "Paper texture set with a recorded credit",
+				rightsStatus: "attribution",
+				licenceSpdx: "CC-BY-4.0",
+				licenceEvidence:
+					'"You are free to share and adapt this texture for any purpose, provided you give appropriate credit."\n— LICENSE, read at the commit recorded below.',
+				attribution: '"Paper textures" by Wren Aliyeva, released under CC BY 4.0.',
+				sourceUrl: "https://github.com/example/paper-textures",
+				sourceRepo: "example/paper-textures",
+				sourceRef: "9f8e7d6",
+				sourcePath: "textures/paper-01.png",
+				contentHash: HASH,
+			}),
+		],
+	},
+	{
+		slug: "fixture-use-page-reusable",
+		note: "reusable — retained, hashed, and the one page where a download control exists at all",
+		possibility: usePossibility("fixture-use-page-reusable", {
+			title: "Ambient loop cleared for reuse with the credit recorded",
+			rightsStatus: "cleared",
+		}),
+		examples: [
+			exampleOf({
+				slug: "fixture-use-page-reusable",
+				title: "Ambient loop cleared for reuse with the credit recorded",
+				rightsStatus: "cleared",
+				licenceSpdx: "CC0-1.0",
+				licenceEvidence:
+					'"This work has been released into the public domain."\n— LICENSE, read at the commit recorded below.',
+				attribution: "Public domain. No attribution required, and none is claimed.",
+				sourceUrl: "https://github.com/example/ambient-loops",
+				sourceRepo: "example/ambient-loops",
+				sourceRef: "c0ffee1",
+				sourcePath: "loops/room-tone-90s.wav",
+				contentHash: HASH,
+				downloadable: true,
+			}),
+		],
+	},
+	{
+		slug: "fixture-use-page-not-retained",
+		note: "permitted and not retained — a count above zero with nothing behind it, which is a state the catalogue cannot reach either",
+		possibility: usePossibility("fixture-use-page-not-retained", {
+			title: "Noise floor cleared upstream and not kept here",
+			rightsStatus: "cleared",
+		}),
+		examples: [
+			exampleOf({
+				slug: "fixture-use-page-not-retained",
+				title: "Noise floor cleared upstream and not kept here",
+				rightsStatus: "cleared",
+				licenceSpdx: "MIT",
+				licenceEvidence:
+					'"Permission is hereby granted, free of charge, to any person obtaining a copy."\n— LICENSE, read at the commit recorded below.',
+				attribution: '"noise-floor" by T. Okafor, MIT.',
+				sourceUrl: "https://github.com/example/noise-floor",
+				sourceRepo: "example/noise-floor",
+				sourceRef: "beef123",
+				sourcePath: "audio/floor.wav",
+			}),
+		],
+	},
+];
+
+/** Every fixture selection slug is namespaced, so a fixture can never shadow a real entry. */
+export const USE_PAGE_FIXTURE_PREFIX = "fixture-use-page-";
+
+/**
+ * The fixture selection for a slug, or null.
+ *
+ * A lookup rather than a filter so the caller can tell "no such fixture" from
+ * "a fixture with no examples" — the second is a state a use page has to render
+ * and the first is a 404. The prefix is part of the contract: no fixture slug may
+ * collide with a catalogue slug, so this can never shadow a real entry.
+ */
+export function usePageFixtureFor(slug: string | undefined | null): UsePageFixture | null {
+	if (!slug || !slug.startsWith(USE_PAGE_FIXTURE_PREFIX)) return null;
+	return USE_PAGE_FIXTURES.find((fixture) => fixture.slug === slug) ?? null;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Signals: ratings and reports (#37)                                          */
@@ -531,7 +748,7 @@ export const LAB_SECTIONS: LabSection[] = [
 	{
 		id: "origin",
 		title: "Origin coding",
-		why: "upstream, derived and generated. These must never be mixed in a row without their labels, and never be confusable at a glance.",
+		why: "upstream, derived, generated and none. These must never be mixed in a row without their labels, and never be confusable at a glance.",
 		fixtures: ORIGIN_FIXTURES,
 	},
 	{

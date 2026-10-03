@@ -100,7 +100,7 @@ describe("rights vocabulary", () => {
 	});
 
 	test("every origin is defined", () => {
-		for (const origin of ["upstream", "derived", "generated"]) {
+		for (const origin of ["upstream", "derived", "generated", "none"]) {
 			assert.ok(
 				ORIGIN_MEANING[origin as keyof typeof ORIGIN_MEANING],
 				`no meaning for ${origin}`,

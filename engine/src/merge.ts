@@ -17,17 +17,60 @@
  * |                                        | skipped                           |
  * | visibility             | human                  | human wins; engine creates `draft`|
  * | rights regression      | engine, always         | engine wins, even over a human    |
+ * | rights dispute (#54)   | human, always          | engine writes nothing over it     |
+ * | exclusion (#54)        | human, always          | engine does not write the entry   |
  *
  * The last row is the one that matters. A "cleared" claim that is no longer
  * justified is not a formatting difference.
+ *
+ * #54 adds two more rows, both of them refusals rather than conflicts. A dispute is
+ * a person's decision about somebody else's work and a crawl has no standing to
+ * change it in either direction — not to open one, not to close one, and not to put
+ * a withheld download back because the licence evidence still permits it. An
+ * exclusion is a takedown, and the engine's obligation is not to re-ingest what has
+ * been taken down; both are refusals, so they are checked before anything is
+ * written rather than merged into what is.
  *
  * Pure functions, no I/O, so the policy is testable on its own and the CLI is
  * left with nothing to decide.
  */
 
 import { ENGINE_OWNED_FIELDS, HUMAN_OWNED_FIELDS } from "./publish.ts";
+import { exclusionForExample, type Exclusion } from "./exclusions.ts";
 
 export type Visibility = "draft" | "published" | "hidden";
+
+/**
+ * What a run knows about standing exclusions (#54).
+ *
+ * Passed rather than read from a global so the policy stays a pure function: the
+ * same merge decided against an empty list and against a list carrying a takedown
+ * can be compared in one test, which is the whole of #54's "an exclusion must
+ * survive a refresh" criterion.
+ */
+export interface MergeOptions {
+	/** Exclusions read from EmDash before the run. Lifted ones are filtered out. */
+	exclusions?: readonly Exclusion[];
+}
+
+const activeExclusions = (options: MergeOptions | undefined): readonly Exclusion[] =>
+	(options?.exclusions ?? []).filter((exclusion) => exclusion.active);
+
+/**
+ * Whether a rights dispute is live on a record (#54).
+ *
+ * The same rule as the app's `withholdsAsset`, written out rather than imported
+ * because `docs/ARCHITECTURE.md` requires the engine not to import app code. Two
+ * cases matter and the first is the one that would be easy to get wrong: an example
+ * with **no** dispute recorded is not in dispute — every example in the catalogue
+ * has no dispute until somebody files one — while a state this build cannot read
+ * still withholds, because it is not evidence that the dispute was resolved.
+ */
+const isDisputed = (value: unknown): boolean => {
+	const state = typeof value === "string" ? value.trim() : "";
+	if (!state) return false;
+	return state !== "corrected" && state !== "dismissed";
+};
 
 export interface MergeResult {
 	/**
@@ -79,6 +122,7 @@ const same = (a: unknown, b: unknown): boolean => {
 export function mergePossibility(
 	existing: Record<string, unknown> | null,
 	incoming: Record<string, unknown>,
+	options: MergeOptions = {},
 ): MergeResult {
 	// `merged` starts as a copy of the incoming record and is filled in as the
 	// policy decides each field; `write` is the subset that actually differs.
@@ -161,15 +205,80 @@ export function mergePossibility(
 		);
 	}
 
+	// Excluded sources, at the entry level (#54). The examples are already refused
+	// individually by `mergeExample`; this is about what the *entry* claims. If every
+	// source behind it has been excluded, the entry is not rewritten at all: a crawl
+	// that keeps refreshing an entry whose whole provenance has been taken down is
+	// re-asserting a claim somebody asked us to withdraw. If only some are excluded,
+	// the entry is written as usual and the count is reported, because the remaining
+	// sources are still evidence.
+	const sources = sourceIdsOf(incoming);
+	if (sources.length) {
+		const exclusions = activeExclusions(options);
+		const excluded = sources.filter((fullName) =>
+			exclusions.some(
+				(exclusion) =>
+					exclusion.scope === "repository" && exclusion.match === fullName.toLowerCase(),
+			),
+		);
+		if (excluded.length === sources.length) {
+			result.write = {};
+			result.changed = [];
+			result.notes = [
+				`not written: every source behind this entry is excluded from ingestion (${excluded.join(", ")})`,
+			];
+		} else if (excluded.length) {
+			result.notes.push(
+				`${excluded.length} of ${sources.length} source(s) are excluded from ingestion (${excluded.join(", ")}); the rest still stand as evidence`,
+			);
+		}
+	}
+
 	result.merged = { ...existing, ...result.write };
 	return result;
 }
+
+/** The repositories an incoming possibility was built from, from `source_ids`. */
+const sourceIdsOf = (incoming: Record<string, unknown>): string[] =>
+	String(incoming.source_ids ?? "")
+		.split(",")
+		.map((name) => name.trim())
+		.filter(Boolean);
 
 /** The same policy for an example, with one extra rule about downloads. */
 export function mergeExample(
 	existing: Record<string, unknown> | null,
 	incoming: Record<string, unknown>,
+	options: MergeOptions = {},
 ): MergeResult {
+	// --- A takedown outranks this run entirely (#54) -----------------------------
+	//
+	// Checked before anything else, including before the "is this new?" branch. An
+	// excluded resource must not be *created* on a later run either: a crawl that
+	// re-ingested something a creator asked to be removed would be doing the exact
+	// thing the request stopped, and doing it silently.
+	if (activeExclusions(options).length) {
+		const exclusion = exclusionForExample(activeExclusions(options), {
+			slug: String(incoming.source_id ?? incoming.slug ?? ""),
+			sourceRepo: (incoming.source_repo as string | null) ?? null,
+			sourcePath: (incoming.source_path as string | null) ?? null,
+			contentHash: (incoming.content_hash as string | null) ?? null,
+		});
+		if (exclusion) {
+			return {
+				write: {},
+				// The existing record, untouched. Nothing is deleted either: the
+				// evidence a correction is made from stays exactly where it is.
+				merged: existing ?? {},
+				preserved: existing ? Object.keys(existing) : [],
+				changed: [],
+				notes: [
+					`not written: this example is excluded from ingestion — ${exclusion.scope} ${exclusion.match}`,
+				],
+			};
+		}
+	}
+
 	if (!existing) {
 		const record = { ...incoming, featured: false, visibility: "draft" };
 		return {
@@ -233,12 +342,53 @@ export function mergeExample(
 		);
 	}
 
+	// An open rights dispute holds the download off whatever the licence says
+	// (#54). The gate that refuses the bytes lives in `src/lib/asset-use.ts` and
+	// reads `dispute_state`; this is the belt to that braces, because
+	// `downloadable` is what every other surface — the JSON contract, the use page,
+	// an agent reading the record — takes as "this deployment will hand it over".
+	// A refresh must not be the thing that puts it back.
+	if (isDisputed(existing.dispute_state) && (existing.downloadable === true || existing.downloadable === 1)) {
+		result.write.downloadable = false;
+		result.changed.push("downloadable");
+		result.notes.push(
+			`download disabled: a rights dispute is open on this example (${String(existing.dispute_state)}), whatever the licence evidence says`,
+		);
+	}
+
+	// A dispute is a human decision and the machine does not get to touch it. Not
+	// listed among the written fields above at all, and reported as preserved so a
+	// curator reading the run log can see it was considered rather than missed.
 	for (const field of ["featured", "visibility"]) {
 		if (field in existing) result.preserved.push(field);
+	}
+	for (const field of DISPUTE_FIELDS) {
+		if (field in existing) result.preserved.push(field);
+	}
+	if (isDisputed(existing.dispute_state)) {
+		result.notes.push(
+			"this example is quarantined: its dispute state is preserved and nothing here can release it",
+		);
 	}
 	result.merged = { ...existing, ...result.write };
 	return result;
 }
+
+/**
+ * The dispute fields on an example (#54).
+ *
+ * A person's decision, recorded on the record. The engine writes machine facts about
+ * what a source says; it never writes whether somebody has complained about it, and
+ * it never clears the complaint. A refresh that could un-quarantine an example would
+ * make the whole withdrawal depend on nobody running a crawl.
+ */
+const DISPUTE_FIELDS = [
+	"dispute_state",
+	"dispute_reason",
+	"dispute_note",
+	"dispute_reported_at",
+	"dispute_resolved_at",
+] as const;
 
 /** Whether an entry should be published after a merge. */
 export function shouldPublish(existing: Record<string, unknown> | null): boolean {

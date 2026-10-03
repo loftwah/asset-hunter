@@ -24,7 +24,15 @@
  */
 import { Context, Effect, Layer, Schedule, Schema } from "effect";
 import { EngineConfig } from "./config.ts";
-import { EntryResponse } from "./schemas.ts";
+import { EntryResponse, revFromToken } from "./schemas.ts";
+
+/**
+ * EmDash's content list route caps `limit` at 100 and pages by `offset`.
+ *
+ * Declared here rather than inlined into the caller so the number that broke the
+ * engine is visible at the point that would break it again. See `EmDashApi.list`.
+ */
+const EMDASH_LIST_PAGE_MAX = 100;
 
 /** A content call that did not succeed. */
 export class EmDashApiError extends Schema.TaggedError<EmDashApiError>()("EmDashApiError", {
@@ -50,6 +58,22 @@ export class EmDashApi extends Context.Service<
 		/** Signs in the way the `emdash` CLI does. */
 		readonly session: Effect.Effect<EmDashSession, EmDashApiError>;
 		readonly read: (collection: string, slug: string) => Effect.Effect<EntryFields | null, EmDashApiError>;
+		/**
+		 * Lists a collection.
+		 *
+		 * Added for #54. A takedown is only durable if the engine can *read* it, and
+		 * the exclusions it needs to consult are a collection rather than a single
+		 * entry — so this is the read that makes "an exclusion survives a refresh" a
+		 * property of the run rather than a property of an operator's memory.
+		 *
+		 * `status` is not a parameter because the engine never wants drafts here: a
+		 * takedown that was never published is not a takedown anybody agreed to, and
+		 * acting on it would let an unfinished decision remove a source.
+		 */
+		readonly list: (
+			collection: string,
+			limit?: number,
+		) => Effect.Effect<ReadonlyArray<Record<string, unknown>>, EmDashApiError>;
 		readonly write: (
 			collection: string,
 			slug: string,
@@ -252,8 +276,150 @@ export class EmDashApi extends Context.Service<
 						typeof fields === "object" && fields !== null && !Array.isArray(fields)
 							? (fields as Record<string, unknown>)
 							: {},
-					rev: body.data?._rev ?? item._rev ?? null,
+					/*
+					 * `body.data._rev` first, because that is where the route puts it
+					 * (`handleContentGet` returns `{ item, _rev: encodeRev(item) }`).
+					 *
+					 * The fallback below is genuinely a fallback, and it was previously
+					 * documented as the *cause* of a bug that had not happened: the
+					 * comment claimed "the route does not return the token" and that
+					 * `rev` was therefore `null` for every written entry, so every sync
+					 * POSTed a fresh revision of everything and no version conflict could
+					 * ever be detected. None of that was true — the token has been in
+					 * the body all along.
+					 *
+					 * A wrong rationale is worse than none, because the next person reads
+					 * it, believes the primary path is broken, and removes it. The
+					 * fallback stays because a response shaped slightly differently —
+					 * a proxy that reshapes, a future route change — should degrade to
+					 * a rebuilt token rather than to a silent POST.
+					 *
+					 * `revFromToken` reproduces EmDash's own construction
+					 * (`encodeBase64(\`${version}:${updatedAt}\`)`,
+					 * `node_modules/emdash/src/api/rev.ts`), so a rebuilt token
+					 * validates identically to a delivered one.
+					 */
+					rev: body.data?._rev ?? item._rev ?? revFromToken(item.version, item.updatedAt),
 				} satisfies EntryFields;
+			});
+
+			/**
+			 * The list route is **cursor-paginated and hard-capped at 100 rows**.
+			 *
+			 * This asked for `limit=200`, which the route rejects with a 400. That is
+			 * not a cosmetic failure. `list("exclusions")` is how a takedown becomes
+			 * visible to a run, and `hunt` catches the error and continues with an
+			 * empty list — so every hunt announced, in its own output, that it *could
+			 * not honour a takedown it cannot see*, and then crawled anyway. A
+			 * withdrawn repository kept coming back and the only signal that anything
+			 * was wrong was a line of stderr above the results.
+			 *
+			 * So: page. `limit=100` per request, walking the `nextCursor` the route
+			 * returns, bounded by the caller's own limit. A takedown at row 150 has
+			 * to be as visible as one at row 1 — clamping to the first hundred would
+			 * be the same failure in a quieter shape, which is worse.
+			 *
+			 * ## Why the cursor, and not an offset
+			 *
+			 * This used to send `?limit=100&offset=100`. `contentListQuery` extends
+			 * `cursorPaginationQuery`, which is `{ cursor?, limit? }` — so zod
+			 * **strips** `offset` before the handler sees it. Every request after the
+			 * first re-fetched page 1, `rows.length < page` never became true for a
+			 * collection of 100 or more, and the loop only ended when the accumulated
+			 * length passed the caller's limit. So `list("exclusions")` over 150
+			 * takedowns returned the first hundred, twice, and rows 101–150 were never
+			 * seen by anything.
+			 *
+			 * That is the exact failure the comment above promises not to be, and it
+			 * was invisible because the duplicates made the count *rise* fast enough to
+			 * exit early. `nextCursor` is the token the route actually hands back
+			 * (`node_modules/emdash/src/api/handlers/content.ts`, `nextCursor:
+			 * result.nextCursor`), so it is the token used here.
+			 *
+			 * A repeated cursor is a refusal rather than a loop: if the route ever
+			 * hands back a cursor it has already served, stop and say so, because
+			 * continuing would spin until the caller's limit with duplicates in place
+			 * of pages.
+			 */
+			const list = Effect.fn("EmDashApi.list")(function* (collection: string, limit = 400) {
+				const session = yield* signIn;
+				const operation = `list ${collection}`;
+				const page = Math.min(limit, EMDASH_LIST_PAGE_MAX);
+				const out: Record<string, unknown>[] = [];
+				const seenCursors = new Set<string>();
+				let cursor: string | null = null;
+
+				while (out.length < limit) {
+					const path =
+						`/_emdash/api/content/${encodeURIComponent(collection)}` +
+						`?limit=${page}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+					const response = yield* call(
+						operation,
+						path,
+						{ method: "GET", headers: { ...session.headers } },
+						session,
+					);
+					const raw = yield* Effect.tryPromise({
+						async try() {
+							return (await response.json()) as unknown;
+						},
+						catch: (cause) =>
+							new EmDashApiError({
+								operation,
+								status: response.status,
+								detail: `body is not JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
+							}),
+					});
+					// EmDash nests the list under `data` on this route, so both shapes are
+					// accepted — a stricter schema here would fail a run over a field
+					// placement that is not what anybody is being asked to reason about.
+					const envelope = raw as {
+						data?: {
+							items?: unknown;
+							total?: unknown;
+							nextCursor?: unknown;
+						} | null;
+						items?: unknown;
+						total?: unknown;
+						nextCursor?: unknown;
+					} | null;
+					const rows = envelope?.data?.items ?? envelope?.items;
+					const total = envelope?.data?.total ?? envelope?.total;
+					const next = envelope?.data?.nextCursor ?? envelope?.nextCursor;
+					if (!Array.isArray(rows) || rows.length === 0) break;
+					out.push(
+						...rows.filter(
+							(row): row is Record<string, unknown> =>
+								typeof row === "object" && row !== null && !Array.isArray(row),
+						),
+					);
+					/*
+					 * Three ends, and which one fires depends on the route:
+					 *
+					 * - a short page is the end on a route that ignores the cursor;
+					 * - a `total` we have reached is the end, because an absent `total`
+					 *   must not become an infinite loop and a wrong one must not stop
+					 *   us before the last takedown;
+					 * - no `nextCursor` at all is the end, which is the normal
+					 *   last-page signal.
+					 *
+					 * A repeated cursor is not an end — it is a fault, and stopping
+					 * quietly would put duplicates where pages should be, which is the
+					 * bug this whole block exists to remove.
+					 */
+					if (rows.length < page) break;
+					if (typeof total === "number" && out.length >= total) break;
+					if (typeof next !== "string" || !next) break;
+					if (seenCursors.has(next)) {
+						yield* Effect.logWarning(
+							`${operation}: the route returned a cursor it had already served, so pagination stopped at ${out.length} rows rather than looping.`,
+						);
+						break;
+					}
+					seenCursors.add(next);
+					cursor = next;
+				}
+				return out.slice(0, limit);
 			});
 
 			const write = Effect.fn("EmDashApi.write")(function* (
@@ -289,7 +455,7 @@ export class EmDashApi extends Context.Service<
 				}
 			});
 
-			return EmDashApi.of({ session, read, write });
+			return EmDashApi.of({ session, read, list, write });
 		}),
 	);
 }

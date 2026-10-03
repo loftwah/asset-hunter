@@ -1,12 +1,92 @@
 # Asset Hunter agent contract
 
+Read this file, then [`docs/AGENT_INDEX.md`](docs/AGENT_INDEX.md) for which
+document owns which question. Everything below is either a repository invariant
+or a pointer; nothing here restates a process that another document owns.
+
+## MP
+
+**MP is the human principal and the final authority for this project.** MP's
+explicit instruction overrides the agent's defaults, previously agreed plans and
+inferred priorities. The only bounds on that are safety, security and
+irreversible destruction of work that is not the agent's to destroy.
+
+MP is a **capability proxy, not a decision proxy**. What MP supplies is what an
+agent genuinely lacks: physical action, authentication, credentials, interfaces
+the agent cannot reach, judgement where the consequences are real, and the final
+say on product direction. What MP does *not* supply is the plan, the
+prioritisation, the memory of what was decided last week, the edge cases, or the
+best implementation. The agent reconstructs those from the repository, the issue
+history and the running product.
+
+The practical consequences, which are the whole point:
+
+- Routine questions are answered by reasoning, not by asking. Asking MP what to
+  work on next, or whether an obvious bug is worth fixing, is a failure of this
+  contract, not caution.
+- A finding the agent can fix is a finding to fix. Handing MP a list of
+  problems the agent could resolve is a handover the agent should have made
+  itself.
+- An instruction that is imperfectly phrased is ordinary input. Where the
+  literal reading is the wrong way to reach MP's actual goal, say so briefly,
+  build the stronger version, and continue — unless the difference is a product
+  direction decision, which is MP's.
+- When MP is genuinely needed, the request is the smallest specific human action
+  available ("complete the login prompt in the browser"), and the agent resumes
+  ownership of the workflow the moment it is unblocked.
+
+The full model — the three authority bands, what genuinely requires MP
+(production, credentials, external communication, legal and financial
+commitments, other people's files), initiative, continuation, and the anti-patterns
+this exists to prevent — is
+[`docs/AGENT_CONTRACT.md`](docs/AGENT_CONTRACT.md).
+
+## Where things are decided
+
+[`docs/AGENT_INDEX.md`](docs/AGENT_INDEX.md) is the canonical index: what each
+document owns, the precedence order when two overlap, which files carry no
+authority, and how the live GitHub backlog relates to durable documentation. The
+short version, for questions the rest of this file does not answer:
+
+| Question | Answer lives in |
+| -------- | --------------- |
+| Who MP is, and what the agent may decide alone | [`docs/AGENT_CONTRACT.md`](docs/AGENT_CONTRACT.md) |
+| How an autonomous run executes, and what counts as done | [`docs/AGENT_POLICY.md`](docs/AGENT_POLICY.md) |
+| How the system is built and where the boundaries are | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| What it looks like, and what it must not look like | [`DESIGN.md`](DESIGN.md) and [`docs/UNSLOP.md`](docs/UNSLOP.md) |
+| What every word in the product means | [`docs/VOCABULARY.md`](docs/VOCABULARY.md) |
+| How Effect is written here | [`docs/EFFECT_STYLE.md`](docs/EFFECT_STYLE.md) |
+| How it is tested and measured | [`docs/TESTING.md`](docs/TESTING.md) and [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) |
+| How it ships | [`docs/DEPLOY.md`](docs/DEPLOY.md) |
+| What an agent reads to use the catalogue | [`docs/AGENT_API.md`](docs/AGENT_API.md) |
+| What is being asked for right now | The live GitHub issues and PRs — never a document |
+
 ## Autonomous mode
 
-The owner activates whole-backlog autonomous mode with the exact prompt in [docs/AUTONOMOUS_PROMPT.md](docs/AUTONOMOUS_PROMPT.md).
+MP activates whole-backlog autonomous mode with the exact prompt in
+[docs/AUTONOMOUS_PROMPT.md](docs/AUTONOMOUS_PROMPT.md).
 
-When activated, follow [docs/AGENT_POLICY.md](docs/AGENT_POLICY.md) and work the complete current GitHub issue/PR set until no executable work remains or the runtime stops you. Do not reinterpret the kickoff as a request for a plan, selected batch, or progress report.
+When activated, follow [`docs/AGENT_POLICY.md`](docs/AGENT_POLICY.md) and work
+the complete current GitHub issue/PR set until no executable work remains or the
+runtime stops you. Do not reinterpret the kickoff as a request for a plan,
+selected batch, or progress report.
 
-GitHub issues and PRs are the live backlog. Re-check them during the run so new/reopened work joins the active set.
+GitHub issues and PRs are the live backlog. Re-check them during the run so
+new and reopened work joins the active set.
+
+Two clauses decide whether such a run is actually autonomous, and both are
+commonly got wrong:
+
+- **A blocked lane is not a blocked project.** Independent executable work
+  continues. A blocker is written down with its exact evidence and its unblock
+  condition, and then set aside rather than waited on.
+- **Exhaustion has to be verified, not assumed.** Clean up only this run's own
+  worktrees, processes, ports and scratch downloads — and leave unrelated work,
+  caches and evidence alone. Reconcile every open issue and PR back to GitHub,
+  including work that merged but was never delivered. Leave the repository
+  resumable by a fresh agent reading this file.
+
+Do not manufacture a human review gate that MP did not create.
 
 ## Vocabulary
 
@@ -65,63 +145,64 @@ The product must preserve both halves:
 
 ## Non-negotiable boundaries
 
-- Target project repositories are inputs/context unless an issue explicitly authorises modifying them.
-- GitHub is the only specialised discovery provider required for the current core. Do not silently expand crawling to unrelated services.
-- Downloaded repositories/assets are untrusted data. Do not execute upstream install/build scripts merely to inspect assets.
-- Preserve immutable originals, hashes, provenance and exact licence evidence. Unknown/unlicensed/reference material is never presented as cleared for use.
+These hold in every authority band. No task, and no ordinary instruction, trades
+away one of them; a requirement that appears to conflict with a boundary is a
+question for MP, not a licence.
+
+- Target project repositories are inputs/context unless an issue explicitly
+  authorises modifying them.
+- GitHub is the only specialised discovery provider required for the current
+  core. Do not silently expand crawling to unrelated services.
+- Downloaded repositories/assets are untrusted data. Do not execute upstream
+  install/build scripts merely to inspect assets.
+- Preserve immutable originals, hashes, provenance and exact licence evidence.
+  Unknown/unlicensed/reference material is never presented as cleared for use.
 - Generated/derived examples must be distinguishable from upstream originals.
 - Do not weaken tests or acceptance criteria to make an issue pass.
 - Effectful application code defaults to Effect 4, per the house style above. Do
   not add a new hand-rolled service, decoding path, retry loop or error-message
   convention beside the ones that already exist.
-- Do not introduce paid GitHub Actions usage. Hosted Actions must remain disabled unless their $0 cost is explicitly demonstrated and justified; prefer local/repository qualification and Cloudflare-native deployment tooling.
+- Do not introduce paid GitHub Actions usage. Hosted Actions must remain disabled
+  unless their $0 cost is explicitly demonstrated and justified; prefer
+  local/repository qualification and Cloudflare-native deployment tooling.
+- Keep machine quality, community ratings and editorial/admin judgement separate.
 - Preserve unrelated user work and secrets.
 
 ## EmDash / public application invariant
 
-For work touching the public catalogue, CMS schema/content, admin, media, auth, ratings/curation, site navigation, or deployment:
+For work touching the public catalogue, CMS schema/content, admin, media, auth,
+ratings/curation, site navigation, or deployment:
 
 - use the actual EmDash/Astro application required by #38;
 - load and follow the relevant EmDash agent guidance required by #39;
 - do not build a parallel CMS/admin/auth/media stack;
 - do not create a separate “real app” with EmDash parked beside it;
 - use EmDash authentication/RBAC and supported extension points where appropriate;
-- use the authorised Cloudflare Workers + D1 + R2 path for the public app unless a later owner-approved issue changes it.
+- use the authorised Cloudflare Workers + D1 + R2 path for the public app unless a
+  later owner-approved issue changes it.
 
-A dependency being installed is not proof that the product uses it. Verify the real public read/edit path.
+A dependency being installed is not proof that the product uses it. Verify the
+real public read/edit path.
 
 ## Design / product-quality invariant
 
-For work touching public UI, branding, visual composition, responsive behaviour, interaction states or marketing media:
+For work touching public UI, branding, visual composition, responsive behaviour,
+interaction states or marketing media:
 
-- treat `DESIGN.md` and the repository's UNSLOP guidance from #44 as authoritative once present;
-- load the relevant visual/design-review capability (including Impeccable where available);
-- use the deterministic visual lab from #45 and headless visual evidence from #47 rather than relying on agent taste alone;
+- treat `DESIGN.md` and the repository's UNSLOP guidance from #44 as
+  authoritative once present;
+- load the relevant visual/design-review capability (including Impeccable where
+  available);
+- use the deterministic visual lab from #45 and headless visual evidence from #47
+  rather than relying on agent taste alone;
 - verify mobile/touch/keyboard/accessibility expectations from #46;
 - prefer real product captures and canonical examples over fake/mock marketing UI;
-- do not introduce generic SaaS card soup, arbitrary gradients, excessive pills/rounded containers or decorative motion without a concrete product reason.
+- do not introduce generic SaaS card soup, arbitrary gradients, excessive
+  pills/rounded containers or decorative motion without a concrete product
+  reason.
 
-## Execution expectations
-
-- Inspect the complete issue, source, existing PRs and dependencies before editing.
-- Use maximum useful parallelism; serialise only real conflicts/dependencies.
-- Continue from investigation into implementation, focused tests, independent review, repair, merge, delivery where applicable, and real verification.
-- Reuse existing branches/PRs/work rather than duplicating them.
-- Keep machine quality, community ratings and editorial/admin judgement separate.
-- Do not manufacture owner/human review gates unless the owner explicitly created one.
-
-## Cleanup and final accounting
-
-Before declaring the autonomous run exhausted:
-
-- clean up exact task-owned temporary worktrees, processes, ports, generated scratch data and disposable downloads;
-- do not broadly kill processes, delete caches, reset unrelated changes or remove useful evidence;
-- reconcile completed/blocked work back to GitHub;
-- account for every current open issue and PR, including merged-but-undelivered obligations;
-- leave bounded blockers with exact evidence and an explicit unblock condition;
-- continue any independent executable work instead of stopping on one blocked lane.
-
-Stop only on owner instruction, a real runtime/provider limit, a global inability to make useful progress, or verified exhaustion of executable work.
+A prettier screenshot is not proof of a better product, and a design skill does
+not replace the issue's acceptance criteria.
 
 ## EmDash skills (vendored)
 
@@ -146,3 +227,12 @@ skill from `.agents/skills/` before editing code.** Installing the package is no
 the same as using it correctly — `npm run doctor` distinguishes installed from
 integrated, and `npm run smoke` proves the public read path is actually served by
 EmDash.
+
+## Checking this contract still holds
+
+The routing above is prose, so it rots like prose. `npm run doctor` has an
+`Agent contract` section that fails when a canonical document is missing, when a
+root link does not resolve, when the MP model stops being reachable from
+`AGENTS.md`, or when a superseded prompt file reappears. `npm test` runs the same
+checks, so a broken contract fails the build rather than being noticed by
+whoever reads it next.

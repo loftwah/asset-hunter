@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Reversed mark plate: a light-ink mark on a dark field with its cleared counters">
+	<defs>
+		<radialGradient id="bg" cx="50%" cy="32%" r="74%">
+			<stop offset="0%" stop-color="#1a1e22"/>
+			<stop offset="100%" stop-color="#08090a"/>
+		</radialGradient>
+	</defs>
+	<rect width="800" height="1000" fill="url(#bg)"/>
+
+	<!-- The mark. This is the content; everything below is its evidence. -->
+	<g transform="translate(400,300)">
+		<g fill="none" stroke="#f4f2ee" stroke-width="16" stroke-linejoin="miter">
+			<path d="M-140.8 -128 H140.8 V-25.6 H-140.8 Z"/>
+			<path d="M-140.8 128 H140.8 V25.6 H-140.8 Z"/>
+			<path d="M-140.8 -128 V128"/>
+		</g></g>
+	<text x="400" y="556" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="20" fill="#f4f2ee">the reversed mark is a second drawing, not a colour swap</text>
+
+	<path d="M96 600 H704" stroke="#2c3238" stroke-dasharray="2 6"/>
+	<text x="96" y="636" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">the same geometry, reduced</text>
+
+<g transform="translate(190,712)">
+		<g fill="none" stroke="#f4f2ee" stroke-width="5" stroke-linejoin="miter">
+			<path d="M-44 -40 H44 V-8 H-44 Z"/>
+			<path d="M-44 40 H44 V8 H-44 Z"/>
+			<path d="M-44 -40 V40"/>
+		</g></g>
+	<text x="190" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">100px</text>
+<g transform="translate(400,724)">
+		<g fill="none" stroke="#f4f2ee" stroke-width="2.9" stroke-linejoin="miter">
+			<path d="M-25.52 -23.2 H25.52 V-4.64 H-25.52 Z"/>
+			<path d="M-25.52 23.2 H25.52 V4.64 H-25.52 Z"/>
+			<path d="M-25.52 -23.2 V23.2"/>
+		</g></g>
+	<text x="400" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">58px</text>
+<g transform="translate(610,734)">
+		<g fill="none" stroke="#f4f2ee" stroke-width="1.6" stroke-linejoin="miter">
+			<path d="M-14.08 -12.8 H14.08 V-2.56 H-14.08 Z"/>
+			<path d="M-14.08 12.8 H14.08 V2.56 H-14.08 Z"/>
+			<path d="M-14.08 -12.8 V12.8"/>
+		</g></g>
+	<text x="610" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">32px</text>
+
+	<path d="M96 846 H704" stroke="#2c3238" stroke-dasharray="2 6"/>
+<text x="96" y="888" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#6a7178">Light spreads on a dark ground, so the same stroke reads heavier.</text>
+<text x="96" y="920" font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#4c545c">Reduce the weight a tenth and open the counter by the same fraction.</text>
+
+	<path d="M96 958 H704" stroke="#1c2126"/>
+	<text x="96" y="988" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">holds: two files · one geometry</text>
+	<text x="728" y="988" text-anchor="end" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#f2a33c">breaks on photography</text>
+</svg>

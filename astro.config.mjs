@@ -1,8 +1,59 @@
+import { execFileSync } from "node:child_process";
 import cloudflare from "@astrojs/cloudflare";
 import react from "@astrojs/react";
 import { d1, r2 } from "@emdash-cms/cloudflare";
 import { defineConfig } from "astro/config";
 import emdash from "emdash/astro";
+
+/**
+ * Which commit this bundle is, decided before the bundle is written.
+ *
+ * #81 found the deployed site serving code three commits behind `main` while
+ * `main` had already fixed nine accessibility defects, and nothing in the
+ * product said what it was serving. So the build says so itself, and the value
+ * has to be decided here — `vite.define` substitutes constants at bundle time,
+ * and a value read at request time would be the *runtime's* commit, which is
+ * not a thing.
+ *
+ * The three answers are deliberately different:
+ *
+ * - **clean tree** — `HEAD` is exactly what is being shipped.
+ * - **dirty tree** — `HEAD` *plus* uncommitted changes. The commit id alone
+ *   would be a lie, so the fact is published alongside it and the UI says
+ *   "plus uncommitted changes" rather than printing a bare sha that reads like
+ *   certainty.
+ * - **no git at all** — a source tarball, a CI export, a Docker image. The
+ *   build still has to serve, so `commit` is `null` and the reason is recorded.
+ *   Never the package version, which would look like evidence and is not.
+ *
+ * `ASSET_HUNTER_COMMIT` overrides all of it, so a release build can pin a tag
+ * instead of whatever `HEAD` was when the machine happened to run it.
+ */
+function gitProvenance() {
+	const pinned = process.env.ASSET_HUNTER_COMMIT;
+	if (pinned && /^[0-9a-f]{7,40}$/.test(pinned)) {
+		return { commit: pinned, dirty: "false" };
+	}
+	try {
+		const commit = execFileSync("git", ["rev-parse", "HEAD"], {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		}).trim();
+		if (!/^[0-9a-f]{7,40}$/.test(commit)) throw new Error("unparseable HEAD");
+		// `--porcelain` counts untracked files too, which is correct: an untracked
+		// file is code the build will ship and nobody can name by commit.
+		const status = execFileSync("git", ["status", "--porcelain"], {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		});
+		return { commit, dirty: status.trim().length === 0 ? "false" : "true" };
+	} catch {
+		return { commit: "unknown", dirty: "unknown" };
+	}
+}
+
+const provenance = gitProvenance();
+const builtAt = process.env.ASSET_HUNTER_BUILT_AT ?? new Date().toISOString();
 
 // Asset Hunter is an EmDash site. The public catalogue is CMS-managed through
 // EmDash (schema, content, media, admin) and served by Astro on Cloudflare
@@ -39,6 +90,28 @@ export default defineConfig({
 	devToolbar: { enabled: false },
 	site: "https://assets.loftwah.com",
 	/**
+	 * `security.checkOrigin` is **not** set here, and that is a finding rather
+	 * than an omission (#53).
+	 *
+	 * Writing `security: { checkOrigin: true }` here does nothing: EmDash's
+	 * integration sets it to `false` in `astro:config:setup`
+	 * (`node_modules/emdash/src/astro/integration/index.ts`, `securityConfig`),
+	 * deliberately, because EmDash supplies its own origin check that also accepts
+	 * the runtime-configured public origin. Config is applied in integration
+	 * order, so EmDash's `updateConfig` wins over whatever this file says.
+	 *
+	 * The consequence is worth stating plainly: **Astro's CSRF middleware is off
+	 * on this site**, and EmDash's replacement only covers `/_emdash/api/*`
+	 * public routes. `src/pages/api/signal.ts` and `src/pages/api/board.ts` are
+	 * application routes outside both, so before #53 they checked nothing. They
+	 * now call `sameOrigin` from `src/lib/security.ts` themselves.
+	 *
+	 * (A dev server also refuses `Sec-Fetch-Site: cross-site` subresource
+	 * requests — `astro/dist/vite-plugin-astro-server/sec-fetch.js`. That is a
+	 * local hardening measure and does not exist in production, so it is not
+	 * evidence that the endpoint is protected.)
+	 */
+	/**
 	 * Vite's dependency optimiser cannot pre-bundle a few of this app's runtime
 	 * dependencies, and when it tries, every route 500s with a confusing
 	 * "optimize deps" error until `node_modules/.vite` is deleted by hand.
@@ -53,6 +126,20 @@ export default defineConfig({
 	 * Excluding them lets Vite serve them through the normal module graph.
 	 */
 	vite: {
+		/**
+		 * Build provenance, substituted as constants by name.
+		 *
+		 * Written as three separate `define` entries rather than one JSON blob
+		 * because each has to be read as a literal key somewhere: `env[key]` and
+		 * `import.meta.env[key]` are not replaced by a bundler, so a dynamic
+		 * lookup would quietly resolve to `undefined` and the version stamp would
+		 * claim nothing at all. `src/lib/build-info.ts` reads each key literally.
+		 */
+		define: {
+			"import.meta.env.ASSET_HUNTER_COMMIT": JSON.stringify(provenance.commit),
+			"import.meta.env.ASSET_HUNTER_DIRTY": JSON.stringify(provenance.dirty),
+			"import.meta.env.ASSET_HUNTER_BUILT_AT": JSON.stringify(builtAt),
+		},
 		/**
 		 * The optimiser cache, relocated on request.
 		 *

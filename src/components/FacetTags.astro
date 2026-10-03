@@ -1,0 +1,77 @@
+---
+/**
+ * The vertical and media-kind labels for one entry, as one list.
+ *
+ * This component exists because the *same two facts* were being printed in four
+ * places — the wall tile, the search row, the drill-in's related list and the
+ * shortlist's per-entry meta line — and every one of them rendered them
+ * independently. That is how the same defect survived a fix: #63 removed the
+ * duplication from the search rows, and it was still on the wall and still on the
+ * board, because the tile had its own copy of the rule. Three
+ * `Motion / Video` + `Motion` rows on the wall is the state it was in.
+ *
+ * `docs/UNSLOP.md` rejects this by name — *"Duplicated metadata on every tile.
+ * Reject. Repeating the vertical and rights status 24 times on one screen makes
+ * both unreadable and forces a scan that the filter rail already provides"* — and
+ * `DESIGN.md` §9.1 states the rule the list now follows everywhere:
+ *
+ * > The vertical and the media kind are not the same fact. `Motion / Video` and
+ * > `Motion` both label a motion entry, so printing both says one thing twice.
+ *
+ * `facetLabels` is the rule, and it is pure and tested in
+ * `src/lib/search-text.ts`. This is only its markup, so no surface can grow a
+ * second rendering of it.
+ */
+import { facetLabels } from "../lib/search-text";
+
+interface Props {
+	vertical: string | null | undefined;
+	mediaKind: string | null | undefined;
+	/**
+	 * The vertical is already established by the page, so do not print it again.
+	 *
+	 * The media kind is *not* hidden with it: on `/logos`, twelve tiles each
+	 * reading "Logos · Image" says one thing twelve times, and the vertical half
+	 * of it is the half the heading above already said. The media kind is the half
+	 * that is still new information.
+	 */
+	hideVertical?: boolean;
+	/** Neither facet applies here, so print neither. */
+	hide?: boolean;
+	class?: string | null;
+}
+
+const {
+	vertical,
+	mediaKind,
+	hideVertical = false,
+	hide = false,
+	class: className = "tag",
+} = Astro.props;
+const labels = hide ? [] : facetLabels(hideVertical ? null : vertical, mediaKind);
+---
+
+{
+	labels.length > 0 && (
+		<p class:list={["facet-tags", className]}>
+			{labels.map((label) => (
+				<span class="tag">{label}</span>
+			))}
+		</p>
+	)
+}
+
+<style>
+	/*
+	 * One place that knows how a facet list is spaced, because three of the four
+	 * surfaces that had their own copy disagreed about the gap: `0.3rem 0.85rem`
+	 * on search, `0.3rem 0.5rem` on the tile, `var(--sp-2) var(--sp-3)` on the
+	 * board. A gap is not a design decision worth three opinions.
+	 */
+	.facet-tags {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.3rem 0.7rem;
+	}
+</style>

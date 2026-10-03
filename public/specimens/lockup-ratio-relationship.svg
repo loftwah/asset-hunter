@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Lockup plate: a mark and a wordmark on a shared optical axis with a stated gap">
+	<defs>
+		<radialGradient id="bg" cx="50%" cy="32%" r="74%">
+			<stop offset="0%" stop-color="#1a1e22"/>
+			<stop offset="100%" stop-color="#08090a"/>
+		</radialGradient>
+	</defs>
+	<rect width="800" height="1000" fill="url(#bg)"/>
+
+	<!-- The mark. This is the content; everything below is its evidence. -->
+	<g transform="translate(400,300)">
+		<g fill="none" stroke="#f4f2ee" stroke-width="14.4" stroke-linejoin="miter">
+			<path d="M-153.60000000000002 -83.2 H-38.400000000000006 V-19.200000000000003 H-153.60000000000002 Z"/>
+			<path d="M-153.60000000000002 83.2 H-38.400000000000006 V19.200000000000003 H-153.60000000000002 Z"/>
+			<path d="M-153.60000000000002 -83.2 V83.2"/>
+		</g>
+		<text x="6.4" y="35.2" font-family="ui-monospace,Menlo,monospace" font-size="108.80000000000001" font-weight="600" fill="#f4f2ee" letter-spacing="-5.120000000000001">KERNEL</text></g>
+	<text x="400" y="556" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="18" fill="#f4f2ee">mark and wordmark on one axis, with the gap in units of the mark</text>
+
+	<path d="M96 600 H704" stroke="#2c3238" stroke-dasharray="2 6"/>
+	<text x="96" y="636" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">the same geometry, reduced</text>
+
+<g transform="translate(190,712)">
+		<g fill="none" stroke="#f4f2ee" stroke-width="4.5" stroke-linejoin="miter">
+			<path d="M-48 -26 H-12 V-6 H-48 Z"/>
+			<path d="M-48 26 H-12 V6 H-48 Z"/>
+			<path d="M-48 -26 V26"/>
+		</g>
+		<text x="2" y="11" font-family="ui-monospace,Menlo,monospace" font-size="34" font-weight="600" fill="#f4f2ee" letter-spacing="-1.6">KERNEL</text></g>
+	<text x="190" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">100px</text>
+<g transform="translate(400,724)">
+		<g fill="none" stroke="#f4f2ee" stroke-width="2.61" stroke-linejoin="miter">
+			<path d="M-27.839999999999996 -15.079999999999998 H-6.959999999999999 V-3.4799999999999995 H-27.839999999999996 Z"/>
+			<path d="M-27.839999999999996 15.079999999999998 H-6.959999999999999 V3.4799999999999995 H-27.839999999999996 Z"/>
+			<path d="M-27.839999999999996 -15.079999999999998 V15.079999999999998"/>
+		</g>
+		<text x="1.16" y="6.38" font-family="ui-monospace,Menlo,monospace" font-size="19.72" font-weight="600" fill="#f4f2ee" letter-spacing="-0.9279999999999999">KERNEL</text></g>
+	<text x="400" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">58px</text>
+<g transform="translate(610,734)">
+		<g fill="none" stroke="#f4f2ee" stroke-width="1.44" stroke-linejoin="miter">
+			<path d="M-15.36 -8.32 H-3.84 V-1.92 H-15.36 Z"/>
+			<path d="M-15.36 8.32 H-3.84 V1.92 H-15.36 Z"/>
+			<path d="M-15.36 -8.32 V8.32"/>
+		</g>
+		<text x="0.64" y="3.52" font-family="ui-monospace,Menlo,monospace" font-size="10.88" font-weight="600" fill="#f4f2ee" letter-spacing="-0.512">KERNEL</text></g>
+	<text x="610" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">32px</text>
+
+	<path d="M96 846 H704" stroke="#2c3238" stroke-dasharray="2 6"/>
+<text x="96" y="888" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#6a7178">A percentage gap closes as the mark shrinks; a stated gap does not.</text>
+<text x="96" y="920" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#4c545c">Horizontal, stacked and mark-only: three drawings, not one export.</text>
+
+	<path d="M96 958 H704" stroke="#1c2126"/>
+	<text x="96" y="988" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">holds: three lockups · flat</text>
+	<text x="728" y="988" text-anchor="end" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#f2a33c">breaks on a new shape</text>
+</svg>

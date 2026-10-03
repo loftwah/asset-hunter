@@ -9,9 +9,11 @@
 import Base from "../../layouts/Base.astro";
 import PossibilityTile from "../../components/PossibilityTile.astro";
 import ProvenanceMarkers from "../../components/ProvenanceMarkers.astro";
+import SpecimenPlate from "../../components/SpecimenPlate.astro";
 import ExampleUse from "../../components/ExampleUse.astro";
 import OutcomeFlash from "../../components/OutcomeFlash.astro";
 import SignalPanel from "../../components/SignalPanel.astro";
+import Crumbs from "../../components/Crumbs.astro";
 import {
 	loadExamplesFor,
 	loadPossibilities,
@@ -145,12 +147,13 @@ const outcome = note
 		}
 
 		<header class="head shell">
-			<nav class="crumbs" aria-label="Breadcrumb">
-				<a href="/">Catalogue</a>
-				{vertical && <><span aria-hidden="true">/</span><a href={`/verticals#${p.vertical}`}>{vertical}</a></>}
-				<span aria-hidden="true">/</span>
-				<span class="crumbs__here">{p.title}</span>
-			</nav>
+			<Crumbs
+				steps={[
+					{ label: "Catalogue", href: "/" },
+					...(vertical ? [{ label: vertical, href: `/verticals#${p.vertical}` }] : []),
+					{ label: p.title },
+				]}
+			/>
 
 			<h1 class="display head__title">{p.title}</h1>
 			{p.tagline && <p class="head__tagline">{p.tagline}</p>}
@@ -194,31 +197,41 @@ const outcome = note
 		</header>
 
 		<div class="body shell">
-			<figure class="plate">
-				<img
-					src={src}
-					alt={p.tagline ? `${p.title} — ${p.tagline}` : p.title}
-					width="800"
-					height="1000"
-					loading="eager"
-					decoding="async"
-					fetchpriority="high"
-				/>
-				<figcaption class="tag">
-					{/*
-					 * One expression, because JSX drops the whitespace at the start of
-					 * the line: the caption was shipping as "Generated specimen· reference
-					 * plate". This is the caption that names the plate as a reference
-					 * rather than as the asset, so its separator should not look like a
-					 * missing space.
-					 */}
-					{
-						(p.representativeOrigin
-							? `${originLabelFor(p.representativeOrigin)} specimen`
-							: "Specimen") + " · reference plate"
-					}
-				</figcaption>
-			</figure>
+			{/*
+			 * The representative plate, through the shared `SpecimenPlate` (#64).
+			 *
+			 * It used to be a `<figure>` written out here, which is how the use page
+			 * ended up showing the same file at 104px while this page showed it at
+			 * 521px: one design idea, two components, and nothing in either file
+			 * saying the other one existed.
+			 *
+			 * The caption is one expression because JSX drops the whitespace at the
+			 * start of a line: written across lines it shipped as "Generated
+			 * specimen· reference plate", and this is the caption that names the
+			 * plate as a reference rather than as the asset, so its separator must
+			 * not look like a missing space.
+			 */}
+			<SpecimenPlate
+				src={src}
+				alt={p.tagline ? `${p.title} — ${p.tagline}` : p.title}
+				caption={
+					/*
+					 * `none` is not an origin that produced a plate, so it cannot be
+					 * described as one. With the fourth value in the vocabulary this
+					 * rendered "No media yet specimen · reference plate" over the
+					 * hatched NO PLATE placeholder — a caption claiming there is a
+					 * specimen, on the element that exists to say there is not.
+					 */
+					p.representativeOrigin === "none"
+						? "No representative media yet"
+						: (p.representativeOrigin
+								? `${originLabelFor(p.representativeOrigin)} specimen`
+								: "Specimen") + " · reference plate"
+				}
+				sticky
+				loading="eager"
+				fetchpriority="high"
+			/>
 
 			<div class="prose-col">
 				{
@@ -360,7 +373,7 @@ const outcome = note
 								 * label column: the actions and the credit block need room to be
 								 * read rather than scrolled.
 								 */}
-								<ExampleUse example={example} />
+								<ExampleUse example={example} reportHref="#report" />
 							</li>
 						))}
 					</ul>
@@ -405,41 +418,6 @@ const outcome = note
 		display: grid;
 		gap: var(--sp-4);
 		padding-block: var(--sp-5) var(--sp-6);
-	}
-
-	.crumbs {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 0.1rem 0.5rem;
-		font-family: var(--font-mono);
-		font-size: var(--step--2);
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-		color: var(--ink-4);
-	}
-
-	/* Padding, not type size, carries the tap target: breadcrumb type is
-	   intentionally small so the hierarchy stays readable. */
-	.crumbs a,
-	.crumbs__here {
-		display: inline-flex;
-		align-items: center;
-		min-height: var(--tap);
-		padding-inline: 0.15rem;
-	}
-
-	.crumbs a {
-		color: var(--ink-3);
-		transition: color var(--dur-fast) var(--ease-out);
-	}
-
-	.crumbs a:hover {
-		color: var(--ink);
-	}
-
-	.crumbs__here {
-		color: var(--ink-2);
 	}
 
 	.head__title {
@@ -503,24 +481,6 @@ const outcome = note
 		gap: var(--sp-6);
 		padding-block: var(--sp-5) var(--sp-7);
 		border-top: 1px solid var(--line);
-	}
-
-	.plate {
-		display: grid;
-		gap: var(--sp-3);
-		align-content: start;
-	}
-
-	.plate img {
-		width: 100%;
-		height: auto;
-		border: 1px solid var(--line);
-		border-radius: var(--radius);
-		background: var(--surface);
-	}
-
-	.plate figcaption {
-		color: var(--ink-4);
 	}
 
 	.prose-col {
@@ -715,29 +675,19 @@ const outcome = note
 	}
 
 	/*
-	 * Two conditions, not one.
-	 *
-	 * `width >= 860px` is the layout switch: below it the plate is a band above
-	 * the prose, and a sticky band is worse than a static one.
-	 *
-	 * `height >= 46rem` is why the drill-in was unusable in landscape. A sticky
-	 * element taller than the viewport parks its top and hides its bottom
-	 * permanently — no scroll offset shows all of it. At 896×414 and 932×430,
-	 * which is where a phone is actually held sideways, the plate measured
-	 * 471–491px in a 414–430px viewport: 129–133px of the specimen, which is the
-	 * content of this page, was off the screen at every offset. Below this height
-	 * the plate scrolls with the prose and every row of the diagram is reachable.
+	 * Two conditions, not one — both of them about the plate, which is now
+	 * `SpecimenPlate`'s job. `width >= 860px` is the layout switch: below it the
+	 * plate is a band above the prose. `height >= 46rem` is why the drill-in was
+	 * unusable in landscape; a sticky element taller than the viewport parks its
+	 * top and hides its bottom permanently, so at 896×414 and 932×430 — where a
+	 * phone is actually held sideways — 129–133px of the specimen was off screen
+	 * at every offset. Both conditions live with the plate, in one place, so the
+	 * use page's plate cannot pick up half the rule.
 	 */
 	@media (width >= 860px) and (height >= 46rem) {
 		.body {
 			grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
 			gap: var(--sp-7);
-		}
-
-		.plate {
-			position: sticky;
-			top: calc(var(--masthead-h) + var(--sp-4));
-			align-self: start;
 		}
 
 		.example {
@@ -746,9 +696,19 @@ const outcome = note
 		}
 	}
 
-	/* Full-width use block: the label column is 12rem, which is room for a title
-	   and not for an obligation. */
-	.example > .use {
+	/*
+	 * Full-width use block: the label column is 12rem, which is room for a title
+	 * and not for an obligation.
+	 *
+	 * `:global(.use)` because the block is `ExampleUse`'s root element, and Astro's
+	 * scoped styles attribute a selector with *this* file's hash — so `.use` matched
+	 * nothing at all and the whole use decision rendered inside the 12rem media
+	 * column: 192px wide, 592px tall, an obligation wrapping at about twenty
+	 * characters. Found while making the use page's plate the subject (#64); the
+	 * rule and the component boundary are both older than that, and this is the only
+	 * place in the app that styles a child component's root from its parent.
+	 */
+	.example > :global(.use) {
 		grid-column: 1 / -1;
 	}
 </style>

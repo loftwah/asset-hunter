@@ -46,6 +46,14 @@
 	--origin-upstream: #4cc2f0;
 	--origin-derived: #a68bfb;
 	--origin-generated: #f2a33c;
+	/*
+	 * `none` has no dot to colour — an entry with no representative media is drawn
+	 * as a hatched placeholder, not a marker — but the variable is declared rather
+	 * than left to a `var(--origin-none, …)` fallback somewhere in a component. A
+	 * fallback that happens to look right is not a decision, and the next person to
+	 * use the token would be guessing at the same colour independently.
+	 */
+	--origin-none: var(--ink-4);
 
 	/* --- Rights coding ---------------------------------------------------- */
 	--rights-reference: #f2a33c;

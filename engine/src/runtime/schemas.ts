@@ -149,6 +149,16 @@ export const EntryResponse = Schema.Struct({
 						Schema.Struct({
 							data: Schema.optional(Schema.NullOr(Schema.Unknown)),
 							_rev: Schema.optional(Schema.String),
+							/**
+							 * The two halves of the `_rev` token.
+							 *
+							 * The route does not return `_rev` in the body — it is a header — so
+							 * `revFromToken` reconstructs it from exactly what the token is
+							 * built from. See `EmDashApi.read` for what went wrong when this was
+							 * read as `data._rev` and came back `undefined` on every entry.
+							 */
+							version: Schema.optional(Schema.Number),
+							updatedAt: Schema.optional(Schema.String),
 						}),
 					),
 				),
@@ -157,3 +167,25 @@ export const EntryResponse = Schema.Struct({
 		),
 	),
 });
+
+/**
+ * The `_rev` token EmDash's write path expects: `base64("<version>:<updatedAt>")`.
+ *
+ * A **fallback**, not the primary source. `handleContentGet` returns
+ * `{ item, _rev: encodeRev(item) }`, so `read` normally takes `body.data._rev`
+ * straight off the wire; this exists for a response shaped differently enough to
+ * omit it, where degrading to a rebuilt token beats degrading to `null` — a null
+ * `rev` makes the writer POST instead of PUT, so the entry would be created again
+ * rather than updated, and no version conflict could be detected.
+ *
+ * This is the same construction `encodeRev` performs in
+ * `emdash/src/api/rev.ts` (`encodeBase64(\`${item.version}:${item.updatedAt}\`)`
+ * over UTF-8 standard base64), and it is deliberately duplicated rather than
+ * imported: `docs/ARCHITECTURE.md` forbids the engine depending on CMS
+ * internals, and a token format is exactly the kind of detail that should break
+ * loudly if it changes rather than silently returning `null`.
+ */
+export function revFromToken(version: unknown, updatedAt: unknown): string | null {
+	if (typeof version !== "number" || typeof updatedAt !== "string" || !updatedAt) return null;
+	return Buffer.from(`${version}:${updatedAt}`, "utf8").toString("base64");
+}

@@ -40,7 +40,7 @@
  * have added a runtime for no gain.
  */
 
-import { Effect } from "effect";
+import { Clock, Effect } from "effect";
 import {
 	EmDashContent,
 	EmDashContentApi,
@@ -50,6 +50,7 @@ import {
 } from "./effect/emdash.ts";
 import { CatalogueDecodeError } from "./effect/errors.ts";
 import { decodeOr } from "./effect/decode.ts";
+import { slugSafe } from "./security.ts";
 import { RatingData, ReportData, type RawEntryValue } from "./effect/schemas.ts";
 import {
 	aggregateRatings,
@@ -288,6 +289,18 @@ export function saveRating(
 /**
  * This reader's existing rating for one subject, if any.
  *
+ * ## Two paths, because the cheap one is nearly always the whole answer (#53)
+ *
+ * `ratingSlug` already decides the id a rating lands on, so the entry can be
+ * read *directly* — one GET. The previous version ignored that and loaded the
+ * whole ratings collection (up to 500 rows) on every single rating POST, purely
+ * to discover the id. That made each write cost a full collection read, which is
+ * the wrong shape for an endpoint reachable in a loop.
+ *
+ * The scan is kept as a fallback, for entries written before the naming scheme
+ * or renamed by EmDash on a slug conflict. It only runs when the direct read
+ * found nothing, which is the first rating a reader ever files.
+ *
  * `null` rather than a failure when the entry cannot be read back: the next step
  * is a create-or-update decision, and "I cannot tell" is not a reason to refuse a
  * reader their rating. A genuine write failure later is still reported.
@@ -304,26 +317,57 @@ function findRating(
 > {
 	return Effect.gen(function* () {
 		const api = yield* EmDashContentApi;
+		const expected = ratingSlug(subjectType, subjectSlug, userId);
+		const direct = yield* readEntry(api, request, expected);
+		if (direct) return direct;
 		const ratings = yield* loadRatings();
 		const mine = ratings.find(
 			(r) => r.userId === userId && r.subjectType === subjectType && r.subjectSlug === subjectSlug,
 		);
-		if (!mine) return null;
-		const found = yield* api.read(request, "ratings", mine.id).pipe(
+		if (!mine || mine.id === expected) return null;
+		return yield* readEntry(api, request, mine.id);
+	});
+}
+
+/** One entry read, with "cannot read it" collapsed into "it is not there". */
+function readEntry(
+	api: EmDashContentApi["Service"],
+	request: EmDashRequest,
+	slug: string,
+): Effect.Effect<{ id: string; rev: string } | null, EmDashWrite> {
+	return api
+		.read(request, "ratings", slug)
+		.pipe(
 			Effect.catchTag("EmDashWriteError", () => Effect.succeed(null)),
 			Effect.catchTag("EmDashTransportError", () => Effect.succeed(null)),
-		);
-		return found?.rev ? { id: mine.id, rev: found.rev } : null;
-	});
+		)
+		.pipe(Effect.map((found) => (found?.rev ? { id: slug, rev: found.rev } : null)));
 }
 
 /**
  * Records a report. Never overwrites: a report is a history of concerns.
  *
- * The slug carries a timestamp rather than the reader's id, which is the one
- * place in this file where two writes are genuinely two records — filing the
- * same concern twice is a real thing a reader does, and collapsing it would lose
- * the second one.
+ * ## The slug is derived, not generated (#53)
+ *
+ * It used to carry `Date.now()`, which makes every report a guaranteed-new row.
+ * That is the right instinct for "a report is a history" and the wrong outcome
+ * for abuse: one signed-in account could create unlimited rows in the
+ * moderation queue at one request each, and the queue is the thing an editor has
+ * to read.
+ *
+ * So the slug is `rep-<subject>-<reader>-<reason>-<window bucket>`. Two
+ * consequences, both wanted:
+ *
+ * - filing the same concern about the same entry twice inside the window
+ *   produces the *same* slug, so EmDash answers 409 instead of storing a second
+ *   row. The route turns that into "Already filed", which is true.
+ * - the identity is in the slug, so a reader's reports about one entry are
+ *   greppable from the admin without decoding a field.
+ *
+ * The window is coarse on purpose. Ten minutes is long enough that a person who
+ * mis-clicks, or who is arguing with the form and presses submit twice, is never
+ * refused, and short enough that the storage bound is a handful of rows per
+ * reader per entry per reason.
  */
 export function createReport(
 	request: EmDashRequest,
@@ -347,14 +391,52 @@ export function createReport(
 			user_email: actor?.email ?? null,
 		};
 		const api = yield* EmDashContentApi;
+		// `Clock`, not `Date.now()`, so a test can pin the window and the rule
+		// stays substitutable — see `docs/EFFECT_STYLE.md`.
+		const millis = yield* Clock.currentTimeMillis;
 		const slug = yield* api.create(
 			request,
 			"reports",
-			`rep-${subjectType}-${subjectSlug}-${Date.now().toString(36)}`,
+			reportSlug({ subjectType, subjectSlug, reason, actorId: actor?.id ?? null, millis }),
 			data,
 		);
 		yield* api.publish(request, "reports", slug);
 	});
+}
+
+/** How long one reader has to wait before the same concern is a new report. */
+export const REPORT_WINDOW_MS = 10 * 60_000;
+
+/**
+ * The slug a report lands on, given who, about what, and when.
+ *
+ * Takes the millis rather than reading the clock so the rule is a pure function
+ * and `Clock` stays a dependency of the effect that uses it — see
+ * `docs/EFFECT_STYLE.md`. The bucket is a plain division, so no date formatting
+ * is involved and the value is stable across timezones and locales.
+ *
+ * Every component goes through `slugSafe`. The route validates `subjectSlug`
+ * before it gets here, but a slug is also a URL segment and a column value, and
+ * the function that builds one should not depend on a caller having checked
+ * first: a `../` in a subject would otherwise become a path in EmDash's content
+ * API URL.
+ */
+export function reportSlug(input: {
+	subjectType: SubjectType;
+	subjectSlug: string;
+	reason: ReportReason;
+	actorId: string | null;
+	millis: number;
+}): string {
+	const bucket = Math.floor(input.millis / REPORT_WINDOW_MS).toString(36);
+	return [
+		"rep",
+		slugSafe(input.subjectType, "unknown"),
+		slugSafe(input.subjectSlug),
+		slugSafe(input.actorId ?? "anonymous", "anon"),
+		slugSafe(input.reason, "other"),
+		bucket,
+	].join("-").slice(0, 120);
 }
 
 /**

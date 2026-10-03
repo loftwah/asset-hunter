@@ -84,8 +84,22 @@ const verticals = tallyVerticals(possibilities);
 		margin-top: var(--sp-2);
 	}
 
+	/*
+	 * `1 1 20rem`, not `1 1 14rem`.
+	 *
+	 * The hint is the field's own explanation of itself, and a 13px mono sentence
+	 * needs 300–317px. Beside a 120px button on a 360px line the field got 192px and
+	 * the sentence was cut mid-word — "Try a technique, a treatmen" — with no
+	 * ellipsis and no way to see the rest. A 20rem basis means the pair needs 448px,
+	 * so below about 460px the button takes its own row and the field gets the whole
+	 * line; above it, side by side, the field has 600px+.
+	 *
+	 * This is a layout answer rather than a copy one: the words are `DESIGN.md`
+	 * §9.1's, and the alternative — shortening them — would edit the design authority
+	 * to fit a box. The box was the thing that was wrong.
+	 */
 	.finder input {
-		flex: 1 1 14rem;
+		flex: 1 1 20rem;
 		min-height: 3rem;
 		padding: 0.7rem 1rem;
 		background: var(--surface);

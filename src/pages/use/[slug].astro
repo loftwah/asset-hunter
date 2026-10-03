@@ -1,6 +1,6 @@
 ---
 /**
- * Asset use for one possibility (#42).
+ * Asset use for one possibility (#42, recomposed for #64).
  *
  * This is the selection half of the flow. The drill-in says what a possibility
  * is; this page says what a reader may actually take away from the examples
@@ -16,18 +16,46 @@
  * by a missing button: today the catalogue retains generated plates and no
  * upstream originals, so a selection can have zero downloadable assets and that
  * zero is the answer.
+ *
+ * ## Why the composition is media-first (#64)
+ *
+ * This page was the one surface on the site where the specimen was unreadable
+ * and off-screen: it rendered its only plate at 104–128px, which puts a plate
+ * authored at 800px with 13px annotations at 1.7px, and put it 991px down a
+ * 1280×800 window. `DESIGN.md` §1.1 — the specimen is the content — and §9.6,
+ * which says the media here has to do work, because the plate and the original
+ * are different files and a reader has to be able to tell which one they are
+ * being asked about. So:
+ *
+ * - the header is one headline, one line of lede and one action, and the plate
+ *   is the first thing after it;
+ * - the plate is the page's largest element at every width, beside the use
+ *   decision from 1280px up and full-width below that;
+ * - the use decision keeps its own column and leads in words, with a ring
+ *   beside each of the four states, so the media is never the loudest claim on
+ *   the page;
+ * - an example that carries its own preview gets it at plate size too. An
+ *   example whose preview is the representative plate is not shown a second
+ *   copy of the same file at a quarter of the size.
  */
 import Base from "../../layouts/Base.astro";
 import ExampleUse from "../../components/ExampleUse.astro";
 import OutcomeFlash from "../../components/OutcomeFlash.astro";
+import Crumbs from "../../components/Crumbs.astro";
+import SpecimenPlate from "../../components/SpecimenPlate.astro";
 import {
 	loadExamplesFor,
 	loadPossibility,
 	mediaSrc,
-	type Example,
-	type Possibility,
-} from "../../lib/catalogue";
-import { ORIGIN_MEANING, RIGHTS_MEANING, verticalLabel } from "../../lib/vocabulary";
+} from "../../lib/catalogue.ts";
+import {
+	ORIGIN_MEANING,
+	RIGHTS_MEANING,
+	USE_STATE_COLOR,
+	USE_STATE_LABEL,
+	originLabelFor,
+	verticalLabel,
+} from "../../lib/vocabulary.ts";
 import {
 	runRead,
 	selectionCreditText,
@@ -35,31 +63,81 @@ import {
 	summaryLine,
 } from "../../lib/asset-use";
 import { COOKIE_NAME, DEFAULT_BOARD, boardOutcome, boardTotals, parseBoards } from "../../lib/board";
+import type { Example, Possibility } from "../../lib/catalogue.ts";
+// Type-only, so a production bundle never pulls in the fixtures — or the media
+// they name, which does not exist. The value import below is dynamic and
+// `DEV`-guarded; see the comment on `fixture`.
+import type { UsePageFixture } from "../../lib/fixtures";
 
 const { slug } = Astro.params;
+
+/*
+ * Deterministic selections, in `astro dev` only (#47).
+ *
+ * The catalogue is 24 of 24 `reference` with nothing retained, so this route can
+ * only ever render one of the four use states and always with a payload count of
+ * zero. The other three — and every page that has anything to download — had no
+ * pixels anywhere, which means `npm run check:visual` had never checked the
+ * summary line, the download accent, the selection credit block or the
+ * "N retained originals" copy at any viewport.
+ *
+ * The fixtures resolve *here* rather than in a second page so the captured
+ * pixels are the production page. A lab page that re-implemented the use flow
+ * would prove that the lab page works, which is the mistake #45 was opened to
+ * stop. `src/lib/fixtures.ts` namespaces every slug behind `fixture-`, so a
+ * fixture can never shadow a real entry, and the `DEV` guard means none of this
+ * can exist in a production build.
+ */
+const fixture: UsePageFixture | null = import.meta.env.DEV
+	? (await import("../../lib/fixtures")).usePageFixtureFor(slug)
+	: null;
+
 /*
  * `runRead` is the one bridge from a CMS read to a value, so this route does not
  * need to know how a read is run. The type arguments are inferred from the read
  * itself — naming them here would be a second, drifting claim about the shape.
  */
-const { possibility: p, cacheHint } = await runRead(loadPossibility(slug ?? ""));
+const { possibility: p, cacheHint } = fixture
+	? { possibility: fixture.possibility satisfies Possibility, cacheHint: null }
+	: await runRead(loadPossibility(slug ?? ""));
 if (Astro.cache?.enabled && cacheHint) Astro.cache.set(cacheHint);
 
 if (!p) {
 	return Astro.rewrite("/404");
 }
 
-const [{ examples }, boards] = await Promise.all([
-	runRead(loadExamplesFor(p.slug)),
-	// A cookie read is synchronous, so this is not a promise — the array keeps
-	// the two independent reads next to each other rather than in two statements.
-	Promise.resolve(parseBoards(Astro.cookies.get(COOKIE_NAME)?.value)),
-]);
+// A cookie read is synchronous, so this is not a read worth awaiting.
+const boards = parseBoards(Astro.cookies.get(COOKIE_NAME)?.value);
+const examples: Example[] = fixture
+	? fixture.examples
+	: (await runRead(loadExamplesFor(p.slug))).examples;
 
 const summary = summariseUse(examples);
 const onBoard = (boards[DEFAULT_BOARD] ?? []).includes(p.slug);
 const vertical = p.vertical ? verticalLabel(p.vertical) : null;
 const back = `/use/${p.slug}`;
+
+/*
+ * The representative plate for the whole selection, and the one file a reader
+ * has to judge before reading a single rights status. `mediaSrc(example, src)`
+ * falls back to it, so for every example whose preview *is* this file — which is
+ * every example in the catalogue today — the page shows it once, at plate size,
+ * instead of once at 104px and once at 612px.
+ */
+const plate = mediaSrc(p);
+
+/*
+ * Per example: the preview to show in the row, or null when the row would be
+ * showing the plate above again. Two records pointing at one file is the normal
+ * case, not an edge case, and a thumbnail of a file that is already on the page
+ * at full size is a card frame around nothing.
+ */
+const previews = new Map<string, string | null>(
+	examples.map((example) => {
+		const src = mediaSrc(example, plate);
+		return [example.slug, src === plate ? null : src];
+	}),
+);
 
 // The credit for a whole selection, generated from the same recorded evidence as
 // the per-example credits. A selection with no attribution obligations has no
@@ -88,24 +166,31 @@ const outcome = boardOutcome(
 	title={`Using ${p.title}`}
 	description={`What may be reused from ${p.title}, what it costs, and which parts are reference only. Same records as the catalogue, with the obligations spelled out.`}
 	path={`/use/${p.slug}`}
-	ogImage={mediaSrc(p)}
+	ogImage={plate}
 >
 	<article class="use-page">
+		{/*
+		 * The header is deliberately short: a breadcrumb, one headline, one line
+		 * and one action. Everything it used to carry — the `ASSET USE` eyebrow,
+		 * which repeated the breadcrumb's last crumb, and the second sentence of
+		 * the lede, which is about the records and belongs with them — moved rather
+		 * than disappeared, and the plate now starts inside the first viewport at
+		 * every width rather than at 124–149% of it.
+		 */}
 		<header class="head shell">
-			<nav class="crumbs" aria-label="Breadcrumb">
-				<a href="/">Catalogue</a>
-				{vertical && <><span aria-hidden="true">/</span><a href={`/verticals#${p.vertical}`}>{vertical}</a></>}
-				<span aria-hidden="true">/</span>
-				<a href={`/possibilities/${p.slug}`}>{p.title}</a>
-				<span aria-hidden="true">/</span>
-				<span class="crumbs__here">Asset use</span>
-			</nav>
+			<Crumbs
+				steps={[
+					{ label: "Catalogue", href: "/" },
+					...(vertical ? [{ label: vertical, href: `/verticals#${p.vertical}` }] : []),
+					{ label: p.title, href: `/possibilities/${p.slug}` },
+					{ label: "Asset use" },
+				]}
+			/>
 
-			<p class="tag tag--ember">Asset use</p>
 			<h1 class="display head__title">{p.title}</h1>
 			<p class="lede">
 				What you may take from this entry, what you owe if you do, and which parts are
-				reference only. Same records as the catalogue — nothing here is a second opinion.
+				reference only.
 			</p>
 
 			<form class="board" method="post" action="/api/board">
@@ -127,37 +212,107 @@ const outcome = boardOutcome(
 			}
 		</header>
 
-		<section class="summary shell" aria-labelledby="summary-title">
-			<h2 id="summary-title" class="tag tag-rule">This selection</h2>
-			<p class="summary__line" data-use-summary={summaryLine(summary)}>
-				{summary.total} example{summary.total === 1 ? "" : "s"} · {summaryLine(summary)}
-			</p>
-			<p class="summary__payload" data-payload-count={summary.payloads}>
-				{
-					summary.payloads === 0
-						? "0 retained originals to download. Asset Hunter keeps the licence evidence and the provenance for every example here, and no upstream files, so there is nothing to hand over yet."
-						: `${summary.payloads} retained original${summary.payloads === 1 ? "" : "s"} to download. Each is served unmodified, and its SHA-256 is checked against the record before it is sent.`
+		{/*
+		 * The band. The plate beside the decision, from 1280px — the width at which
+		 * the plate is 0.7 of its authored size with a column left for the words —
+		 * and the whole width of the shell below that, where a second column would
+		 * take the specimen's size to pay for prose. The two-column switch is not
+		 * 860px like the drill-in's on purpose: on the drill-in the plate is one
+		 * block among many, here it is the page.
+		 *
+		 * No `sticky` here, unlike the drill-in. A sticky plate is bounded by its own
+		 * grid area, and the decision beside it is a 500px column against a 780px
+		 * plate, so there is nothing for it to travel alongside: it would pin at its
+		 * own top and unpin on the next scroll. The drill-in's prose column is four
+		 * times the plate's height, which is the case a sticky plate is for. Asking
+		 * for one here would have bought a 0px range and a 59px overflow at 1024×768,
+		 * which is exactly what `npm run check:visual` reported.
+		 */}
+		<div class="body shell">
+			<SpecimenPlate
+				src={plate}
+				alt={p.tagline ? `${p.title} — ${p.tagline}` : p.title}
+				caption={
+					/* As on the drill-in: `none` must not be described as a plate. */
+					p.representativeOrigin === "none"
+						? "No representative media yet"
+						: (p.representativeOrigin
+								? `${originLabelFor(p.representativeOrigin)} specimen`
+								: "Specimen") + " · preview, not the asset"
 				}
-			</p>
-			{
-				p.rightsStatus && (
-					<p class="summary__status" style={`--c: var(--rights-${p.rightsStatus})`}>
-						<span class="summary__dot" aria-hidden="true" />
-						<strong class="tag">Entry status · {p.rightsStatus === "reference" ? "Reference only" : p.rightsStatus}</strong>
-						{RIGHTS_MEANING[p.rightsStatus as keyof typeof RIGHTS_MEANING]}
-					</p>
-				)
-			}
-			{
-				p.rightsStatus === "reference" && (
-					<p class="summary__warn">
-						An entry can be reference only as a whole and still hold an example you may reuse.
-						The weakest status belongs to the entry, not to every example under it — which is
-						why the states below are read per example.
-					</p>
-				)
-			}
-		</section>
+				loading="eager"
+				fetchpriority="high"
+			/>
+
+			<section class="decide" aria-labelledby="summary-title">
+				<h2 id="summary-title" class="tag tag-rule">This selection</h2>
+				<p class="summary__line" data-use-summary={summaryLine(summary)}>
+					{summary.total} example{summary.total === 1 ? "" : "s"}
+				</p>
+
+				{/*
+				 * The four states, each with a ring beside it and its count, worst
+				 * first. This is the answer to the question the page exists for, in the
+				 * vocabulary `docs/VOCABULARY.md` fixes, and it is deliberately the
+				 * second loudest thing on the page after the plate: a reader who takes
+				 * nothing else from `/use/<slug>` has to leave knowing which of the four
+				 * answers this entry gets.
+				 *
+				 * It carries the counts rather than repeating the summary line's, because
+				 * saying "1 reference only" directly above "Reference only 1" is the same
+				 * number twice on one screen. Every row is real — the counts come from the
+				 * same examples the rows below render — and a row reading 0 is an answer,
+				 * not a gap (DESIGN.md §1.5).
+				 *
+				 * Only when there is something to count. With no examples at all, four
+				 * rows of zeroes would read as a finding about the rights when the truth
+				 * is that there is nothing here yet, and the empty state below says that
+				 * in a sentence.
+				 */}
+				{summary.total > 0 && (
+					<dl class="states">
+						{summary.order.map((state) => (
+							<div class="states__row" data-use-state={state} style={`--c:${USE_STATE_COLOR[state]}`}>
+								<dt class="states__label">
+									<span class="states__ring" aria-hidden="true" />
+									{USE_STATE_LABEL[state]}
+								</dt>
+								<dd class="states__count">{summary.byState[state]}</dd>
+							</div>
+						))}
+					</dl>
+				)}
+
+				<p class="summary__payload" data-payload-count={summary.payloads}>
+					{
+						summary.payloads === 0
+							? "0 retained originals to download. Asset Hunter keeps the licence evidence and the provenance for every example here, and no upstream files, so there is nothing to hand over yet."
+							: `${summary.payloads} retained original${summary.payloads === 1 ? "" : "s"} to download. Each is served unmodified, and its SHA-256 is checked against the record before it is sent.`
+					}
+				</p>
+				{
+					p.rightsStatus && (
+						<p class="summary__status" style={`--c: var(--rights-${p.rightsStatus})`}>
+							<span class="summary__dot" aria-hidden="true" />
+							<strong class="tag">Entry status · {p.rightsStatus === "reference" ? "Reference only" : p.rightsStatus}</strong>
+							{RIGHTS_MEANING[p.rightsStatus as keyof typeof RIGHTS_MEANING]}
+						</p>
+					)
+				}
+				{
+					p.rightsStatus === "reference" && (
+						<p class="summary__warn">
+							An entry can be reference only as a whole and still hold an example you may reuse.
+							The weakest status belongs to the entry, not to every example under it — which is
+							why the states below are read per example.
+						</p>
+					)
+				}
+				<p class="summary__same">
+					Same records as the catalogue — nothing here is a second opinion.
+				</p>
+			</section>
+		</div>
 
 		<section class="picks shell" aria-labelledby="picks-title">
 			<h2 id="picks-title" class="section__title">Example by example</h2>
@@ -183,30 +338,48 @@ const outcome = boardOutcome(
 					</div>
 				) : (
 					<ul class="picks__list">
-						{examples.map((example) => (
-							<li class="pick" data-example={example.slug}>
-								<div class="pick__head">
-									<img
-										src={mediaSrc(example, mediaSrc(p))}
-										alt={example.title}
-										width="800"
-										height="1000"
-										loading="lazy"
-										decoding="async"
-									/>
-									<div class="pick__ident">
-										<h3 class="pick__title">{example.title}</h3>
-										{example.origin && (
-											<p class="pick__origin">
-												{ORIGIN_MEANING[example.origin as keyof typeof ORIGIN_MEANING]}
-											</p>
+						{examples.map((example) => {
+							const preview = previews.get(example.slug) ?? null;
+							return (
+								<li
+									class:list={["pick", { "pick--plate": preview }]}
+									data-example={example.slug}
+								>
+									{/*
+									 * The row's own preview, when it is a different file from
+									 * the plate above — rendered through the same component at
+									 * the same size, because a second, smaller presentation
+									 * of a specimen plate on the same page would be the
+									 * problem #64 is about, not a solution to it.
+									 */}
+									<div class="pick__head">
+										{preview && (
+											<SpecimenPlate
+												src={preview}
+												alt={example.title}
+												caption="Preview stored on this example · not the original"
+											/>
 										)}
-										{example.note && <p class="pick__note">{example.note}</p>}
+										<div class="pick__ident">
+											<h3 class="pick__title">{example.title}</h3>
+											{example.origin && (
+												<p class="pick__origin">
+													{ORIGIN_MEANING[example.origin as keyof typeof ORIGIN_MEANING]}
+												</p>
+											)}
+											{example.note && <p class="pick__note">{example.note}</p>}
+										</div>
 									</div>
-								</div>
 								<ExampleUse
 									example={example}
 									full
+									/*
+									 * The report form lives on the drill-in — one per entry
+									 * rather than one per example — so the journey from
+									 * "the thing I just noticed" is a link to that form and
+									 * not a second copy of it on a page with several examples.
+									 */
+									reportHref={`/possibilities/${p.slug}#report`}
 									plateCaption={
 										example.origin === "generated"
 											? "A plate generated for this catalogue to show the technique. It is not the source asset, and downloading it would not give you one."
@@ -214,7 +387,8 @@ const outcome = boardOutcome(
 									}
 								/>
 							</li>
-						))}
+						);
+					})}
 					</ul>
 				)
 			}
@@ -277,42 +451,20 @@ const outcome = boardOutcome(
 		display: grid;
 		gap: var(--sp-3);
 		justify-items: start;
-		padding-block: var(--sp-5) var(--sp-6);
+		padding-block: var(--sp-4) var(--sp-5);
 	}
 
-	.crumbs {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 0.1rem 0.5rem;
-		font-family: var(--font-mono);
-		font-size: var(--step--2);
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-		color: var(--ink-3);
-	}
-
-	/* Padding, not type size, carries the tap target: breadcrumb type is
-	   intentionally small so the hierarchy stays readable. */
-	.crumbs a {
-		display: inline-flex;
-		align-items: center;
-		min-height: var(--tap);
-		padding-inline: 0.15rem;
-		color: var(--ink-3);
-		transition: color var(--dur-fast) var(--ease-out);
-	}
-
-	.crumbs a:hover {
-		color: var(--ink);
-	}
-
-	.crumbs__here {
-		color: var(--ink-2);
-	}
-
+	/*
+	 * `--step-3`, not `--step-4`.
+	 *
+	 * The drill-in's title is four steps up because the page that follows it is
+	 * technique, notes and rights. This page's subject is one plate and the
+	 * obligations that come with it, and `DESIGN.md` §1.1 says the specimen is the
+	 * content: a title taller than the plate's own annotations inverts that. The
+	 * title is still the largest type on the page, and it is still the `h1`.
+	 */
 	.head__title {
-		font-size: var(--step-4);
+		font-size: var(--step-3);
 		max-width: 26ch;
 	}
 
@@ -323,7 +475,7 @@ const outcome = boardOutcome(
 		flex-wrap: wrap;
 		align-items: center;
 		gap: var(--sp-3);
-		margin-top: var(--sp-2);
+		margin-top: var(--sp-1);
 	}
 
 	.board button {
@@ -354,9 +506,46 @@ const outcome = boardOutcome(
 		max-width: 44ch;
 	}
 
+	/* --- The band: plate beside the decision --- */
+
+	.body {
+		display: grid;
+		gap: var(--sp-6);
+		padding-block: var(--sp-5) var(--sp-7);
+		border-top: 1px solid var(--line);
+	}
+
+	/*
+	 * 1.05fr / 1fr, and not the drill-in's 0.9fr / 1.1fr.
+	 *
+	 * The number that matters is the plate's width at 1280px, which is where this
+	 * composition switches: 1158px of column space × 0.512 is a 593px plate, or
+	 * 0.74 of the 800px the plate is authored at — a 13px annotation lands at
+	 * 9.6px. At 0.45 it would be 521px and 8.5px, which is legible enough to be
+	 * arguable, and this page is the one where the preview has to do work
+	 * (`DESIGN.md` §9.6). It is also why the switch is at 1280px rather than 860:
+	 * below 1280 the plate takes the whole shell, which is wider than any column
+	 * split would give it.
+	 *
+	 * `npm run check:visual` asserts the result rather than this comment: the
+	 * `asset-use` route carries a minimum plate width, because DESIGN.md §9.6 now
+	 * states one.
+	 */
+	@media (width >= 1280px) {
+		.body {
+			grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+			gap: var(--sp-7);
+		}
+	}
+
+	.decide {
+		display: grid;
+		gap: var(--sp-4);
+		align-content: start;
+	}
+
 	/* --- Summary --- */
 
-	.summary,
 	.picks,
 	.bundle,
 	.gap {
@@ -369,6 +558,7 @@ const outcome = boardOutcome(
 	.summary__line,
 	.summary__payload,
 	.summary__warn,
+	.summary__same,
 	.gap p,
 	.bundle__note,
 	.picks p {
@@ -380,6 +570,67 @@ const outcome = boardOutcome(
 
 	.summary__payload {
 		color: var(--ink-3);
+	}
+
+	/*
+	 * The four use states, ring beside label, count in the display face. A `dl`
+	 * because it is a table of terms and their counts, and a ring rather than the
+	 * filled dot the wall uses for origin — the same distinction `ExampleUse`
+	 * draws, for the same reason.
+	 *
+	 * Two fixed columns rather than `auto-fit`. There are exactly four states, so
+	 * an auto-fit track orphans the last one into a row of its own at about half
+	 * the widths, and the four answers stop reading as a set — which is the one
+	 * thing this block is for.
+	 */
+	.states {
+		display: grid;
+		gap: var(--sp-2) var(--sp-5);
+		padding-top: var(--sp-3);
+		border-top: 1px solid var(--line);
+	}
+
+	@media (width >= 560px) {
+		.states {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+
+	.states__row {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		gap: var(--sp-3);
+		align-items: baseline;
+	}
+
+	.states__label {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--ink-2);
+		line-height: 1.35;
+	}
+
+	.states__ring {
+		flex: none;
+		width: 0.7rem;
+		height: 0.7rem;
+		border-radius: 50%;
+		box-shadow: inset 0 0 0 2px var(--c);
+	}
+
+	/* Tabular figures so a column of four counts lines up, and the display face
+	   because this is the number a reader came for. */
+	.states__count {
+		font-family: var(--font-display);
+		font-size: var(--step-1);
+		font-weight: 600;
+		color: var(--ink);
+		font-variant-numeric: tabular-nums;
 	}
 
 	.summary__status {
@@ -410,7 +661,8 @@ const outcome = boardOutcome(
 		background: var(--c);
 	}
 
-	.summary__warn {
+	.summary__warn,
+	.summary__same {
 		color: var(--ink-3);
 	}
 
@@ -432,7 +684,7 @@ const outcome = boardOutcome(
 
 	.picks__list {
 		display: grid;
-		gap: var(--sp-5);
+		gap: var(--sp-6);
 		list-style: none;
 		padding: 0;
 		margin-top: var(--sp-3);
@@ -440,24 +692,29 @@ const outcome = boardOutcome(
 
 	.pick {
 		display: grid;
-		gap: var(--sp-3);
+		gap: var(--sp-4);
 	}
 
+	/*
+	 * Two columns only when there is a second plate to put beside the label, which
+	 * is decided in the template (`pick--plate`) rather than with `:has(.plate)`.
+	 * Astro scopes each compound selector with this file's hash, so a selector that
+	 * reaches into a child component's root is exactly the mistake
+	 * `.example > :global(.use)` on the drill-in was. With the representative plate
+	 * above — which is the preview for every example in the catalogue today — the
+	 * label takes the full measure and the row reads as the rights statement it is.
+	 */
 	.pick__head {
 		display: grid;
-		grid-template-columns: 6.5rem minmax(0, 1fr);
 		gap: var(--sp-4);
 		align-items: start;
 	}
 
-	.pick__head img {
-		width: 100%;
-		height: auto;
-		aspect-ratio: 4 / 5;
-		object-fit: cover;
-		border: 1px solid var(--line);
-		border-radius: var(--radius);
-		background: var(--surface);
+	@media (width >= 1280px) {
+		.pick--plate .pick__head {
+			grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+			gap: var(--sp-7);
+		}
 	}
 
 	.pick__ident {
@@ -532,16 +789,5 @@ const outcome = boardOutcome(
 
 	.none__title {
 		font-size: var(--step-1);
-	}
-
-	@media (width <= 560px) {
-		.pick__head {
-			grid-template-columns: 1fr;
-			gap: var(--sp-3);
-		}
-
-		.pick__head img {
-			max-width: 8rem;
-		}
 	}
 </style>

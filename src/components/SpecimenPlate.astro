@@ -1,0 +1,130 @@
+---
+/**
+ * The representative specimen plate (#64).
+ *
+ * One implementation for the two surfaces that show a plate at a size somebody
+ * can read: the drill-in and the asset-use page. They each had their own
+ * `<figure>`, which is how `/use/<slug>` ended up rendering the plate at 104px
+ * while the drill-in rendered the same file at 521px — one design idea written
+ * twice, and nothing in either stylesheet saying the other one existed. The
+ * caption is a required prop for the same reason: DESIGN.md §9.6 says the plate
+ * and the original are different files, and a prop with no default makes a plate
+ * that forgets to say so a compile error rather than a page nobody checked.
+ *
+ * ## Why the size rule lives here
+ *
+ * A plate is authored at 800×1000 with mono annotations at 12–19px, and those
+ * annotations are the plate's content — `DESIGN.md` §6 puts the real constraint
+ * values on the face (a 2px gap, a 128-step budget, `smooth-min`). Rendered at
+ * 104px they land at 1.7px, which is not a small annotation, it is a texture.
+ * So the width is a design constraint rather than a `max-width` left to taste:
+ *
+ * - `--plate-cap` (`40rem`, which is 640px at the designed type size) is 0.8 of
+ *   the authored width, where a 13px annotation renders at 10.4px. Past it the
+ *   plate stops getting more legible and starts costing the page its second
+ *   column.
+ * - Below it the plate takes the full width of whatever column it is in, which is
+ *   the whole width of the shell on a phone.
+ *
+ * On a phone neither is enough — no layout makes a 13px annotation readable at
+ * 390px — and the honest answer is the plate at the largest size a phone has,
+ * with the drill-in as the reference for that (`DESIGN.md` §9.6).
+ */
+interface Props {
+	src: string;
+	alt: string;
+	/** Required. Names the plate and says what it is not. */
+	caption: string;
+	/**
+	 * The page's hero plate: it loads first, and — at 860px and up, where the
+	 * drill-in puts the plate beside its prose — it sticks while the prose scrolls.
+	 *
+	 * A page whose two-column switch is *later* than 860px must not ask for it: the
+	 * sticky rule would apply below that page's own switch, where the plate is a
+	 * full-width band taller than a short window. `/use/<slug>` switched at 1280px
+	 * for exactly that reason and does not pass this.
+	 */
+	sticky?: boolean;
+	loading?: "eager" | "lazy";
+	/** Only a hero plate is worth preloading. */
+	fetchpriority?: "high" | "auto";
+}
+
+const { src, alt, caption, sticky = false, loading = "lazy", fetchpriority = "auto" } =
+	Astro.props;
+---
+
+<figure class:list={["plate", { "plate--sticky": sticky }]}>
+	<img
+		src={src}
+		alt={alt}
+		width="800"
+		height="1000"
+		loading={loading}
+		decoding="async"
+		fetchpriority={fetchpriority}
+	/>
+	<figcaption class="tag">{caption}</figcaption>
+</figure>
+
+<style>
+	.plate {
+		display: grid;
+		gap: var(--sp-3);
+		align-content: start;
+		justify-self: start;
+		/* `rem` rather than `px`: this is a readability cap, and a reader who has
+		   doubled their font size wants a bigger plate, not a smaller one. A px cap
+		   would also be the wrong unit for a rule stated as a fraction of an
+		   authored size — 800 × 0.8. The grid column is what bounds it below this. */
+		max-width: var(--plate-cap, 40rem);
+		width: 100%;
+	}
+
+	.plate img {
+		width: 100%;
+		height: auto;
+		/*
+		 * 4:5 is the plate contract (`DESIGN.md` §6) and `npm run check:specimens`
+		 * holds every plate to it, so declaring it costs nothing and buys two
+		 * things: the general ratio check in `check:visual` has something to measure
+		 * here — a media route with no ratio container is a route whose plate crop is
+		 * unchecked — and an example preview that is *not* 4:5 cannot stretch itself
+		 * out of shape. `contain` rather than `cover` because §5 says a tier changes
+		 * size and never shape: a preview that does not fit the frame is letterboxed
+		 * in it, never cropped by it.
+		 */
+		aspect-ratio: 4 / 5;
+		object-fit: contain;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		background: var(--surface);
+	}
+
+	.plate figcaption {
+		color: var(--ink-3);
+	}
+
+	/*
+	 * Two conditions, not one, and both of them learned the hard way (#46).
+	 *
+	 * `width >= 860px` is the layout switch: below it the plate is a band above
+	 * the prose, and a sticky band is worse than a static one.
+	 *
+	 * `height >= 46rem` is why a sticky plate cannot be taller than the window.
+	 * A sticky element parks its top edge at its `top` offset and stays there, so
+	 * anything taller than the viewport has its own bottom permanently off screen
+	 * at every scroll offset — no position shows all of it. At 896×414 and
+	 * 932×430, which is where a phone is held sideways, the drill-in's plate
+	 * measured 471–491px in a 414–430px viewport: 129–133px of the specimen, which
+	 * is the content of that page, was unreachable. Below this height the plate
+	 * scrolls with the prose and every row of the diagram is readable.
+	 */
+	@media (width >= 860px) and (height >= 46rem) {
+		.plate--sticky {
+			position: sticky;
+			top: calc(var(--masthead-h) + var(--sp-4));
+			align-self: start;
+		}
+	}
+</style>
