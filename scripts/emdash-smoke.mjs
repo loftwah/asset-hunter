@@ -159,10 +159,33 @@ if (serverUp) {
 		`HTTP ${admin.status}${admin.location ? ` → ${admin.location}` : ""}`,
 	);
 
+	/*
+	 * The setup wizard must **not** be reachable in production.
+	 *
+	 * EmDash's first-run wizard is unauthenticated: `/_emdash/api/setup` walks any
+	 * anonymous visitor through creating the first administrator, and the CMS session
+	 * is a same-origin `httpOnly` cookie — so whoever walks it owns the content, the
+	 * media and the users. `src/middleware.ts` therefore refuses it in a production
+	 * build unless the build opted in with `EMDASH_ALLOW_SETUP=1`, which is the
+	 * documented first-deploy-only flag (`docs/DEPLOY.md`, `docs/SECURITY.md` §1).
+	 *
+	 * This check used to assert the opposite — `200` or `302` — which meant the
+	 * smoke run was reporting the security fix from #53 as a *failure*. A gate that
+	 * demands the vulnerability is a gate that would have blocked the fix that
+	 * closed it.
+	 *
+	 * So: a production deployment must 404 here. Reaching the wizard is not a
+	 * missing feature; it is an unowned site.
+	 */
 	const setup = await probe("/_emdash/admin/setup");
 	record(
-		"EmDash setup route is reachable",
-		[200, 302].includes(setup.status),
+		"the unauthenticated setup wizard is closed in production",
+		setup.status === 404,
+		`HTTP ${setup.status}${setup.status === 404 ? "" : " — the wizard is open on an owned site"}`,
+	);
+	record(
+		"setup status is itself closed",
+		/[Nn]ot found/.test(setup.body) || setup.status === 404,
 		`HTTP ${setup.status}`,
 	);
 
@@ -183,8 +206,18 @@ if (serverUp) {
 		const detail = await probe(`/possibilities/${slug}`);
 		const served =
 			detail.status === 200 &&
-			/class="plate"/.test(detail.body) &&
-			/class="section__title"/.test(detail.body);
+			/*
+			 * `/class="plate"/` stopped matching when the drill-in's plate became
+			 * sticky, because the class is now emitted as `class="plate
+			 * plate--sticky"`. The check had been failing on every detail route
+			 * since, and three green-looking runs did not catch it — a smoke check
+			 * that reports a shape nobody renders is worse than no smoke check,
+			 * because it trains a reader to ignore red.
+			 *
+			 * So it matches the class *token*, which is what it meant all along.
+			 */
+			/class="[^"]*\bplate\b/.test(detail.body) &&
+			/class="[^"]*\bsection__title\b/.test(detail.body);
 		record(`detail route serves "${slug}"`, served, `HTTP ${detail.status}`);
 	}
 
