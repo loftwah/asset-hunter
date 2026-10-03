@@ -191,3 +191,58 @@ export function safeSnippet(snippet: string | null | undefined): string | null {
 		.replaceAll("&lt;mark&gt;", "<mark>")
 		.replaceAll("&lt;/mark&gt;", "</mark>");
 }
+
+/**
+ * Search terms this catalogue is guaranteed to answer.
+ *
+ * ## Why the suggestions are derived rather than written
+ *
+ * `/search` used to suggest three hand-written example queries:
+ *
+ * > "readability at small size", "loop without a seam", "show confidence honestly"
+ *
+ * Measured against production, **"show confidence honestly" returns no match**, and
+ * "loop without a seam" returns nothing either. The page was handing a reader three
+ * queries and at least one of them failed — on the page whose entire job is to help
+ * someone find a thing.
+ *
+ * A hand-written suggestion rots the moment the catalogue changes, and nothing
+ * notices: the page still renders, still looks helpful, and is still wrong. So the
+ * suggestions are computed from what is actually there.
+ *
+ * ## Why vertical labels specifically
+ *
+ * Because they are the one term class that **cannot** fail. The vertical field is
+ * indexed, and a label is guaranteed to match the entries that carry it: searching
+ * `Logos` returns 11 possibilities, which is exactly the number of entries whose
+ * vertical is `logos`, and the word appears in no title, summary or technique. So a
+ * suggestion drawn from a vertical is true by construction, and it degrades
+ * truthfully — a vertical with one entry suggests itself and returns one result,
+ * which is still an answer.
+ *
+ * Ordered by how many entries carry the vertical, so the suggestions point at the
+ * parts of the catalogue that are actually populated. An alphabetical list would
+ * suggest the emptiest verticals first, which is the opposite of help.
+ */
+export function searchSuggestions(
+	possibilities: ReadonlyArray<{ verticalLabel?: string | null }>,
+	limit = 3,
+): string[] {
+	// Keyed case-insensitively, because search is case-insensitive: two labels
+	// differing only in case would return identical results, so offering both is noise
+	// rather than choice. The label is kept as first written, since that is the form
+	// the catalogue uses everywhere else.
+	const counts = new Map<string, { label: string; n: number }>();
+	for (const possibility of possibilities) {
+		const label = possibility.verticalLabel?.trim();
+		if (!label) continue;
+		const key = label.toLowerCase();
+		const seen = counts.get(key);
+		if (seen) seen.n++;
+		else counts.set(key, { label, n: 1 });
+	}
+	return [...counts.values()]
+		.sort((a, b) => b.n - a.n || a.label.localeCompare(b.label))
+		.slice(0, Math.max(0, limit))
+		.map((entry) => entry.label);
+}
