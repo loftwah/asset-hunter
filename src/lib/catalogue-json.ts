@@ -25,7 +25,7 @@ import { DateTime, Effect } from "effect";
 import {
 	REFERENCE_CONCURRENCY,
 	loadCollections,
-	loadExamplesFor,
+	loadExampleGraph,
 	loadPossibilities,
 	type Example,
 	type Possibility,
@@ -211,17 +211,34 @@ export function buildCatalogue(
 		]);
 		const aggregates = aggregateBySubject(ratings);
 
-		const serialised = yield* Effect.forEach(
-			possibilities,
-			(possibility) =>
-				Effect.gen(function* () {
-					const { examples } = yield* loadExamplesFor(possibility.slug);
-					const aggregate =
-						aggregates.get(`possibility:${possibility.slug}`) ?? aggregateRatings([]);
-					return serialisePossibility(possibility, examples, aggregate);
-				}),
-			{ concurrency: REFERENCE_CONCURRENCY },
-		);
+		/*
+		 * The example graph is read **once**, not once per possibility.
+		 *
+		 * `loadExamplesFor(slug)` is `loadExampleGraph()` indexed by slug — and
+		 * `loadExampleGraph` reads the whole `examples` collection and then issues one
+		 * single-entry read per example to resolve its `possibility` reference, because
+		 * that reference has no column and the list route cannot resolve it. Calling it
+		 * from inside the per-possibility loop therefore rebuilt the entire graph 34
+		 * times: about **1,190 subrequests** for 34 possibilities, quadratic in the
+		 * catalogue, which is why rebuilding `/api/catalogue.json` took 99-117 seconds
+		 * and why bounding a single read barely dented it.
+		 *
+		 * The fix is not clever, it is just hoisting: one graph, read once, indexed by
+		 * the slug the loop already has. Roughly 1,190 subrequests becomes about 35.
+		 *
+		 * The lesson is the shape, not the hoist. Every other loader in this function is
+		 * called once — `loadCollections`, `loadRatings`, `loadReports` — and that is why
+		 * they look obviously right. This one had a per-item signature, so per-item use
+		 * looked equally obvious, and nobody costed it because nothing failed loudly:
+		 * it was just slow, intermittently wrong, and cached often enough to hide both.
+		 */
+		const exampleGraph = yield* loadExampleGraph();
+
+		const serialised = possibilities.map((possibility) => {
+			const aggregate =
+				aggregates.get(`possibility:${possibility.slug}`) ?? aggregateRatings([]);
+			return serialisePossibility(possibility, exampleGraph[possibility.slug] ?? [], aggregate);
+		});
 		serialised.sort((a, b) => a.id.localeCompare(b.id));
 
 		const rights: Record<string, number> = {};
