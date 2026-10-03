@@ -1,0 +1,37 @@
+{
+	"$comment": "Written by scripts/generate-og.mjs. `npm run og:check` fails when the brand tokens move, because a share card that no longer matches the product is still a valid PNG.",
+	"tokens": "5627a53ffbea4f61641a50c3ed7edcdfa9f9def7c8202b56747cd406deacae30",
+	"generatedFrom": "http://localhost:4321",
+	"outputs": [
+		{
+			"file": "og.png",
+			"width": 1200,
+			"height": 630,
+			"bytes": 257705
+		},
+		{
+			"file": "og-square.png",
+			"width": 1200,
+			"height": 1200,
+			"bytes": 556764
+		},
+		{
+			"file": "og-story.png",
+			"width": 1080,
+			"height": 1920,
+			"bytes": 810503
+		},
+		{
+			"file": "og-portrait.png",
+			"width": 1200,
+			"height": 1500,
+			"bytes": 687202
+		},
+		{
+			"file": "og-mark.png",
+			"width": 1200,
+			"height": 630,
+			"bytes": 35359
+		}
+	]
+}

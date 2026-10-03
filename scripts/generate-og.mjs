@@ -17,9 +17,11 @@
  * Requires the dev server to be running.
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { chromium } from "playwright";
 
 const args = process.argv.slice(2);
+const checkOnly = args.includes("--check");
 const urlIndex = args.indexOf("--url");
 const baseUrl = urlIndex === -1 ? "http://localhost:4321" : args[urlIndex + 1];
 const publicDir = new URL("../public/", import.meta.url).pathname;
@@ -155,6 +157,11 @@ const OUTPUTS = [
 	{ file: "og.png", width: 1200, height: 630, columns: 6, rows: 2, grid: true },
 	{ file: "og-square.png", width: 1200, height: 1200, columns: 4, rows: 3, grid: true },
 	{ file: "og-story.png", width: 1080, height: 1920, columns: 3, rows: 4, grid: true },
+	// 4:5, because the feed placements that get a link preview crop towards portrait
+	// and a 1.91:1 card loses its edges there. The grid runs 4×4 so the frame fills:
+	// six across at this ratio leaves the bottom third empty, which is the "valid PNG
+	// that communicates nothing" the note above warns about.
+	{ file: "og-portrait.png", width: 1200, height: 1500, columns: 4, rows: 4, grid: true },
 	// A wordmark card for surfaces that want the brand rather than a grid.
 	{ file: "og-mark.png", width: 1200, height: 630, columns: 0, rows: 0, grid: false },
 ];
@@ -168,10 +175,16 @@ const OUTPUTS = [
  * by measuring the captured pixels rather than by trusting the template.
  */
 function inspectPng(buffer) {
-	// PNG dimensions live in the IHDR chunk, so they are read from the header
-	// rather than by decoding the image. Playwright already wrote the file at
-	// the right size, so the check that matters is the pixel content.
-	return { bytes: buffer.length };
+	// PNG dimensions live in the IHDR chunk — bytes 16..23, big-endian — so they are
+	// read from the header rather than by decoding the image.
+	//
+	// `og:check` needs them, and it cannot ask Playwright: the whole point of that
+	// check is to run offline. Without them it reported every card as
+	// "undefined×undefined, not the declared size", which is a check that fails for a
+	// reason nobody can act on.
+	const width = buffer.length >= 24 ? buffer.readUInt32BE(16) : null;
+	const height = buffer.length >= 24 ? buffer.readUInt32BE(20) : null;
+	return { bytes: buffer.length, width, height };
 }
 
 /**
@@ -191,6 +204,112 @@ async function frameCoverage(page, total) {
 		}, 0);
 		return { marks: marks.length, coverage: covered / area };
 	}, total);
+}
+
+/**
+ * A fingerprint of the tokens these cards were composed from.
+ *
+ * ## Why the images can now be checked without rendering them
+ *
+ * `generate:og` needs a running server and a browser, so it cannot sit in `verify` —
+ * which is the same reason `check:visual` is only in `verify:full`. The consequence
+ * was that the brand media could drift: change `--canvas` in `src/styles/global.css`
+ * and every shipped share card keeps the old palette until somebody remembers to
+ * regenerate. Nothing reported it, because the images are still valid PNGs of the
+ * right dimensions, and that is the failure this whole repository keeps rediscovering.
+ *
+ * So a generation records the tokens it used, and `--check` recomputes the
+ * fingerprint and compares. Cheap, offline, and it fails on the *cause* rather than
+ * on a symptom nobody measures.
+ *
+ * The fingerprint is over the parsed token values, not the file: reformatting a
+ * declaration should not demand a re-render, and a changed token should.
+ */
+function tokenFingerprint(tokens) {
+	// `brandTokens()` resolves the handful of values a card actually overrides into a
+	// plain object, not the whole token Map. Fingerprint *those*, because they are what
+	// the composition depends on — a token no card reads cannot make a card wrong.
+	//
+	// The first version spread `tokens.entries()` and threw on every run, which is why
+	// the manifest it was written for did not exist until this was fixed: the generation
+	// printed five successes and then died on the line after them.
+	const canonical = Object.entries(tokens)
+		.filter(([, value]) => value !== undefined)
+		.sort(([a], [b]) => a.localeCompare(b));
+	return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
+}
+
+const MANIFEST = `${publicDir}og-manifest.json`;
+
+/**
+ * Fail if the committed cards were not composed from the tokens in force now.
+ *
+ * Four things, because each is a way for the media to be quietly wrong:
+ * no manifest at all; a fingerprint that has moved; a declared card that is missing
+ * or implausibly small; and a card in `public/` that nothing declares, which is how a
+ * renamed output lingers and gets linked from somewhere.
+ */
+function checkGenerated() {
+	const problems = [];
+	if (!existsSync(MANIFEST)) {
+		problems.push(
+			`no ${MANIFEST.replace(publicDir, "public/")} — run \`npm run generate:og\` so the cards record the tokens they used`,
+		);
+	} else {
+		const manifest = JSON.parse(readFileSync(MANIFEST, "utf8"));
+		const tokens = brandTokens();
+		const now = tokenFingerprint(tokens);
+		if (manifest.tokens !== now) {
+			problems.push(
+				`the share cards were composed from different brand tokens (${String(manifest.tokens).slice(0, 12)}…, now ${now.slice(0, 12)}…) — run \`npm run generate:og\``,
+			);
+		}
+		for (const out of manifest.outputs ?? []) {
+			const path = `${publicDir}${out.file}`;
+			if (!existsSync(path)) {
+				problems.push(`${out.file} is declared but missing`);
+				continue;
+			}
+			const { width, height, bytes } = inspectPng(readFileSync(path));
+			if (width !== out.width || height !== out.height) {
+				problems.push(`${out.file} is ${width}×${height}, not the declared ${out.width}×${out.height}`);
+			}
+			/*
+			 * Compared against what generation recorded, not a fixed floor.
+			 *
+			 * A fixed floor was tried and is too weak to be worth having: a hand-built
+			 * solid-colour PNG of the right dimensions compressed to 7 KB, which cleared a
+			 * 4 KB threshold and sailed through a check whose whole job is to notice that a
+			 * card stopped being a card. Half of what was generated catches that, and
+			 * catches a truncated write for the same reason.
+			 *
+			 * What genuinely proves a card is *not blank* is `frameCoverage`, measured in
+			 * the browser at generation time. This is the offline proxy for "the file is
+			 * still the file that was rendered", and it says so rather than implying more.
+			 */
+			if (out.bytes && bytes < out.bytes / 2) {
+				problems.push(
+					`${out.file} is ${(bytes / 1024).toFixed(0)} KB where generation recorded ${(out.bytes / 1024).toFixed(0)} KB — truncated, or replaced with something that is not a rendered card`,
+				);
+			}
+		}
+		const declared = new Set((manifest.outputs ?? []).map((o) => o.file));
+		for (const out of OUTPUTS) {
+			if (!declared.has(out.file)) {
+				problems.push(`${out.file} is a declared output but the manifest does not record it`);
+			}
+		}
+	}
+
+	if (problems.length) {
+		console.error("✖ brand media is out of step with the product:");
+		for (const problem of problems) console.error(`    ${problem}`);
+		process.exit(1);
+	}
+	const manifest = JSON.parse(readFileSync(MANIFEST, "utf8"));
+	console.log(
+		`✔ ${manifest.outputs.length} share cards match the current brand tokens (${manifest.tokens.slice(0, 12)}…)`,
+	);
 }
 
 async function capture(page, out, tokens) {
@@ -214,11 +333,27 @@ async function capture(page, out, tokens) {
 	}
 
 	const buffer = await page.screenshot({ path: `${publicDir}${out.file}`, type: "png" });
-	const { bytes } = inspectPng(buffer);
+	const { bytes, width, height } = inspectPng(buffer);
+	// The frame we asked for and the frame we got are not the same claim. Playwright
+	// honours the viewport, so a mismatch means the output definition and the file on
+	// disk have drifted apart, which is exactly what `og:check` later fails on.
+	if (width !== out.width || height !== out.height) {
+		throw new Error(`${out.file}: wrote ${width}×${height}, expected ${out.width}×${out.height}`);
+	}
 	return { ...out, marks, coverage, bytes };
 }
 
 async function main() {
+	if (checkOnly) {
+		try {
+			checkGenerated();
+		} catch (err) {
+			console.error(`✖ ${err.message}`);
+			process.exit(1);
+		}
+		return;
+	}
+
 	let tokens;
 	try {
 		tokens = brandTokens();
@@ -273,8 +408,26 @@ async function main() {
 				`${w.marks} marks, ${(w.coverage * 100).toFixed(0)}% of frame, ${(w.bytes / 1024).toFixed(0)} KB`,
 		);
 	}
+	// Recorded so `--check` can tell "these cards match the brand" from "these cards
+	// are whatever they were when somebody last ran this".
+	writeFileSync(
+		MANIFEST,
+		`${JSON.stringify(
+			{
+				$comment:
+					"Written by scripts/generate-og.mjs. `npm run og:check` fails when the brand tokens move, because a share card that no longer matches the product is still a valid PNG.",
+				tokens: tokenFingerprint(tokens),
+				generatedFrom: baseUrl,
+				outputs: written.map((w) => ({ file: w.file, width: w.width, height: w.height, bytes: w.bytes })),
+			},
+			null,
+			"\t",
+		)}\n`,
+	);
+
 	console.log(`\n✔ generated ${written.length} brand images from the running product`);
 	console.log(`  tokens read from src/styles/global.css — canvas ${tokens.canvas}`);
+	console.log(`  recorded in public/og-manifest.json, so og:check can tell when they go stale`);
 }
 
 main().catch((err) => {
