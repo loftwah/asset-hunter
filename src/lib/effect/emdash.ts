@@ -411,6 +411,26 @@ export class EmDashContentApi extends Context.Service<
 			collection: string,
 			slug: string,
 		) => Effect.Effect<void, EmDashWrite>;
+		/**
+		 * Takes an entry out of the public read without destroying it.
+		 *
+		 * EmDash's item route carries an `unpublish` sibling to `publish`, and this is
+		 * deliberately **not** a delete. `handleContentDelete` exists too, and for a
+		 * rating withdrawal it is the wrong tool: deleting the row destroys the record
+		 * that a reader rated and then changed their mind, which is the one fact worth
+		 * keeping. `src/lib/disputes.ts` already argues this for takedowns — "quarantine
+		 * is a *gate*, not a deletion" — and a withdrawn rating is the same shape of
+		 * decision arriving from the other direction.
+		 *
+		 * Unpublishing is also the reversible one. The public read asks for
+		 * `status: "published"`, so an unpublished rating leaves the aggregate at once,
+		 * and re-rating finds the same entry and publishes it again.
+		 */
+		readonly unpublish: (
+			request: EmDashRequest,
+			collection: string,
+			slug: string,
+		) => Effect.Effect<void, EmDashWrite>;
 		/** Reads one entry back, with the revision token a later write needs. */
 		readonly read: (
 			request: EmDashRequest,
@@ -539,6 +559,19 @@ export class EmDashContentApi extends Context.Service<
 				);
 			});
 
+		const unpublish = Effect.fn("EmDashContentApi.unpublish")(function* (
+			request: EmDashRequest,
+			collection: string,
+			slug: string,
+		) {
+			yield* call(
+				`unpublish ${collection}/${slug}`,
+				url(request, `${itemPath(collection, slug)}/unpublish`),
+				{ method: "POST", headers: { ...request.headers } },
+			);
+		});
+
+
 			const read = Effect.fn("EmDashContentApi.read")(function* (
 				request: EmDashRequest,
 				collection: string,
@@ -585,7 +618,7 @@ export class EmDashContentApi extends Context.Service<
 				};
 			});
 
-			return EmDashContentApi.of({ create, update, publish, read });
+			return EmDashContentApi.of({ create, update, publish, unpublish, read });
 		}),
 	);
 }

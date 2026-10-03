@@ -239,7 +239,15 @@ const ratingData = (
  * rather than of a code path: two clicks in the same second cannot produce two
  * rows, and a reader revising an opinion edits the same entry.
  */
-const ratingSlug = (subjectType: SubjectType, subjectSlug: string, userId: string) =>
+/**
+ * The id a rating for this subject by this reader lands on.
+ *
+ * Exported so a test can assert against the real scheme instead of a copy of it. The
+ * first version of the withdrawal test hardcoded `rating-crowd-fluid-u1`, which was a
+ * guess; the code was right and the expectation was wrong, which is the worst order for
+ * a test to be wrong in — it looks like a bug in the thing you just built.
+ */
+export const ratingSlug = (subjectType: SubjectType, subjectSlug: string, userId: string) =>
 	`r-${subjectType}-${subjectSlug}-${userId}`.slice(0, 80);
 
 /**
@@ -283,6 +291,54 @@ export function saveRating(
 				);
 		yield* api.publish(request, "ratings", slug);
 		return { id: slug, replaced: Boolean(existing) };
+	});
+}
+
+/**
+ * Takes back a rating this reader filed.
+ *
+ * ## Why withdrawal exists at all
+ *
+ * `SignalPanel.astro` justifies requiring a sign-in to rate with the sentence "A
+ * rating you cannot revise or withdraw is not an opinion, it is a vote". Revising
+ * worked — `saveRating` upserts by deterministic slug. **Withdrawing did not exist**,
+ * so the sentence was half a promise, and a reader who signed in because of it found a
+ * control that was not there. The capability the copy leans on was the capability
+ * missing.
+ *
+ * ## Why unpublish and not delete
+ *
+ * EmDash will delete the row. That would destroy the record that this reader rated
+ * and then changed their mind, which is the only fact the row holds that matters.
+ * `src/lib/disputes.ts` already makes this argument for takedowns — "quarantine is a
+ * *gate*, not a deletion", because the evidence is what a later correction is made
+ * from — and a withdrawal is the same decision arriving from the other direction.
+ *
+ * Unpublishing also composes: the public read asks for `status: "published"`, so the
+ * rating leaves the aggregate immediately, and `saveRating` finds the same entry and
+ * publishes it again if the reader changes their mind back.
+ *
+ * ## "Nothing to withdraw" is not a failure
+ *
+ * Returns `false` rather than failing when there is no rating. A double-clicked
+ * withdraw button is not an error, and the reader should not be told something went
+ * wrong when the outcome is exactly what they asked for.
+ */
+export function withdrawRating(
+	request: EmDashRequest,
+	input: { subjectType: SubjectType; subjectSlug: string; actor: Actor },
+): Effect.Effect<
+	{ withdrawn: boolean },
+	EmDashWrite | CatalogueDecodeError,
+	EmDashContentApi | EmDashContent
+> {
+	return Effect.gen(function* () {
+		const { subjectType, subjectSlug, actor } = input;
+		const api = yield* EmDashContentApi;
+		const existing = yield* findRating(request, actor.id, subjectType, subjectSlug);
+		if (!existing) return { withdrawn: false };
+		yield* api.unpublish(request, "ratings", existing.id);
+		return { withdrawn: true };
 	});
 }
 

@@ -62,7 +62,7 @@
 import type { APIRoute } from "astro";
 import { Cause, Effect, Exit, Option } from "effect";
 import { parseReason, parseStars, parseSubjectType } from "../../lib/rating.ts";
-import { actorFrom, createReport, saveRating } from "../../lib/signals.ts";
+import { actorFrom, createReport, saveRating, withdrawRating } from "../../lib/signals.ts";
 import { loadPossibilities } from "../../lib/catalogue.ts";
 import {
 	filedNoteFromOutcomes,
@@ -228,6 +228,28 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
 		}
 		return finish(
 			stars === 1 ? "Recorded — 1 star, which is a rating, not a report" : "Rating recorded",
+			true,
+		);
+	}
+
+	if (intent === "withdraw") {
+		// Same gate as rating, and for the same reason: a withdrawal is a write, and an
+		// endpoint reachable in a loop is a write that needs a budget.
+		if (!actor) return finish("Sign in to withdraw a rating", false);
+		const gate = await limited(RATING_LIMIT.limit, RATING_LIMIT.windowMs, "rating");
+		if (gate && !gate.allowed) return finish(gate.reason, false, gate.retryAfterSeconds);
+		const taken = await runAppExit(
+			withdrawRating(emdash, { subjectType, subjectSlug, actor }),
+			{ signal: request.signal },
+		);
+		if (!Exit.isSuccess(taken)) {
+			console.error("signal: rating withdrawal failed", reportCause(taken.cause));
+			return finish(`Could not withdraw the rating: ${describeCause(taken.cause)}`, false);
+		}
+		// "Nothing to withdraw" is the outcome the reader asked for, not a failure, so
+		// it gets the same sentence as a success rather than an error.
+		return finish(
+			taken.value.withdrawn ? "Rating withdrawn — it no longer counts towards the average" : "There was no rating to withdraw",
 			true,
 		);
 	}
