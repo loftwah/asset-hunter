@@ -176,11 +176,127 @@ The journeys worth confirming by hand after any deploy:
   exists precisely so local work cannot reach production.
 - **Do not re-run the seed against a populated database.** Seed application
   happens once, on an empty database. The seed applies schema and structure; it
-  is not a reset.
-- **Do not hand-write EmDash migrations.** They are versioned with EmDash, and
-  the manifest is generated from the config.
-- **Do not commit secrets.** `.env*` is gitignored; `.env.example` documents
-  which names exist without their values.
+  is not a reset. (Adding *new* seed entries to a populated database is a
+  different operation, and is described below — that one is safe, and necessary.)
+
+## Getting the database to match the repository
+
+Merged work does not reach the live database on its own. `wrangler deploy` ships
+**code**; the schema and the rows travel a different path, written by a seed
+applied once, to a database, by a command nobody has run since. So an entry can
+be merged, `seed:check`-verified, specimen-checked and deployed — and be absent
+from production, which is what happened to ten entries here.
+
+### The gate
+
+`npm run deploy:parity` compares the repository against the deployed database on
+both axes and exits non-zero for anything but `aligned`, `unknown` included:
+
+```
+  entries      seeded 38   served 28   collections seeded 9   held 6
+
+✖ the deployed database is missing 3 collections (audit_events, disputes,
+  exclusions), so the code paths that write to them cannot run; it also does not
+  serve 10 seeded entries
+```
+
+Two axes because they fail differently:
+
+- **entries** — what `/api/catalogue.json` serves. Compared over `possibilities`
+  and `collections`, the two the endpoint publishes. `examples` are served nested
+  inside their possibility, so counting both would report one defect twice; `pages`
+  are not published at all, so their parity belongs to the admin, not to a public
+  gate.
+- **collections** — `SELECT slug FROM _emdash_collections`. Not reachable from any
+  public route, which is the whole problem.
+
+**A missing collection is the worse finding and is named first.** It is not
+invisible content; it is a deployed feature that cannot execute. This
+repository's `disputes`, `exclusions` and `audit_events` collections were absent
+from production while the rights-correction workflow (#54) that writes to all
+three was deployed, tested and green — every page rendered and all 22 smoke checks
+passed, because the dispute state lives as fields on the example row rather than
+in a table of its own. The read path was never going to notice.
+
+`extra` is reported and never fails: a promoted draft or a plugin-owned
+collection is the system working. `--content-only` skips the schema axis for a
+fast check and says so, because a missing collection is exactly what it cannot
+see.
+
+### Backing up first
+
+D1's own history is the backup, and it is the only mechanism available here:
+
+```bash
+npx wrangler d1 time-travel info asset-hunter
+# ⚡️ To restore to this specific bookmark, run:
+#  `wrangler d1 time-travel restore asset-hunter --bookmark=<uuid>`
+```
+
+**`wrangler d1 export` cannot be used to back this database up.** It fails with
+`D1 Export error: cannot export databases with Virtual Tables (fts5)`, and
+EmDash's search is FTS5. Any runbook, restore drill or incident procedure that
+assumes an export step is wrong for this project; read
+[`docs/TESTING.md`](TESTING.md) and the restore work in the backlog for the
+consequences. Time Travel retention is finite, so a bookmark taken at the start
+of a risky operation is worth recording somewhere durable.
+
+### Applying the seed additively
+
+`emdash seed` targets a local SQLite path. There is no `--d1`, and `wrangler d1
+execute` cannot stand in for it: a collection's table is created when EmDash
+applies the schema, not by inserting a row into `_emdash_collections`, so
+hand-written INSERTs restore the metadata and leave the table missing — verified
+against a local database by dropping `ec_disputes`, re-inserting the collection
+row, and finding no table.
+
+The supported remote path is the CLI over HTTP, which creates rather than
+overwrites and so is additive by construction:
+
+```bash
+# 1. schema — one create per missing collection, then its fields
+npx emdash schema create disputes --label Disputes -u https://assets.loftwah.com -t "$EMDASH_TOKEN"
+npx emdash schema add-field disputes --name dispute_state -u … -t "$EMDASH_TOKEN"
+
+# 2. content — one create per missing entry, straight from the seed
+npx emdash content create possibilities --file row.json --slug monoline-constant-weight \
+  -u https://assets.loftwah.com -t "$EMDASH_TOKEN"
+
+# 3. prove it
+npm run deploy:parity        # must now say aligned
+```
+
+`npm run deliver:seed` computes that list from the seed and the deployed
+database, prints every command, and refuses to run anything without `--apply`.
+Dry-run by default is not caution for its own sake: the alternative is a person
+assembling the list by hand against production, and the list is exactly the kind
+of thing that gets one entry wrong.
+
+### One thing a plan cannot reproduce
+
+`emdash seed` applies each collection's `supports`. `possibilities` declares
+`["drafts","revisions","search","seo"]`; `disputes` declares `["drafts","search"]`.
+`emdash schema create` has no flag for it, and a collection created that way
+arrives as `["drafts","revisions"]` — it gains revision history nobody declared
+and loses its FTS table. Measured against a throwaway collection on a local
+instance rather than assumed.
+
+For the three collections missing here that is benign: nothing searches a dispute,
+and the dispute state a reader sees is a field on the example row rather than a
+row in that collection. It would **not** be benign for `possibilities`, which is
+why `deliver-seed` never plans a collection that already exists — the only
+collections it will create are ones this repository has just introduced. If a
+future change needs to recreate an existing collection, the seed has to be
+re-applied rather than delivered.
+
+### Why create, and never an update
+
+`--on-conflict=update` would bring the missing rows in **and** overwrite every
+editorial change made since the last seed. Content a person edited in the admin
+is not reproducible from `seed/seed.json` — the seed is the source for what has
+never been touched, not for what has. Creating is additive: it cannot delete a
+row and cannot overwrite one. `skip` is EmDash's own default for the same reason,
+and the destructive alternative is one flag away and reads as harmless.
 
 ## Related
 
