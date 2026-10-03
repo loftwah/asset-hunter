@@ -61,16 +61,29 @@ function capture(cmd, args) {
 
 /** What the deployed database already has, so nothing is created twice. */
 async function readLive() {
-	const raw = await capture("bash", [
-		"-lc",
-		'npx wrangler d1 execute asset-hunter --remote --command "SELECT slug FROM _emdash_collections" --json',
-	]);
-	let collections = new Set();
-	try {
+	const parse = (raw) => {
 		const at = raw.indexOf("[{");
 		const rows = JSON.parse(raw.slice(at === -1 ? 0 : at)).at?.(0)?.results;
-		if (Array.isArray(rows)) {
-			collections = new Set(rows.map((r) => r?.slug).filter((s) => typeof s === "string"));
+		return Array.isArray(rows) ? rows : null;
+	};
+
+	// Collections and their fields in one query, because "the collection exists" is
+	// not "the collection is finished" — a run interrupted after `schema create` but
+	// before its last `add-field` would otherwise be skipped forever.
+	const raw = await capture("bash", [
+		"-lc",
+		'npx wrangler d1 execute asset-hunter --remote --command "SELECT c.slug AS collection, f.slug AS field FROM _emdash_collections c LEFT JOIN _emdash_fields f ON f.collection_id = c.id" --json',
+	]);
+	let collections = new Set();
+	let fields = new Set();
+	try {
+		const rows = parse(raw);
+		if (rows) {
+			for (const row of rows) {
+				if (typeof row?.collection !== "string") continue;
+				collections.add(row.collection);
+				if (typeof row?.field === "string") fields.add(`${row.collection}/${row.field}`);
+			}
 		}
 	} catch {
 		/* handled by the guard below */
@@ -93,7 +106,7 @@ async function readLive() {
 		/* handled by the guard below */
 	}
 
-	return { collections, entries, entriesReachable };
+	return { collections, fields, entries, entriesReachable };
 }
 
 const live = await readLive();

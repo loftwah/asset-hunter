@@ -67,6 +67,18 @@ export interface LiveDatabase {
 	readonly collections: ReadonlySet<string>;
 	/** Entry ids the deployed catalogue already serves. */
 	readonly entries: ReadonlySet<string>;
+	/**
+	 * Fields the database already has, as `"<collection slug>/<field slug>"`.
+	 *
+	 * Present because "the collection exists" is not the same as "the collection is
+	 * finished". A run that creates `disputes` and then fails on its ninth field
+	 * leaves a collection that exists and is wrong — and a plan keyed only on
+	 * collection existence would skip it forever, turning one transient failure into
+	 * a permanent half-built collection with no way to complete it through this
+	 * script. Keying on fields makes the plan resumable, which is the only useful
+	 * property for a step that talks to production.
+	 */
+	readonly fields?: ReadonlySet<string>;
 }
 
 /**
@@ -138,14 +150,18 @@ export function planDelivery(seed: Seed, live: LiveDatabase): DeliveryStep[] {
 
 	for (const collection of seed.collections ?? []) {
 		const slug = typeof collection?.slug === "string" ? collection.slug : null;
-		if (!slug || live.collections.has(slug)) continue;
+		if (!slug) continue;
 
-		const create: string[] = ["schema", "create", slug, "--label", str(collection.label) ?? slug];
-		const singular = str(collection.labelSingular);
-		if (singular) create.push("--label-singular", singular);
-		const description = str(collection.description);
-		if (description) create.push("--description", description);
-		steps.push({ what: `collection ${slug}`, args: create });
+		// The collection is created only if it is absent, but its fields are planned
+		// independently, so an interrupted run is finished rather than abandoned.
+		if (!live.collections.has(slug)) {
+			const create: string[] = ["schema", "create", slug, "--label", str(collection.label) ?? slug];
+			const singular = str(collection.labelSingular);
+			if (singular) create.push("--label-singular", singular);
+			const description = str(collection.description);
+			if (description) create.push("--description", description);
+			steps.push({ what: `collection ${slug}`, args: create });
+		}
 
 		let skipped = 0;
 		for (const field of collection.fields ?? []) {
@@ -155,6 +171,7 @@ export function planDelivery(seed: Seed, live: LiveDatabase): DeliveryStep[] {
 				skipped++;
 				continue;
 			}
+			if (live.fields?.has(`${slug}/${name}`)) continue;
 			const add = ["schema", "add-field", slug, name, "--type", type];
 			const label = str(field?.label);
 			if (label) add.push("--label", label);

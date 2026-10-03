@@ -102,17 +102,22 @@ describe("a plan for a database that is missing things", () => {
 		);
 	});
 
-	test("never plans a collection that already exists", () => {
+	test("never plans the creation of a collection that already exists", () => {
 		// Recreating `possibilities` would arrive as `["drafts","revisions"]` instead
 		// of the declared `["drafts","revisions","search","seo"]` — losing the SEO
 		// support the public pages depend on. The only collections this may ever
-		// create are ones the repository has just introduced.
+		// *create* are ones the repository has just introduced.
+		//
+		// Scoped to `schema create` rather than to every schema step, because a field
+		// missing from an existing collection is a real and separate case — see "a
+		// collection that was created but not finished".
 		const steps = planDelivery(seed, {
 			collections: new Set(["possibilities", "disputes"]),
 			entries: new Set(["p1", "p2", "p3"]),
+			fields: new Set(["possibilities/title", "disputes/title", "disputes/reason"]),
 		});
 		assert.deepEqual(
-			steps.filter((s) => s.args[0] === "schema").map((s) => s.args[2]),
+			steps.filter((s) => s.args[0] === "schema" && s.args[1] === "create"),
 			[],
 		);
 	});
@@ -167,10 +172,15 @@ describe("a plan that cannot destroy anything", () => {
 
 	test("says nothing is unsafe when the plan is empty", () => {
 		assert.equal(hasUnsafeVerb([]), false);
-		assert.equal(planDelivery(seed, {
-			collections: new Set(["possibilities", "disputes"]),
-			entries: new Set(["p1", "p2", "p3"]),
-		}).length, 0);
+		assert.equal(
+			planDelivery(seed, {
+				collections: new Set(["possibilities", "disputes"]),
+				entries: new Set(["p1", "p2", "p3"]),
+				fields: new Set(["possibilities/title", "disputes/title", "disputes/reason"]),
+			}).length,
+			0,
+			"a complete database plans nothing",
+		);
 	});
 });
 
@@ -216,5 +226,85 @@ describe("the --file placeholder", () => {
 			.map((s) => placeholderId(s.args));
 		assert.deepEqual(ids.sort(), ["p1", "p2", "p3"]);
 		assert.equal(new Set(ids).size, ids.length, "no row may be planned twice");
+	});
+});
+
+describe("a collection that was created but not finished", () => {
+	/*
+	 * The failure this closes.
+	 *
+	 * A run against production creates `disputes` and then fails on its ninth field —
+	 * a token expires, a rate limit, a typo in a label. The collection now exists and
+	 * is wrong. A plan keyed only on "does this collection exist?" would skip it from
+	 * then on, so one transient failure became a permanently half-built collection
+	 * with no way to complete it through this script — and the parity gate would
+	 * report it as present, because the collection *is* present.
+	 *
+	 * So fields are planned independently of their collection. Keying on fields makes
+	 * the plan resumable, which is the only useful property for a step that talks to
+	 * production.
+	 */
+	const disputes = {
+		slug: "disputes",
+		label: "Rights disputes",
+		fields: [
+			{ slug: "title", type: "string" },
+			{ slug: "state", type: "string" },
+			{ slug: "reason", type: "select" },
+		],
+	};
+	const only = {
+		collections: [disputes],
+		content: { possibilities: [], collections: [] },
+	};
+
+	test("plans the fields it is missing, and not the collection again", () => {
+		const steps = planDelivery(only, {
+			collections: new Set(["disputes"]),
+			entries: new Set(),
+			fields: new Set(["disputes/title", "disputes/state"]),
+		});
+		assert.deepEqual(
+			steps.map((s) => s.what),
+			["field disputes.reason"],
+			"only the absent field is planned, and the collection is not recreated",
+		);
+	});
+
+	test("plans nothing at all when the collection is complete", () => {
+		const steps = planDelivery(only, {
+			collections: new Set(["disputes"]),
+			entries: new Set(),
+			fields: new Set(["disputes/title", "disputes/state", "disputes/reason"]),
+		});
+		assert.deepEqual(steps, []);
+	});
+
+	test("adds a field missing from a collection that already has most of them", () => {
+		// The production case: `examples` is fully built except for the five
+		// `dispute_*` fields, so the read path degrades to "no dispute recorded"
+		// rather than failing — and nothing says the feature is inert.
+		const steps = planDelivery(
+			{
+				collections: [
+					{ slug: "examples", fields: [{ slug: "title", type: "string" }, { slug: "dispute_state", type: "string" }] },
+				],
+				content: { possibilities: [], collections: [] },
+			},
+			{
+				collections: new Set(["examples"]),
+				entries: new Set(),
+				fields: new Set(["examples/title"]),
+			},
+		);
+		assert.deepEqual(steps.map((s) => s.what), ["field examples.dispute_state"]);
+		assert.equal(hasUnsafeVerb(steps), false);
+	});
+
+	test("plans every field when nothing is known about the collection", () => {
+		// `fields` is optional, so an older caller still gets the complete plan rather
+		// than silently nothing.
+		const steps = planDelivery(only, { collections: new Set(), entries: new Set() });
+		assert.equal(steps.length, 4, "one create and three fields");
 	});
 });
