@@ -189,6 +189,28 @@ type CatalogueRead<A> = Effect.Effect<
 export const REFERENCE_CONCURRENCY = 8;
 
 /**
+ * How many tiles load eagerly, on the wall and on every page that lists tiles.
+ *
+ * The wall grid is `repeat(auto-fill, minmax(min(100%, 13rem), 1fr))`, so the column
+ * count — and therefore how many tiles sit in the first row — depends on the
+ * viewport. `auto-fill` means a fixed number cannot be right at every width: at four
+ * eager tiles, a 1280-wide `/verticals` had the fifth tile above the fold still marked
+ * `loading="lazy"`, which `npm run check:perf` fails on and which delays the largest
+ * contentful paint on the page for no reason.
+ *
+ * Six covers the first row at the widest viewport the visual and performance
+ * matrices measure. It was not chosen by taste: `check:perf` reports
+ * `lazyAboveFold` per profile per route, and this is the number that takes that to
+ * zero. Raising it further costs bytes and requests on every page, and those are
+ * gated too — so the trade-off is visible rather than assumed.
+ *
+ * It lives here, once, because three pages each wrote `eager={i < 4}`. A budget
+ * copied into three call sites is three budgets, and they drift the moment one page's
+ * grid differs.
+ */
+export const EAGER_TILES = 6;
+
+/**
  * Every crawled string on its way to a page.
  *
  * `undefined` and `null` are the same absence here, and null is the answer — but

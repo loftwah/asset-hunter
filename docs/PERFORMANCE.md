@@ -61,30 +61,59 @@ because none of them depends on the host:
 - a scale wall that did not render the number of tiles it was asked for, which
   would otherwise let an empty database produce a passing measurement of nothing.
 
-## Measured, 24 possibilities
+## Measured, 34 possibilities
 
-Mobile 390×844, cold cache, `astro dev` on a MacBook Pro:
+Mobile 390x844, cold cache, `npm run dev` on a MacBook Pro:
 
 | Route | Transfer | Images | Requests | DOM | CLS | HTML | TTFB | Load |
-| ----- | -------- | ------ | -------- | --- | --- | ---- | ---- | ---- |
-| `/` wall | 505kB | 111kB | 67 | 862 | 0.0000 | 169kB | 32ms | 583ms |
-| `/possibilities/<slug>` | 372kB | 19kB | 48 | 410 | 0.0000 | 136kB | 212ms | 755ms |
-| `/search?q=seam` | 350kB | 15kB | 45 | 259 | 0.0000 | 122kB | 94ms | 639ms |
-| `/board` | 330kB | 0kB | 42 | 190 | 0.0000 | 117kB | 60ms | 592ms |
-| `/verticals` | 485kB | 111kB | 66 | 818 | 0.0000 | 161kB | 38ms | 602ms |
+| ----- | -------- | ------ | -------- | --- | ---- | ---- | ---- | ---- |
+| `/` wall | 725kB | 265kB | 88 | 1231 | 0.0000 | 213kB | 38ms | 571ms |
+| `/possibilities/<slug>` | 409kB | 19kB | 55 | 441 | 0.0000 | 151kB | 299ms | 831ms |
+| `/search?q=seam` | 387kB | 15kB | 52 | 292 | 0.0000 | 136kB | 61ms | 590ms |
+| `/board` | 365kB | 0kB | 49 | 203 | 0.0000 | 130kB | 21ms | 544ms |
+| `/verticals` | 696kB | 265kB | 87 | 1085 | 0.0000 | 195kB | 22ms | 560ms |
 
-Desktop 1280×800: the wall is 505kB and the search 350kB; DOM and CLS are
-identical, which is the point — the extra bytes on desktop are plates the reader
-can actually see, because 24 of them fit in the viewport and 7 do not.
+Desktop 1280x800: the wall is 725kB and the search 387kB; DOM and CLS are identical,
+which is the point — the extra bytes on desktop are plates the reader can actually
+see.
 
-Interaction, mobile: `/` focuses search in **1ms**. The filter rail puts all 24
-tiles back in **25ms** and hides all but the narrowest vertical in **34ms**.
-Drill-in from the wall: **738–836ms**, of which the server render is 19–24ms.
+Interaction, mobile: `/` focuses search in **5ms**. The filter rail puts all 34 tiles
+back in **34ms** and hides all but the narrowest vertical in **33ms**. Drill-in from
+the wall: **758-768ms**, of which the server render is 19-24ms.
+
+### These numbers are a snapshot, and delivering content invalidates them
+
+`docs/performance-budgets.json` is generated from a measurement, so it describes the
+catalogue that existed when it was written. Delivering ten entries moved the wall from
+505kB to 725kB and from 862 DOM nodes to 1231, which put six budgets over without a
+single line of code changing — and `npm run check:perf` correctly reported fifteen
+failures that were all really one fact: **the budgets were for 24 possibilities and
+the catalogue now holds 34.**
+
+So after `deliver:seed`, regenerate and **read** the diff:
+
+```bash
+npm run check:perf          # expect budget-shaped failures, not a code regression
+npm run check:perf:write    # then review what moved before committing it
+```
+
+`check:perf:write` writes whatever it measures plus the generator's headroom, so it
+will happily ratify a regression. The value of the gate is entirely in the *next*
+run, which is why the review step is the one that matters. The floors that are not
+content-dependent — CLS, TTFB, and the six structural rules above — are the ones that
+catch a code change; the byte and DOM budgets catch a content change, and a content
+change is legitimate.
+
+**The one number worth arguing about is bytes per entry.** At 34 entries the wall is
+725kB, of which 265kB is plates and 213kB is the document — about 7.8kB of plate per
+entry, which is what hand-authored SVG costs. If the entry count grows much further,
+the honest fix is smaller plates or a real per-viewport variant, not a larger budget.
+
 
 ## Measured, 500 entries
 
 `/?scale=500` is the wall above with a synthetic catalogue of five hundred
-entries derived from the real twenty-four — the same component, the same grid,
+entries derived from the real thirty-four — the same component, the same grid,
 the same filter script, the same lazy strategy. It is refused outside
 `astro dev`, because the entries do not exist and five hundred of them would be
 both a lie and a performance liability.
