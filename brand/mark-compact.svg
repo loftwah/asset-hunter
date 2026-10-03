@@ -1,4 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" role="img" aria-label="Asset Hunter aperture mark, icon form">
-	<circle cx="12" cy="12" r="9.25" fill="none" stroke="#ff5a1f" stroke-width="2.5" />
-	<path d="M12 8.8 14 12 12 15.2 10 12Z" fill="#ff5a1f" />
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" aria-label="Asset Hunter aperture mark, icon form" role="img" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.25" fill="none" stroke="#ff5a1f" stroke-width="2.5"/><path fill="#ff5a1f" d="M12 8.8 14 12 12 15.2 10 12Z"/></svg>

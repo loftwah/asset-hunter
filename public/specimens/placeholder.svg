@@ -1,15 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Specimen plate not yet generated">
-	<rect width="800" height="1000" fill="#0d0f12" />
-	<g stroke="#23272c" stroke-width="1.5">
-		<path d="M120 120h560v760H120z" fill="none" stroke-dasharray="10 8" />
-	</g>
-	<g stroke="#343b42" stroke-width="1.5" fill="none" opacity=".7">
-		<path d="M400 200v600M200 500h400" stroke-dasharray="4 10" />
-	</g>
-	<circle cx="400" cy="470" r="52" fill="none" stroke="#4d565f" stroke-width="1.5" />
-	<path d="M382 470h36M400 452v36" stroke="#4d565f" stroke-width="1.5" stroke-linecap="round" />
-	<g font-family="ui-monospace,Menlo,monospace" font-size="24" fill="#6a7178" text-anchor="middle">
-		<text x="400" y="580">plate not yet generated</text>
-		<text x="400" y="612" font-size="18" fill="#4d565f">this entry has no representative image</text>
-	</g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000" aria-label="Specimen plate not yet generated" role="img" viewBox="0 0 800 1000"><rect width="800" height="1000" fill="#0d0f12"/><g stroke="#23272c" stroke-width="1.5"><path fill="none" stroke-dasharray="10 8" d="M120 120h560v760H120z"/></g><g fill="none" stroke="#343b42" stroke-width="1.5" opacity=".7"><path stroke-dasharray="4 10" d="M400 200v600M200 500h400"/></g><circle cx="400" cy="470" r="52" fill="none" stroke="#4d565f" stroke-width="1.5"/><path stroke="#4d565f" stroke-linecap="round" stroke-width="1.5" d="M382 470h36M400 452v36"/><g fill="#6a7178" font-family="ui-monospace,Menlo,monospace" font-size="24" text-anchor="middle"><text x="400" y="580">plate not yet generated</text><text x="400" y="612" fill="#4d565f" font-size="18">this entry has no representative image</text></g></svg>
