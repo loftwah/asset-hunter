@@ -43,6 +43,7 @@
  */
 import type { APIRoute } from "astro";
 import { Cause, Effect, Exit } from "effect";
+import { describeCauseForLog } from "../../lib/effect/errors.ts";
 import { CATALOGUE_SCHEMA, buildCatalogue, openReportCount } from "../../lib/catalogue-json.ts";
 import { RuntimeConfig } from "../../lib/effect/config.ts";
 import { runAppExit } from "../../lib/effect/root.ts";
@@ -111,7 +112,7 @@ export const GET: APIRoute = async ({ site, request }) => {
 		if (!Exit.isSuccess(built)) {
 			// A catalogue that cannot be built is not a catalogue. Serving an empty
 			// one with a 200 is precisely the dishonesty this endpoint exists to avoid.
-			console.error("catalogue.json: build failed", Cause.pretty(built.cause));
+			console.error("catalogue.json: build failed", describeCauseForLog(built.cause));
 			return new Response("Catalogue unavailable", { status: 503 });
 		}
 		body = built.value.body;

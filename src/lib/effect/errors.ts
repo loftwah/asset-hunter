@@ -31,7 +31,7 @@
  * A `string` is also the more honest record: a transport failure worth keeping is
  * worth keeping as something loggable.
  */
-import { Schema } from "effect";
+import { Cause, Schema } from "effect";
 
 /** The request produced no status: connection failure, abort, or our timeout. */
 export class EmDashTransportError extends Schema.TaggedError<EmDashTransportError>()(
@@ -99,4 +99,46 @@ export function describeDetail(error: EmDashError): string {
 				? error.detail
 				: error.detail;
 	return detail.length <= 160 ? detail : `${detail.slice(0, 160)}…`;
+}
+
+/**
+ * A cause rendered for a **log line**, detail included.
+ *
+ * `Cause.pretty` prints the error's `message`, and every error in this file sets
+ * `message` to nothing on purpose — the detail goes to the log and a reader gets a
+ * sentence, so a reader-facing string and a diagnostic string are different fields.
+ * That left the two log sites using `Cause.pretty` printing
+ *
+ *     catalogue.json: build failed EmDashTransportError:
+ *
+ * with nothing after the colon, while the cause carried
+ * `detail: "limit: Too big: expected number to be <=100"`.
+ *
+ * Not a cosmetic gap. It is why a 503 that had been live in production — masked for
+ * a while by the endpoint's own body cache — took ten turns to trace to a hard
+ * 100-row cap that five call sites exceeded. A diagnostic that cannot name the
+ * diagnostic is how a five-minute bug becomes an afternoon one.
+ *
+ * So this keeps `Cause.pretty`'s structure and appends every `detail` it finds,
+ * because a log line is the one place the detail belongs.
+ */
+export function describeCauseForLog(cause: unknown): string {
+	const rendered = Cause.pretty(cause as Cause.Cause<unknown>);
+	const details: string[] = [];
+	const visit = (node: unknown): void => {
+		if (node === null || typeof node !== "object") return;
+		if (Array.isArray(node)) {
+			for (const child of node) visit(child);
+			return;
+		}
+		const record = node as Record<string, unknown>;
+		if (typeof record.detail === "string" && record.detail.trim() !== "")
+			details.push(record.detail.trim());
+		if (record.error !== undefined) visit(record.error);
+		if (record.left !== undefined) visit(record.left);
+		if (record.right !== undefined) visit(record.right);
+	};
+	visit((cause as { failure?: unknown })?.failure ?? cause);
+	const unique = [...new Set(details)];
+	return unique.length === 0 ? rendered : `${rendered} — ${unique.join(" | ")}`;
 }

@@ -91,6 +91,16 @@ export interface ReferenceQuery {
 	readonly references: Readonly<Record<string, boolean | { limit: number }>>;
 }
 
+/**
+ * The most rows one list request may ask for.
+ *
+ * EmDash's list route rejects anything higher with a 400, and the SDK does not clamp
+ * it, so the number has to be a constant the transport pages against rather than a
+ * number each call site gets to invent. See the note on `collection` below for what
+ * happens when a call site does.
+ */
+const LIST_PAGE_MAX = 100;
+
 /** A decoded collection page. */
 export interface CollectionPage {
 	readonly entries: ReadonlyArray<RawEntryValue>;
@@ -193,35 +203,77 @@ export class EmDashContent extends Context.Service<
 				query: CollectionQuery = {},
 			) {
 				const operation = `read ${name}`;
-				const page = yield* read(operation, () =>
-					getEmDashCollection(name, {
-						// Published unless a caller says otherwise. The public
-						// catalogue must never see a draft, and that default is the
-						// guarantee — so a caller that *wants* drafts has to name it.
-						//
-						// The curation cockpit is that caller: it reads this same
-						// service to surface held crawl output. It used to get
-						// published rows and call them drafts, so the queue claimed
-						// 24 held drafts against a database holding 5, and listed
-						// published seed entries as unreviewed crawl output. A queue
-						// that cannot be trusted is worse than no queue, because an
-						// editor learns to skip it.
-						status: query.status ?? "published",
-						limit: query.limit ?? 100,
-						cursor: query.cursor,
-						orderBy: query.orderBy as Record<string, "asc" | "desc"> | undefined,
-					}),
-				);
-				// The line that was missing. EmDash reports a database failure as a
-				// resolved value with `error` set and `entries` empty, so a query that
-				// failed and a collection that is genuinely empty are otherwise
-				// indistinguishable — and the second one gets a 200 and a page.
-				if (page.error) {
-					return yield* Effect.fail(
-						new EmDashTransportError({ operation, detail: page.error.message }),
+				// Published unless a caller says otherwise. The public catalogue must never
+				// see a draft, and that default is the guarantee — so a caller that *wants*
+				// drafts has to name it.
+				//
+				// The curation cockpit is that caller: it reads this same service to surface
+				// held crawl output. It used to get published rows and call them drafts, so
+				// the queue claimed 24 held drafts against a database holding 5, and listed
+				// published seed entries as unreviewed crawl output. A queue that cannot be
+				// trusted is worse than no queue, because an editor learns to skip it.
+				const status = query.status ?? "published";
+				const orderBy = query.orderBy as Record<string, "asc" | "desc"> | undefined;
+
+				/*
+				 * The list route is **cursor-paginated and hard-capped at 100 rows**.
+				 *
+				 * Five call sites asked for more — `reports` and `ratings` for 500, and
+				 * `examples`, `disputes`, `exclusions` and `audit_events` for 200 — and the
+				 * route rejects every one with a 400 `limit: Too big`. That is not cosmetic:
+				 * `/api/catalogue.json` builds the catalogue and then calls
+				 * `openReportCount()`, whose 500-row read throws, and the endpoint answers
+				 * **503 "Catalogue unavailable"** after eight seconds. It did so in production
+				 * while every page rendered normally, because the endpoint caches its body and
+				 * the cached copy kept being served — so the failure was invisible for as long
+				 * as the cache lasted.
+				 *
+				 * `engine/src/runtime/emdash.ts` found and documented this first, from the same
+				 * cause: `hunt` catches the error and continues with an empty list, so every run
+				 * announced in its own output that it could not honour a takedown it could not
+				 * see, and crawled anyway.
+				 *
+				 * So the cap is handled here, once, at the transport — not patched at five call
+				 * sites, which is how it came back. `limit=100` per request, walking the
+				 * `nextCursor` the route returns, bounded by the caller's own limit. A takedown
+				 * at row 150 has to be as visible as one at row 1; clamping to the first hundred
+				 * would be the same failure in a quieter shape, which is worse.
+				 *
+				 * The cursor, not an offset: `contentListQuery` extends `cursorPaginationQuery`
+				 * (`{cursor?, limit?}`), so zod strips `offset` before the handler sees it and an
+				 * offset-paged loop re-fetches page 1 forever. The engine has the scar tissue.
+				 */
+				const wanted = Math.max(1, query.limit ?? LIST_PAGE_MAX);
+				const raw: RawEntryValue[] = [];
+				let cursor = query.cursor;
+				let cacheHint: CacheHint | undefined;
+
+				for (;;) {
+					const page = yield* read(operation, () =>
+						getEmDashCollection(name, {
+							status,
+							limit: Math.min(LIST_PAGE_MAX, wanted - raw.length),
+							cursor,
+							orderBy,
+						}),
 					);
+					// The line that was missing. EmDash reports a database failure as a
+					// resolved value with `error` set and `entries` empty, so a query that
+					// failed and a collection that is genuinely empty are otherwise
+					// indistinguishable — and the second one gets a 200 and a page.
+					if (page.error) {
+						return yield* Effect.fail(
+							new EmDashTransportError({ operation, detail: page.error.message }),
+						);
+					}
+					cacheHint ??= page.cacheHint;
+					raw.push(...page.entries);
+					cursor = page.nextCursor ?? undefined;
+					const exhausted = !page.nextCursor || page.entries.length < LIST_PAGE_MAX;
+					if (exhausted || raw.length >= wanted) break;
 				}
-				const entries = yield* Effect.forEach(page.entries, (row) =>
+
+				const entries = yield* Effect.forEach(raw, (row) =>
 					decodeRow(row).pipe(
 						Effect.mapError(
 							(error) =>
@@ -231,8 +283,10 @@ export class EmDashContent extends Context.Service<
 				);
 				return {
 					entries,
-					nextCursor: page.nextCursor ?? null,
-					cacheHint: page.cacheHint,
+					// A cursor is only worth handing back if the caller can still use it.
+					// Returning one after the last page invites a request that returns nothing.
+					nextCursor: raw.length >= wanted ? (cursor ?? null) : null,
+					cacheHint,
 				} satisfies CollectionPage;
 			});
 

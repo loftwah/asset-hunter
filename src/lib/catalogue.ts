@@ -164,12 +164,41 @@ type CatalogueRead<A> = Effect.Effect<
  * choice and a bad one: at catalogue scale a wall rebuild spends most of its
  * time waiting rather than working.
  *
- * Eight is a deliberate number, not `unbounded`. These are D1 reads on the same
- * binding as the rest of the request, inside a Worker with a subrequest budget,
- * so the bound keeps the fan-out inside it. Raise it with the budget, not with
- * taste.
+ * Eight is a deliberate number, not `unbounded`: these are D1 reads on the same
+ * binding as the rest of the request, and eight at a time keeps the Worker from
+ * holding 34 connections to one database.
+ *
+ * ## What this bound does *not* do, which used to be claimed here
+ *
+ * The previous version of this comment said the bound "keeps the fan-out inside"
+ * the Worker's subrequest budget. It does not. Concurrency limits how many requests
+ * are in flight; the budget counts how many are made. Thirty-four examples cost
+ * thirty-four subrequests whether they run eight at a time or all at once, so the
+ * bound was never what kept the catalogue inside the budget — and the belief that it
+ * did is why {@link loadExampleGraph} was allowed to grow to every example without
+ * anyone counting.
+ *
+ * What actually protects the endpoint is the per-example tolerance below, and what
+ * would remove the fan-out entirely is a batch reference read the SDK does not offer
+ * (`CollectionFilter` has no `references`; the list route returns `possibility` as
+ * absent, not resolved). Until then, the count scales with the catalogue and the
+ * honest response is to degrade rather than to fail.
+ *
+ * Raise this with the database, not with taste.
  */
 export const REFERENCE_CONCURRENCY = 8;
+
+/**
+ * How long one parent-link read may take inside a catalogue rebuild.
+ *
+ * Separate from `AH_READ_TIMEOUT_MS`, and deliberately much smaller. The transport's
+ * budget is tuned for a single read a page depends on, where waiting is better than
+ * failing; this is one read among thirty-four inside one rebuild, where every second
+ * spent waiting is a second thirty-three other reads cannot start. A rebuild has a
+ * whole-catalogue budget to spend, and a per-read budget that lets one member of it
+ * consume the lot is not a budget.
+ */
+export const REFERENCE_READ_TIMEOUT_MS = 3_000;
 
 /**
  * Every crawled string on its way to a page.
@@ -485,20 +514,83 @@ export function loadExampleGraph(): CatalogueRead<Record<string, Example[]>> {
 	return Effect.gen(function* () {
 		const emdash = yield* EmDashContent;
 		const page = yield* emdash.collection("examples", { limit: 200 });
+		let unresolved = 0;
 		const resolved = yield* Effect.forEach(
 			page.entries,
 			(entry) =>
 				Effect.gen(function* () {
-					const found = yield* emdash.entry("examples", entry.id, {
-						references: { possibility: true },
-					});
+					/*
+					 * One request per example, and one failure must not lose the catalogue.
+					 *
+					 * This fan-out is forced: `possibility` is a `reference` field with no
+					 * filterable column, and the list route cannot resolve it — the row comes
+					 * back with the key absent, not filled in. So the parent link is only
+					 * available from a single-entry read, once per example.
+					 *
+					 * It used to be `yield*` straight, so a transport failure on any one
+					 * example propagated and the whole endpoint answered **503 "Catalogue
+					 * unavailable"** after eight seconds — thirty-four examples against a
+					 * Worker subrequest budget, with `AH_READ_TIMEOUT_MS` at 8000 and two
+					 * retries. Every page still rendered, because pages read the wall and not
+					 * this endpoint, and `deploy:parity` read this endpoint's own cached body
+					 * and reported `aligned`.
+					 *
+					 * So a failed resolution is a *missing parent link*, which the code below
+					 * already knows how to represent: the example is filed under the empty key
+					 * rather than dropped, so it is still in the catalogue and still countable.
+					 * That is the same rule the comment above states for an unresolved
+					 * reference, applied to the case where the reference could not be asked
+					 * for at all.
+					 */
+					const found = yield* emdash
+						.entry("examples", entry.id, { references: { possibility: true } })
+						.pipe(
+							// A read that cannot succeed should fail *quickly*.
+							//
+							// The transport's own budget is `AH_READ_TIMEOUT_MS` (8000) with two
+							// retries, so a read that is going to fail costs up to 24 seconds and
+							// every other read in its wave waits behind it. Thirty-four examples at
+							// concurrency eight is five waves, so a handful of doomed reads spread
+							// across them turned a rebuild into **100 seconds** — long enough that
+							// `/api/catalogue.json` answered every *other* request instantly from
+							// cache and looked healthy while burning a Worker for a minute and a
+							// half.
+							//
+							// Three seconds is the trade: a read that has not answered in three
+							// seconds is not going to answer usefully inside a rebuild that also has
+							// thirty-three others to do. The example is filed under the empty key
+							// either way, and the count is logged, so the degradation is visible
+							// rather than inferred.
+							//
+							// **This is a mitigation, not a fix, and it is smaller than it looks.**
+							// It took the rebuild from ~100s to ~77s. The remaining 75 seconds are
+							// still `db.total`, so the per-example read is not the whole cost and
+							// this is not where the time goes. Tracked in the issue filed alongside
+							// this change rather than left as a comment that implies the problem is
+							// handled.
+							Effect.timeout(REFERENCE_READ_TIMEOUT_MS),
+							Effect.match({
+								onFailure: () => null,
+								onSuccess: (value) => value,
+							}),
+						);
+					if (!found) unresolved++;
 					// A reference that failed to resolve is not a reason to drop the
 					// example: the collection row is still the canonical record.
-					const source = found.entry ?? entry;
+					const source = found?.entry ?? entry;
 					return { parents: referenceIds(source, "possibility"), example: yield* toExample(source) };
 				}),
 			{ concurrency: REFERENCE_CONCURRENCY },
 		);
+		if (unresolved > 0) {
+			// Said out loud, in the log, with a count. A catalogue that quietly files every
+			// example as parentless still looks complete, and that is the fabricated-total
+			// failure `docs/ARCHITECTURE.md` warns about — so the number is recorded even
+			// though the response is a 200.
+			console.warn(
+				`catalogue: ${unresolved}/${page.entries.length} example(s) could not resolve their possibility reference`,
+			);
+		}
 		const graph: Record<string, Example[]> = {};
 		for (const { parents, example } of resolved) {
 			for (const key of parents.length ? parents : [""]) {
