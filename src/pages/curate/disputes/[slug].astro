@@ -23,6 +23,7 @@
  */
 import Base from "../../../layouts/Base.astro";
 import OutcomeFlash from "../../../components/OutcomeFlash.astro";
+import Crumbs from "../../../components/Crumbs.astro";
 import { Effect } from "effect";
 import { actorFrom } from "../../../lib/signals.ts";
 import { loadAuditEvents, loadDisputes, loadExclusions, usableExamples } from "../../../lib/takedown.ts";
@@ -129,11 +130,20 @@ const subjectHref =
 	noindex
 >
 	<article class="case shell">
-		<nav class="crumbs" aria-label="Breadcrumb">
-			<a href="/curate">Curation</a>
-			<span aria-hidden="true">/</span>
-			<span class="crumbs__here">Rights case</span>
-		</nav>
+		{/*
+			`<Crumbs>`, not a private copy.
+
+			This was the last page still hand-rolling the trail, and it hand-rolled it
+			*the broken way* — separator as its own flex item, outside any step — which
+			is precisely the layout #66 is about. A long case title could wrap and leave
+			a line containing nothing but `/`. Private copies are how a fix survives
+			on four pages and stays broken on the fifth, which is what #66's own
+			criterion ("no other page keeps a private copy of this markup") is asking
+			for.
+		*/}
+		<Crumbs
+			steps={[{ label: "Curation", href: "/curate" }, { label: "Rights case" }]}
+		/>
 
 		<header class="case__head">
 			<p class="tag tag--ember">Rights case</p>
