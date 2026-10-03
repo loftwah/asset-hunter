@@ -164,10 +164,27 @@ type CatalogueRead<A> = Effect.Effect<
  * choice and a bad one: at catalogue scale a wall rebuild spends most of its
  * time waiting rather than working.
  *
- * Eight is a deliberate number, not `unbounded`. These are D1 reads on the same
- * binding as the rest of the request, inside a Worker with a subrequest budget,
- * so the bound keeps the fan-out inside it. Raise it with the budget, not with
- * taste.
+ * Eight is a deliberate number, not `unbounded`: these are D1 reads on the same
+ * binding as the rest of the request, and eight at a time keeps the Worker from
+ * holding 34 connections to one database.
+ *
+ * ## What this bound does *not* do, which used to be claimed here
+ *
+ * The previous version of this comment said the bound "keeps the fan-out inside"
+ * the Worker's subrequest budget. It does not. Concurrency limits how many requests
+ * are in flight; the budget counts how many are made. Thirty-four examples cost
+ * thirty-four subrequests whether they run eight at a time or all at once, so the
+ * bound was never what kept the catalogue inside the budget — and the belief that it
+ * did is why {@link loadExampleGraph} was allowed to grow to every example without
+ * anyone counting.
+ *
+ * What actually protects the endpoint is the per-example tolerance below, and what
+ * would remove the fan-out entirely is a batch reference read the SDK does not offer
+ * (`CollectionFilter` has no `references`; the list route returns `possibility` as
+ * absent, not resolved). Until then, the count scales with the catalogue and the
+ * honest response is to degrade rather than to fail.
+ *
+ * Raise this with the database, not with taste.
  */
 export const REFERENCE_CONCURRENCY = 8;
 
@@ -485,20 +502,59 @@ export function loadExampleGraph(): CatalogueRead<Record<string, Example[]>> {
 	return Effect.gen(function* () {
 		const emdash = yield* EmDashContent;
 		const page = yield* emdash.collection("examples", { limit: 200 });
+		let unresolved = 0;
 		const resolved = yield* Effect.forEach(
 			page.entries,
 			(entry) =>
 				Effect.gen(function* () {
-					const found = yield* emdash.entry("examples", entry.id, {
-						references: { possibility: true },
-					});
+					/*
+					 * One request per example, and one failure must not lose the catalogue.
+					 *
+					 * This fan-out is forced: `possibility` is a `reference` field with no
+					 * filterable column, and the list route cannot resolve it — the row comes
+					 * back with the key absent, not filled in. So the parent link is only
+					 * available from a single-entry read, once per example.
+					 *
+					 * It used to be `yield*` straight, so a transport failure on any one
+					 * example propagated and the whole endpoint answered **503 "Catalogue
+					 * unavailable"** after eight seconds — thirty-four examples against a
+					 * Worker subrequest budget, with `AH_READ_TIMEOUT_MS` at 8000 and two
+					 * retries. Every page still rendered, because pages read the wall and not
+					 * this endpoint, and `deploy:parity` read this endpoint's own cached body
+					 * and reported `aligned`.
+					 *
+					 * So a failed resolution is a *missing parent link*, which the code below
+					 * already knows how to represent: the example is filed under the empty key
+					 * rather than dropped, so it is still in the catalogue and still countable.
+					 * That is the same rule the comment above states for an unresolved
+					 * reference, applied to the case where the reference could not be asked
+					 * for at all.
+					 */
+					const found = yield* emdash
+						.entry("examples", entry.id, { references: { possibility: true } })
+						.pipe(
+							Effect.match({
+								onFailure: () => null,
+								onSuccess: (value) => value,
+							}),
+						);
+					if (!found) unresolved++;
 					// A reference that failed to resolve is not a reason to drop the
 					// example: the collection row is still the canonical record.
-					const source = found.entry ?? entry;
+					const source = found?.entry ?? entry;
 					return { parents: referenceIds(source, "possibility"), example: yield* toExample(source) };
 				}),
 			{ concurrency: REFERENCE_CONCURRENCY },
 		);
+		if (unresolved > 0) {
+			// Said out loud, in the log, with a count. A catalogue that quietly files every
+			// example as parentless still looks complete, and that is the fabricated-total
+			// failure `docs/ARCHITECTURE.md` warns about — so the number is recorded even
+			// though the response is a 200.
+			console.warn(
+				`catalogue: ${unresolved}/${page.entries.length} example(s) could not resolve their possibility reference`,
+			);
+		}
 		const graph: Record<string, Example[]> = {};
 		for (const { parents, example } of resolved) {
 			for (const key of parents.length ? parents : [""]) {
