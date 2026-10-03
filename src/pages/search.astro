@@ -567,9 +567,23 @@ const counted = parts.length > 0 ? `${parts.join(" · ")} · ` : "";
 		outline-offset: -2px;
 	}
 
-	.found__link {
+	/*
+	 * `clamp(5.5rem, 12vw, 9rem)`, not a fixed `4.5rem` (#73).
+	 *
+	 * Measured, the row is 1,206px wide at 1280 and the thumbnail is 72px — 6% of
+	 * the row, and the same 72px at 1920. A fixed column is the absence of a size
+	 * decision rather than one, and §6a asks for the plate to grow with the row.
+	 *
+	 * This is an *identifier*, so §6's 0.7 annotation floor does not apply: a reader
+	 * is asking which row is the one they want, and the title carries the meaning.
+	 * `12vw` takes it from 88px on a 360px phone to the 144px cap at 1200px and up.
+	 *
+	 * The snippet's indent is derived from the same number rather than repeated as
+	 * a literal, so the excerpt cannot drift out of line with the plate again.
+	 */	.found__link {
+		--row-thumb: clamp(5.5rem, 12vw, 9rem);
 		display: grid;
-		grid-template-columns: 4.5rem minmax(0, 1fr);
+		grid-template-columns: var(--row-thumb) minmax(0, 1fr);
 		gap: var(--sp-4);
 		align-items: center;
 		padding-block: var(--sp-3);
@@ -664,18 +678,26 @@ const counted = parts.length > 0 ? `${parts.join(" · ")} · ` : "";
 	}
 
 	.found__snippet {
-		padding: 0 0 var(--sp-3) calc(4.5rem + var(--sp-4));
+		padding: 0 0 var(--sp-3) calc(var(--row-thumb, 4.5rem) + var(--sp-4));
 		max-width: 78ch;
 	}
 
+	/*
+	 * Below 560px the gap and the thumbnail both step down (#73).
+	 *
+	 * The value is declared once, on the row, and the snippet's indent reads it —
+	 * which is the point. Two copies of `3.25rem` in two rules is how an excerpt
+	 * ends up indented to a plate that has since changed size, and the misalignment
+	 * is invisible until someone measures it.
+	 */
 	@media (width <= 560px) {
 		.found__link {
-			grid-template-columns: 3.25rem minmax(0, 1fr);
+			--row-thumb: 3.25rem;
 			gap: var(--sp-3);
 		}
 
 		.found__snippet {
-			padding-left: calc(3.25rem + var(--sp-3));
+			padding-left: calc(var(--row-thumb, 3.25rem) + var(--sp-3));
 		}
 	}
 
