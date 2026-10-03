@@ -189,6 +189,18 @@ type CatalogueRead<A> = Effect.Effect<
 export const REFERENCE_CONCURRENCY = 8;
 
 /**
+ * How long one parent-link read may take inside a catalogue rebuild.
+ *
+ * Separate from `AH_READ_TIMEOUT_MS`, and deliberately much smaller. The transport's
+ * budget is tuned for a single read a page depends on, where waiting is better than
+ * failing; this is one read among thirty-four inside one rebuild, where every second
+ * spent waiting is a second thirty-three other reads cannot start. A rebuild has a
+ * whole-catalogue budget to spend, and a per-read budget that lets one member of it
+ * consume the lot is not a budget.
+ */
+export const REFERENCE_READ_TIMEOUT_MS = 3_000;
+
+/**
  * Every crawled string on its way to a page.
  *
  * `undefined` and `null` are the same absence here, and null is the answer — but
@@ -533,6 +545,30 @@ export function loadExampleGraph(): CatalogueRead<Record<string, Example[]>> {
 					const found = yield* emdash
 						.entry("examples", entry.id, { references: { possibility: true } })
 						.pipe(
+							// A read that cannot succeed should fail *quickly*.
+							//
+							// The transport's own budget is `AH_READ_TIMEOUT_MS` (8000) with two
+							// retries, so a read that is going to fail costs up to 24 seconds and
+							// every other read in its wave waits behind it. Thirty-four examples at
+							// concurrency eight is five waves, so a handful of doomed reads spread
+							// across them turned a rebuild into **100 seconds** — long enough that
+							// `/api/catalogue.json` answered every *other* request instantly from
+							// cache and looked healthy while burning a Worker for a minute and a
+							// half.
+							//
+							// Three seconds is the trade: a read that has not answered in three
+							// seconds is not going to answer usefully inside a rebuild that also has
+							// thirty-three others to do. The example is filed under the empty key
+							// either way, and the count is logged, so the degradation is visible
+							// rather than inferred.
+							//
+							// **This is a mitigation, not a fix, and it is smaller than it looks.**
+							// It took the rebuild from ~100s to ~77s. The remaining 75 seconds are
+							// still `db.total`, so the per-example read is not the whole cost and
+							// this is not where the time goes. Tracked in the issue filed alongside
+							// this change rather than left as a comment that implies the problem is
+							// handled.
+							Effect.timeout(REFERENCE_READ_TIMEOUT_MS),
 							Effect.match({
 								onFailure: () => null,
 								onSuccess: (value) => value,
