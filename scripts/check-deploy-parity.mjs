@@ -61,20 +61,36 @@ const contentOnly = has("--content-only");
 /**
  * The collections whose entries are compared, and why this list is explicit.
  *
- * `/api/catalogue.json` publishes `possibilities` and `collections` and nothing
- * else — no `pages`, no `reports`, no `disputes`. The first draft of this script
- * unioned *every* seeded collection against what the endpoint returned and
- * cheerfully reported "47 seeded entries missing" when ten were. A gate that
- * cries wolf about rows it was never able to look at trains people to ignore it,
- * and this one exists because nobody was looking.
+ * `/api/catalogue.json` publishes `possibilities` and `collections` at the top
+ * level; examples arrive *nested* inside each possibility. The first draft of this
+ * script unioned *every* seeded collection against the top-level arrays and
+ * cheerfully reported "47 seeded entries missing" when ten were. A gate that cries
+ * wolf about rows it was never able to look at trains people to ignore it, and this
+ * one exists because nobody was looking.
  *
- * So both sides are derived from this one list, which makes the two sides
- * incapable of drifting apart. `examples` are deliberately absent: they are
- * served nested inside their possibility, so a missing possibility already
- * accounts for them, and counting both would report one defect twice. `pages`
- * are absent because the endpoint does not publish them — a real limit of what
- * can be checked from outside, not an oversight, and `pages` parity belongs to
- * the admin rather than to a public gate.
+ * So both sides come from one list, which makes them incapable of drifting apart,
+ * and the live side is read from where each collection actually appears.
+ *
+ * `examples` is deliberately **not** in this list, and that is a different decision
+ * from the one that caused the defect. It was first excluded for the wrong reason —
+ * "a missing possibility already accounts for them" — which is true of the count
+ * and useless for detection, and it shipped ten possibilities with no examples while
+ * `deliver:seed` shared the same blind spot and the gate reported `aligned`.
+ *
+ * It is now excluded for the right one: the ids are **not comparable**.
+ * `/api/catalogue.json` publishes one example per possibility — the representative —
+ * and gives it the *possibility's* slug as its `id`, while `seed.json` stores
+ * examples as their own rows keyed `ex-<slug>`. Comparing `ex-crowd-fluid` against a
+ * response that can only ever say `crowd-fluid` reports 34 false failures, and a
+ * gate that does that is ignored.
+ *
+ * So examples are compared as a **pairing** instead — see
+ * `seedPossessionsWithExamples` below. That is precise, it is what actually broke,
+ * and it cannot produce a phantom. A defect is worth a special case; it is not worth
+ * a comparison that cannot succeed.
+ *
+ * `pages` stays out for the original reason: the endpoint does not publish it, so
+ * its parity belongs to the admin rather than to a public gate.
  */
 const PUBLISHED = ["possibilities", "collections"];
 
@@ -94,12 +110,22 @@ function readSeed() {
 			else throw new Error(`${seedPath}: a ${collection} row has no string id`);
 		}
 	}
+	// The pairing the seed promises: an example row names its possibility with
+	// `$ref:<slug>`, which is how a possibility is known to be given a specimen.
+	const seedPossessionsWithExamples = new Set();
+	for (const row of entries.examples ?? []) {
+		const ref = row?.data?.possibility;
+		if (typeof ref === "string" && ref.startsWith("$ref:")) {
+			seedPossessionsWithExamples.add(ref.slice("$ref:".length));
+		}
+	}
+
 	const seedCollections = new Set();
 	for (const collection of seed?.collections ?? []) {
 		if (typeof collection?.slug === "string") seedCollections.add(collection.slug);
 		else throw new Error(`${seedPath}: a collection has no string slug`);
 	}
-	return { seedEntries, seedCollections };
+	return { seedEntries, seedCollections, seedPossessionsWithExamples };
 }
 
 /**
@@ -113,17 +139,29 @@ function readSeed() {
 async function readLiveEntries() {
 	try {
 		const res = await fetch(`${url}/api/catalogue.json?fresh=1`);
-		if (!res.ok) return { liveEntries: new Set(), entriesReachable: false };
+		if (!res.ok) return { liveEntries: new Set(), possessionsWithExamples: new Set(), entriesReachable: false };
 		const body = await res.json();
 		const rows = PUBLISHED.flatMap((collection) =>
 			Array.isArray(body?.[collection]) ? body[collection] : [],
 		);
+		// `/api/catalogue.json` publishes one example per possibility — the
+		// representative — and gives it the *possibility's* slug as its `id`, so
+		// example ids cannot be compared with the seed's `ex-<slug>` rows. What is
+		// comparable is the pairing, so that is what is collected.
+		const withExamples = new Set();
+		for (const possibility of Array.isArray(body?.possibilities) ? body.possibilities : []) {
+			const nested = Array.isArray(possibility?.examples) ? possibility.examples : [];
+			if (nested.length > 0 && typeof possibility?.id === "string") {
+				withExamples.add(possibility.id);
+			}
+		}
 		return {
 			liveEntries: new Set(rows.map((r) => r?.id).filter((id) => typeof id === "string")),
+			possessionsWithExamples: withExamples,
 			entriesReachable: true,
 		};
 	} catch {
-		return { liveEntries: new Set(), entriesReachable: false };
+		return { liveEntries: new Set(), possessionsWithExamples: new Set(), entriesReachable: false };
 	}
 }
 
@@ -161,8 +199,8 @@ async function readLiveCollections(seedCollections) {
 	}
 }
 
-const { seedEntries, seedCollections } = readSeed();
-const { liveEntries, entriesReachable } = await readLiveEntries();
+const { seedEntries, seedCollections, seedPossessionsWithExamples } = readSeed();
+const { liveEntries, possessionsWithExamples, entriesReachable } = await readLiveEntries();
 
 let liveCollections = new Set();
 let collectionsReachable = false;
@@ -186,6 +224,8 @@ const verdict = assessDeployParity({
 	liveEntries,
 	seedCollections,
 	liveCollections,
+	seedPossessionsWithExamples,
+	livePossessionsWithExamples: possessionsWithExamples,
 });
 
 console.log(`Deploy parity — ${url}`);
