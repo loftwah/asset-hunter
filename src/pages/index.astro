@@ -179,7 +179,16 @@ for (const p of filtered) {
 					activeVertical ? (
 						<>
 							<p>
-								{verticalBlurb(activeVertical, filtered.length)}
+								{/*
+									Counted, not assumed: `origin: "none"` means this entry has
+									no representative media, and claiming otherwise here would be
+									contradicted by the first tile beneath the sentence.
+								*/}
+								{verticalBlurb(
+									activeVertical,
+									filtered.length,
+									filtered.filter((p) => p.representativeOrigin !== "none").length,
+								)}
 							</p>
 							<p class="intro__back">
 								<a class="linkish" href="/">Back to the whole catalogue</a>

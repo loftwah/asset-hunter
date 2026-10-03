@@ -8,9 +8,11 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { ORIGIN_MEANING } from "../src/lib/vocabulary.ts";
 
 import { briefFingerprint, validateBrief } from "../engine/src/brief.ts";
 import {
@@ -276,7 +278,7 @@ describe("candidate store", () => {
 				firstSeen: "2026-01-01T00:00:00Z",
 				lastSeen: "2026-01-01T00:00:00Z",
 				observations: 1,
-	briefFingerprint: null,
+				briefFingerprint: null,
 			};
 
 			const { isNew } = recordCandidate(dir, candidate);
@@ -346,7 +348,7 @@ const makeCandidate = (fullName: string, description: string, files: string[] = 
 	firstSeen: "2026-01-01T00:00:00Z",
 	lastSeen: "2026-01-01T00:00:00Z",
 	observations: 1,
-	briefFingerprint: null,
+		briefFingerprint: null,
 });
 
 describe("compression into possibilities", () => {
@@ -421,13 +423,35 @@ describe("compression into possibilities", () => {
 		assert.equal(none[0].distinctSources, 0, "no readable licence means 0, not 2");
 	});
 
+	test("every origin the vocabulary teaches has a colour to draw it with", () => {
+		// `--origin-<value>` is how an origin is tinted wherever it appears as a
+		// marker. A value with no matching custom property renders as nothing at all
+		// rather than as an obvious error, so the failure is a silently invisible
+		// origin — which is exactly the failure `origin: "none"` risks, being the
+		// origin with no picture to point at.
+		const css = readFileSync(new URL("../src/styles/global.css", import.meta.url), "utf8");
+		for (const origin of Object.keys(ORIGIN_MEANING)) {
+			assert.ok(
+				css.includes(`--origin-${origin}:`),
+				`no --origin-${origin} custom property, so that origin has no colour of its own`,
+			);
+		}
+	});
+
 	test("a brief naming two verticals produces distinct slugs, so it can sync at all", () => {
-		// The bug this exists to prevent: `toPossibilities` extracts the whole
-		// candidate set once per vertical, because one repository really can
-		// demonstrate a technique in two fields. The slug was `title + techniqueKey`
-		// and mentioned neither, so every multi-vertical brief emitted the same slug
-		// once per vertical — `validatePayload` refused the payload and the crawl
-		// wrote nothing. The run looked fine and the catalogue never changed.
+		// The bug this exists to prevent: one repository genuinely can demonstrate a
+		// technique in two fields, so extraction runs once per vertical. The slug was
+		// `title + techniqueKey` and mentioned neither, so every multi-vertical brief
+		// emitted the same slug once per vertical — `validatePayload` refused the
+		// payload and the crawl wrote nothing. The run looked fine and the catalogue
+		// never changed.
+		//
+		// This comment used to describe `toPossibilities` extracting the whole
+		// candidate set once per vertical, which is no longer what happens: each
+		// candidate is filed under the single vertical that fits. The assertion was
+		// unaffected, because it calls `extractPossibilities` directly, which is
+		// where the slug is built. But a rationale that no longer describes the code
+		// is worse than none — it teaches the next reader to trust it.
 		//
 		// The first acceptance brief named one vertical, so nothing caught it.
 		const perVertical = ["logos", "icons"].map((vertical) =>

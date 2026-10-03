@@ -215,9 +215,18 @@ const outcome = note
 				src={src}
 				alt={p.tagline ? `${p.title} — ${p.tagline}` : p.title}
 				caption={
-					(p.representativeOrigin
-						? `${originLabelFor(p.representativeOrigin)} specimen`
-						: "Specimen") + " · reference plate"
+					/*
+					 * `none` is not an origin that produced a plate, so it cannot be
+					 * described as one. With the fourth value in the vocabulary this
+					 * rendered "No media yet specimen · reference plate" over the
+					 * hatched NO PLATE placeholder — a caption claiming there is a
+					 * specimen, on the element that exists to say there is not.
+					 */
+					p.representativeOrigin === "none"
+						? "No representative media yet"
+						: (p.representativeOrigin
+								? `${originLabelFor(p.representativeOrigin)} specimen`
+								: "Specimen") + " · reference plate"
 				}
 				sticky
 				loading="eager"

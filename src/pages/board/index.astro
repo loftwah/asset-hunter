@@ -21,7 +21,7 @@ import OutcomeFlash from "../../components/OutcomeFlash.astro";
 import BoardSwitcher from "../../components/BoardSwitcher.astro";
 import { loadPossibilities } from "../../lib/catalogue";
 import { runApp } from "../../lib/effect/root";
-import { MEDIA_LABEL, RIGHTS_MEANING, verticalLabel } from "../../lib/vocabulary";
+import { RIGHTS_MEANING } from "../../lib/vocabulary";
 import {
 	COOKIE_NAME,
 	DEFAULT_BOARD,
@@ -66,9 +66,18 @@ const manageable = boardCanManage(items.length);
  * board being looked at and leaves the reader's other boards alone, so "nothing
  * was kept anywhere else" was only ever true when they had no other boards.
  */
-const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?.title, {
-	keptElsewhere: totals.items,
-});
+const outcome = boardOutcome(
+	Astro.url.searchParams,
+	(slug) => bySlug.get(slug)?.title,
+	{ keptElsewhere: totals.items },
+	/*
+	 * After a move the reader is on the board that received their entries, so
+	 * "which now holds them" has to be counted from *this* board rather than
+	 * asserted. Passing it in is what keeps the sentence from drifting into a
+	 * claim about a board that is not the one on screen.
+	 */
+	{ heldOnDestination: slugs.length },
+);
 ---
 
 <Base
@@ -120,6 +129,11 @@ const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?
 					wider than its box on three of four phone widths. The board being
 					emptied is already the heading directly above this form; the
 					confirmation states it again afterwards.
+
+					The count under the form is the cap, stated before the press. A move
+					into a board that already holds the maximum is now refused in words
+					rather than silently dropping what did not fit, and a reader who can
+					see the ceiling does not have to discover it by being refused.
 				*/}
 				<form class="newboard" method="post" action="/api/board">
 					<input type="hidden" name="action" value="rename" />
@@ -137,6 +151,10 @@ const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?
 						autocomplete="off"
 					/>
 					<button type="submit">Move board</button>
+					<span class="newboard__count">
+						{items.length} of {MAX_PER_BOARD}
+						<span class="visually-hidden">entries on this board; a board holds at most {MAX_PER_BOARD}</span>
+					</span>
 				</form>
 			</header>
 		)
@@ -424,6 +442,33 @@ const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?
 		border-color: var(--ember-line);
 	}
 
+	/*
+	 * The ceiling, beside the control it constrains.
+	 *
+	 * `var(--ink-4)` rather than `--ink-2`: this is a limit rather than content,
+	 * and it is the one number on the page that is not about the reader's actual
+	 * shortlist. Tabular figures so it does not shift width as the count climbs.
+	 */
+	.newboard__count {
+		align-self: center;
+		color: var(--ink-4);
+		font-family: var(--font-mono);
+		font-size: var(--step--2);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+
+	/* Stacks under the field rather than squeezing it on the narrowest phones. */
+	@media (max-width: 26rem) {
+		.newboard {
+			flex-wrap: wrap;
+		}
+
+		.newboard__count {
+			flex-basis: 100%;
+		}
+	}
+
 	.results {
 		padding-block: var(--sp-5) var(--sp-7);
 	}
@@ -470,12 +515,15 @@ const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?
 		color: var(--ink-2);
 	}
 
-	.entry__meta {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--sp-2) var(--sp-3);
-	}
-
+	/*
+	 * `.entry__meta` was deleted rather than left behind.
+	 *
+	 * It styled the per-entry facet line that #67 removed, because
+	 * `PossibilityTile` already printed the same two facts. CSS for an element
+	 * nothing renders is a rule that survives a fix and quietly re-applies itself
+	 * the next time someone adds a `<p class="entry__meta">` believing it is
+	 * styled on purpose.
+	 */
 	.entry__more {
 		border-top: 1px solid var(--line);
 		padding-top: var(--sp-2);

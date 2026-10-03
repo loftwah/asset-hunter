@@ -42,7 +42,7 @@ import {
 	COOKIE_NAME,
 	COOKIE_OPTIONS,
 	applyAction,
-	boardCanManage,
+	moveRefusal,
 	normaliseBoardName,
 	parseBoards,
 	serialiseBoards,
@@ -113,15 +113,6 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
 	const known = new Set(loaded.value.possibilities.map((p) => p.slug));
 
 	const current = parseBoards(cookies.get(COOKIE_NAME)?.value);
-	/*
-	 * Whether there is anything on the board being acted on, decided by the same
-	 * rule the page uses to decide whether to offer the control (#65). The form is
-	 * not rendered on an empty board, but a request can still arrive from a tab
-	 * that was rendered before the board was emptied — and a copy of nothing has
-	 * to be answered as the refusal it is rather than as a copy.
-	 */
-	const sourceEntries = (current[board] ?? []).filter((s) => known.has(s)).length;
-	const manageable = boardCanManage(sourceEntries);
 	const next = applyAction(current, action, { slug, board, to, known });
 
 	// Clearing the last entry removes the cookie rather than leaving an empty one
@@ -158,26 +149,37 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
 	 * pressed *Copy* and watched their shortlist disappear had to read the
 	 * confirmation to learn the verb (#68).
 	 *
-	 * Three answers, because there are three different failures:
+	 * Four answers, because there are four different failures, and the refusal is
+	 * computed by `moveRefusal` — the *same* function `applyAction` consults, so
+	 * the sentence cannot describe a refusal the code did not make:
 	 *
-	 * - the board has nothing on it (`nocopy`) — posted from a tab rendered
-	 *   before the board was emptied;
-	 * - the name does not survive `normaliseBoardName`, or is the board's own
-	 *   name (`nomove`) — the reader has entries and no usable name;
-	 * - neither, so the move happened (`moved=<destination>`).
+	 * - `nocopy` — nothing on this board (posted from a stale tab);
+	 * - `nomove` — the name is blank, punctuation-only, or the board's own name.
+	 *   The blank case used to succeed, because `normaliseBoardName("")` is the
+	 *   default board rather than an empty string, so an empty field merged a
+	 *   named board into `default` and reported success;
+	 * - `fullmove` — the destination is at the per-board cap, and the old code
+	 *   sliced the merged array so a full destination silently *deleted* the
+	 *   reader's entries rather than refusing;
+	 * - `moved` — it happened, and the reader is sent to the board that now holds
+	 *   their entries rather than the one that no longer does.
 	 *
-	 * A successful move also returns the reader to the board that now holds their
-	 * entries. Redirecting them back to the board they had just emptied was the
-	 * #65 fix for "copied to a new board" being unfollowable; naming the
-	 * destination in the URL and landing on it is the same fix without the detour.
+	 * `board` is set on every one of them. It used to be set only on success, so
+	 * every refusal bounced the reader to `default` — including "Nothing to move:
+	 * this board is empty", rendered over a full Shortlist they had never emptied.
+	 * A refusal about the board you are on belongs on that board.
 	 */
 	if (action === "rename") {
-		const destination = normaliseBoardName(to);
-		if (!manageable) {
+		const refusal = moveRefusal(current, board, to);
+		url.searchParams.set("board", normaliseBoardName(board));
+		if (refusal === "no-entries") {
 			url.searchParams.set("nocopy", "1");
-		} else if (!destination || destination === board) {
+		} else if (refusal === "destination-full") {
+			url.searchParams.set("fullmove", "1");
+		} else if (refusal) {
 			url.searchParams.set("nomove", "1");
 		} else {
+			const destination = normaliseBoardName(to);
 			url.searchParams.set("moved", destination);
 			url.searchParams.set("board", destination);
 		}

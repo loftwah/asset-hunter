@@ -74,6 +74,18 @@ const REFERENCE_ONLY = new Set([
 ]);
 
 /**
+ * The prefix the canonical-file checks are named with, exported so a consumer
+ * can find them without hard-coding the string.
+ *
+ * `tests/agent-contract.test.ts` compares doctor's report against these names to
+ * prove the two agree. It used to filter on a literal `"canonical:"` prefix, so
+ * renaming the prefix here made the comparison iterate zero items and the test
+ * pass vacuously — the same class of bug as the tally assertion that demanded a
+ * literal `0`.
+ */
+export const CANONICAL_CHECK_PREFIX = "canonical: ";
+
+/**
  * Wording that would contradict the MP model if it were reintroduced.
  *
  * #82 is explicit that "MP is only a naming convention" must not survive,
@@ -184,7 +196,7 @@ export function checkAgentContract(root) {
 	for (const doc of CANONICAL) {
 		const present = existsSync(join(root, doc.path));
 		check(
-			`canonical: ${doc.path}`,
+			`${CANONICAL_CHECK_PREFIX}${doc.path}`,
 			present,
 			present ? doc.owns : "missing",
 			present ? "" : `${doc.path} owns ${doc.owns}, and every link to it is now dead`,
@@ -222,11 +234,26 @@ export function checkAgentContract(root) {
 
 	// 3 — the MP model is reachable from the root entry point.
 
-	const mpInRoot = /\bMP\b/.test(agents) && /AGENT_CONTRACT\.md/.test(agents);
+	/*
+	 * The root file must *name* MP and route to the model, not merely contain the
+	 * two characters somewhere.
+	 *
+	 * This was `/\bMP\b/.test(agents) && /AGENT_CONTRACT\.md/.test(agents)`, which
+	 * any occurrence of "MP" in a 400-line file satisfies — delete the whole section
+	 * and it still passes on a single table cell. A check named "the MP model is
+	 * reachable" that cannot fail is not a check, so it now asserts the sentence
+	 * that defines MP, the one that bounds the role, and the link.
+	 */
+	const mpInRoot =
+		/MP is the human principal/i.test(agents) &&
+		/capability proxy, not a decision proxy/i.test(agents) &&
+		/docs\/AGENT_CONTRACT\.md/.test(agents);
 	check(
 		"MP model reachable from AGENTS.md",
 		mpInRoot,
-		mpInRoot ? "AGENTS.md defines MP and links the contract" : "AGENTS.md does not route to the MP model",
+		mpInRoot
+			? "AGENTS.md defines MP and links the full model"
+			: "AGENTS.md does not define MP, or does not link docs/AGENT_CONTRACT.md",
 		mpInRoot ? "" : "AGENTS.md is the entry point; an MP model nobody lands on does not exist",
 	);
 

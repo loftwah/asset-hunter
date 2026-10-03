@@ -166,6 +166,22 @@ export const ORIGIN_FIXTURES: LabState[] = (["upstream", "derived", "generated",
 			title: ORIGIN_TITLES[origin],
 			representativeOrigin: origin,
 			rightsStatus: origin === "upstream" ? "attribution" : "reference",
+			/*
+			 * `none` has no plate, and the fixture used to inherit one.
+			 *
+			 * `base()` defaults `specimen` to a real plate, so the row that exists
+			 * to show *"no representative media has been produced for this entry yet"*
+			 * rendered that plate with the marker "No media yet" beside it. In the
+			 * deterministic lab — the thing `AGENTS.md` names as the authority in
+			 * place of taste — that is confusable in precisely the way
+			 * `LAB_SECTIONS` below says origins must never be. And a screenshot of
+			 * it is evidence somebody will read as "this is what no media looks
+			 * like", which is the opposite of the truth.
+			 *
+			 * So the row renders the hatched no-plate placeholder, which is what
+			 * the product actually does with this value.
+			 */
+			...(origin === "none" ? { specimen: null } : {}),
 		}),
 	}),
 );

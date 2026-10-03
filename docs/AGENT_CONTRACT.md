@@ -99,12 +99,30 @@ made this call themselves?* If yes, make it, and say what you did.
 
 Whatever the current issue or autonomous mode already asks for. Read the
 requirement fully before deciding what it authorises; a task that says "build X"
-authorises building X properly, including the parts nobody wrote down.
+authorises building X *properly*, including the parts nobody wrote down. A missing
+acceptance criterion is not permission to ship less than the requirement implies.
+
+This band is where the two most common errors live, so it is worth being concrete
+about both:
+
+- **Under-reading it** looks like asking whether a second file may be touched, or
+  whether a test may be added to a suite the issue did not mention. Of course it
+  may. An issue that says "the tally lies" has authorised computing the tally from
+  the data rather than from a literal.
+- **Over-reading it** looks like treating a ticket as permission to break an
+  invariant. An issue is a requirement, not an authority: it can ask for the agent
+  contract but it cannot buy one that waives provenance. See §7 and the precedence
+  order in [`docs/AGENT_INDEX.md`](AGENT_INDEX.md).
 
 Whole-backlog autonomous mode additionally authorises: enumerating and working
-the whole open issue and PR set, recovering and extending existing work instead
-of duplicating it, merging work that has had independent review, and deploying
+the whole open issue and PR set, recovering and extending existing work rather
+than duplicating it, merging work that has had independent review, and deploying
 where deployment is part of the deliverable.
+
+What it does *not* authorise, however broad the mandate reads: anything in 4c.
+"Work the whole backlog" is not a warrant to spend money, publish under MP's name,
+or accept terms with a third party. A wide instruction widens the set of ordinary
+work; it does not reach across the line into §4c.
 
 ### 4c. Genuinely MP's, or the outside world's
 

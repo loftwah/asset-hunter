@@ -18,6 +18,7 @@ import {
 	boardOutcome,
 	boardSwitcher,
 	boardTotals,
+	moveRefusal,
 	normaliseBoardName,
 	parseBoards,
 	serialiseBoards,
@@ -113,7 +114,10 @@ describe("shortlist board", () => {
 		assert.equal(normaliseBoardName("a".repeat(200)).length, 40);
 	});
 
-	test("renaming copies rather than moves", () => {
+	test("renaming moves rather than copies (#68)", () => {
+		// The name of this test used to say "copies", over an implementation that
+		// moves. #68 is that mismatch: the control read *Copy*, the field read
+		// "copy this board to a new name", and `applyAction` emptied the source.
 		let boards = applyAction(parseBoards(null), "save", { slug: "raymarched-sdf", known });
 		boards = applyAction(boards, "rename", { board: DEFAULT_BOARD, to: "Pirates", known });
 		assert.deepEqual(boards[DEFAULT_BOARD], []);
@@ -206,18 +210,129 @@ describe("shortlist board", () => {
 	});
 
 	test("a real move names the board the entries went to (#65, #68)", () => {
-		const outcome = boardOutcome(new URLSearchParams("moved=Pirates"), () => undefined);
+		const outcome = boardOutcome(
+			new URLSearchParams("moved=Pirates&board=Pirates"),
+			() => undefined,
+			{},
+			{ heldOnDestination: 1 },
+		);
 		assert.equal(outcome?.tone, "ok");
 		assert.match(outcome?.message ?? "", /Pirates/);
 		// The old wording claimed *both* boards were empty, which is false: the
 		// board moved from is emptied, the destination holds the entries.
 		assert.doesNotMatch(outcome?.message ?? "", /both are empty/i);
-		// The board being looked at really is empty afterwards, so the confirmation
-		// says so rather than leaving the reader to work it out from a redirect
-		// that lands them on a different board than the one they emptied.
-		assert.match(outcome?.message ?? "", /this board is empty/i);
+		// A count, not an adjective — and it is the count on the board being looked
+		// at, so the sentence cannot describe a board nobody is on.
+		assert.match(outcome?.message ?? "", /holds 1 entry/i);
 		// One verb throughout. The control is a Move, so the confirmation is too.
 		assert.doesNotMatch(outcome?.message ?? "", /copied/i);
+	});
+
+	test("the moved sentence never says the board on screen is empty (#68)", () => {
+		/*
+		 * Present because the sentence said exactly that, while the endpoint had
+		 * already been changed to redirect to the *destination*. A reader landing on
+		 * the board holding their entries was told it was empty.
+		 * `tests/routes.test.ts` proves it end-to-end; this is the pure rule, and
+		 * the two files disagreed.
+		 */
+		const outcome = boardOutcome(
+			new URLSearchParams("moved=Pirates&board=Pirates"),
+			() => undefined,
+			{},
+			{ heldOnDestination: 4 },
+		);
+		assert.doesNotMatch(
+			outcome?.message ?? "",
+			/this board is empty/i,
+			"the reader is on the destination board, which holds their entries",
+		);
+	});
+
+	test("a full destination refuses the move instead of dropping entries (#68)", () => {
+		/*
+		 * The data-loss case, as a rule rather than as a report.
+		 *
+		 *   {default:[d1], pirates:[p0…p23], other:[o1,o2]}   pirates at the cap
+		 *   rename other → pirates
+		 *
+		 * The merged array put the destination's own entries first and sliced to
+		 * `MAX_PER_BOARD`, so every moved entry fell off the end — and
+		 * `next[from] = []` emptied the source anyway. The shortlist was gone and
+		 * the endpoint reported that it had moved.
+		 */
+		const pirates = Array.from({ length: MAX_PER_BOARD }, (_, i) => `p${i}`);
+		const boards = { default: ["d1"], pirates, other: ["o1", "o2"] };
+
+		assert.equal(moveRefusal(boards, "other", "pirates"), "destination-full");
+
+		const after = applyAction(boards, "rename", { board: "other", to: "pirates" });
+		assert.deepEqual(after.other, ["o1", "o2"], "the source board was emptied anyway");
+		assert.deepEqual(after.pirates, pirates, "the destination lost entries");
+
+		// A destination with room for everything still works.
+		const roomy = { default: ["d1"], pirates: ["p1"], other: ["o1", "o2"] };
+		assert.equal(moveRefusal(roomy, "other", "pirates"), null);
+		assert.deepEqual(applyAction(roomy, "rename", { board: "other", to: "pirates" }).pirates, [
+			"p1",
+			"o1",
+			"o2",
+		]);
+	});
+
+	test("a blank name is a refusal, not a merge into the default board (#68)", () => {
+		/*
+		 * `normaliseBoardName("")` returns `DEFAULT_BOARD`, not an empty string, so
+		 * normalising before checking turned "the reader pressed Move with the field
+		 * blank" into a successful move of a named board into `default`. It is the
+		 * most likely input on the form and the only one that lost data silently.
+		 */
+		const boards = { default: ["d1"], "Autumn picks": ["a1", "a2"] };
+		for (const blank of ["", "   ", "\t\n"]) {
+			assert.equal(
+				moveRefusal(boards, "Autumn picks", blank),
+				"no-name",
+				`${JSON.stringify(blank)} should not be a name`,
+			);
+			const after = applyAction(boards, "rename", { board: "Autumn picks", to: blank });
+			assert.deepEqual(after["Autumn picks"], ["a1", "a2"], "the named board was merged away");
+		}
+		// Punctuation-only reduces to an empty name, which is the same refusal.
+		assert.equal(moveRefusal(boards, "Autumn picks", "???"), "no-name");
+		// The board's own name is a different refusal.
+		assert.equal(moveRefusal(boards, "Autumn picks", "Autumn picks"), "same-name");
+	});
+
+	test("naming a board at the cap does not lose one (#68)", () => {
+		/*
+		 * The cap is six boards. Renaming empties the source and adds a name, so the
+		 * count of boards *with entries* does not change — but the map briefly held a
+		 * zero-entry board still consuming a slot, and the truncation then cut the new
+		 * board instead. The reader was redirected to a board that did not exist.
+		 */
+		const six = {
+			a: ["a1"],
+			b: ["b1"],
+			c: ["c1"],
+			d: ["d1"],
+			x: ["x1"],
+			default: ["z1"],
+		};
+		const moved = applyAction(six, "rename", { board: "a", to: "newname" });
+		const stored = JSON.parse(decodeURIComponent(serialiseBoards(moved))) as Record<
+			string,
+			string[]
+		>;
+
+		assert.ok(stored.newname, "the board the reader was sent to does not exist");
+		assert.deepEqual(stored.newname, ["a1"], "the entries did not arrive");
+		assert.ok(stored.default, "the default board was clobbered");
+		assert.ok(
+			Object.values(stored).filter((s) => s.length > 0).length <= MAX_BOARDS,
+			`more than ${MAX_BOARDS} boards survived serialisation`,
+		);
+		// The source is gone rather than left as an empty key eating a slot.
+		assert.equal(stored.a, undefined);
 	});
 
 	test("clearing says where the entries actually are (#65)", () => {

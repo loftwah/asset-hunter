@@ -103,24 +103,30 @@ describe("the lab covers every state the catalogue has to survive", () => {
 			ORIGIN_FIXTURES.map((f) => f.possibility.representativeOrigin).filter(Boolean),
 		);
 		/*
-		 * Driven from the vocabulary rather than from a literal list.
+		 * Driven from the vocabulary rather than from a literal list — but in *both*
+		 * directions, because a one-directional version of this loses the half the
+		 * old `deepEqual` caught.
 		 *
-		 * The hardcoded `["derived", "generated", "upstream"]` had the same
-		 * failure the tally assertion had: adding a fourth origin (`none` — an
-		 * entry with no representative media yet) made the test fail on correct
-		 * behaviour. A list that has to be edited in step with the type is a list
-		 * that eventually gets pinned back instead of extended.
+		 * The hardcoded `["derived", "generated", "upstream"]` failed the moment a
+		 * fourth origin (`none` — an entry with no representative media yet) was
+		 * added, on correct behaviour. A list that has to be edited in step with the
+		 * type is a list that eventually gets pinned back instead of extended.
 		 *
-		 * This asserts the stronger property instead: every origin the product can
-		 * print has pixels somewhere in the lab, so a new origin cannot ship
-		 * unlooked-at. `none` in particular needs one, because "no media" is
-		 * exactly the state that is easy to render as an accidental gap rather
-		 * than a stated fact.
+		 * Iterating `ORIGIN_MEANING` alone catches "a new origin nobody has looked
+		 * at" and silently stops catching "a fixture for an origin that does not
+		 * exist" — a stale fixture is how a retired origin keeps rendering. Both
+		 * directions, so neither failure is possible.
 		 */
 		for (const origin of Object.keys(ORIGIN_MEANING)) {
 			assert.ok(
 				covered.has(origin as never),
 				`no fixture for origin "${origin}" — it can be printed but has never been seen`,
+			);
+		}
+		for (const origin of covered) {
+			assert.ok(
+				origin != null && origin in ORIGIN_MEANING,
+				`a fixture claims origin "${origin}", which the vocabulary does not define`,
 			);
 		}
 	});

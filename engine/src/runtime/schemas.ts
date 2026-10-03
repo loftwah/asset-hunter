@@ -171,18 +171,19 @@ export const EntryResponse = Schema.Struct({
 /**
  * The `_rev` token EmDash's write path expects: `base64("<version>:<updatedAt>")`.
  *
- * Reconstructed here rather than read, because the GET route does not put it in
- * the body. This is the same construction `encodeRev` performs in
- * `emdash/src/api/rev.ts`, and it is deliberately duplicated rather than imported:
- * `docs/ARCHITECTURE.md` forbids the engine depending on CMS internals, and a
- * token format is exactly the kind of detail that should break loudly if it
- * changes rather than silently returning `null`.
+ * A **fallback**, not the primary source. `handleContentGet` returns
+ * `{ item, _rev: encodeRev(item) }`, so `read` normally takes `body.data._rev`
+ * straight off the wire; this exists for a response shaped differently enough to
+ * omit it, where degrading to a rebuilt token beats degrading to `null` — a null
+ * `rev` makes the writer POST instead of PUT, so the entry would be created again
+ * rather than updated, and no version conflict could be detected.
  *
- * Returning `null` is the failure this replaced. With `rev` always null the engine
- * POSTed instead of PUTing, so every sync wrote a fresh revision of every entry
- * whether or not anything had changed — no version conflict could ever be
- * detected, and `sync` reported `updated` for a payload identical to the one
- * before it.
+ * This is the same construction `encodeRev` performs in
+ * `emdash/src/api/rev.ts` (`encodeBase64(\`${item.version}:${item.updatedAt}\`)`
+ * over UTF-8 standard base64), and it is deliberately duplicated rather than
+ * imported: `docs/ARCHITECTURE.md` forbids the engine depending on CMS
+ * internals, and a token format is exactly the kind of detail that should break
+ * loudly if it changes rather than silently returning `null`.
  */
 export function revFromToken(version: unknown, updatedAt: unknown): string | null {
 	if (typeof version !== "number" || typeof updatedAt !== "string" || !updatedAt) return null;

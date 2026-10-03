@@ -24,7 +24,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { checkAgentContract, CANONICAL } from "../scripts/agent-contract.mjs";
+import { checkAgentContract, CANONICAL, CANONICAL_CHECK_PREFIX } from "../scripts/agent-contract.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const checks = checkAgentContract(root);
@@ -93,8 +93,17 @@ describe("the checks are wired into the one quality system", () => {
 			"doctor reports agent-contract failures that this file does not",
 		);
 		// The same set, not a subset: a check living here but not in the report is
-		// a check nobody sees.
-		const here = checks.filter((c) => c.name.startsWith("canonical:")).map((c) => c.name);
+		// a check nobody sees. Derived from the exported prefix rather than a
+		// hard-coded `"canonical:"`, because a renamed prefix would make this
+		// iterate nothing and pass vacuously.
+		const here = checks
+			.filter((c) => c.name.startsWith(CANONICAL_CHECK_PREFIX))
+			.map((c) => c.name);
+		assert.equal(
+			here.length,
+			CANONICAL.length,
+			"the canonical-file checks are not all present in the report",
+		);
 		for (const name of here) {
 			assert.ok(
 				group.some((c: { name: string }) => c.name === name),
@@ -166,13 +175,14 @@ describe("what an agent arriving from AGENTS.md can work out", () => {
 		assert.match(contract, /### 4b\. Already authorised by the active task/);
 		assert.match(contract, /### 4c\. Genuinely MP's, or the outside world's/);
 		// Each band has to carry something concrete, or it is a heading with a
-		// promise under it. Four lines is the floor: prose is prose, and a band
-		// shorter than that has stopped answering the question it exists for.
+		// promise under it. Ten lines is the floor: the shortest of the three is
+		// currently twelve, and a band that drops under ten has stopped
+		// enumerating what is in it — which is the part that decides behaviour.
 		for (const band of ["4a", "4b", "4c"]) {
 			const section = contract.split(`### ${band}.`)[1]?.split(/\n#{2,3} /)[0] ?? "";
 			const lines = section.split("\n").filter((l) => l.trim().length > 0);
 			assert.ok(
-				lines.length >= 4,
+				lines.length >= 10,
 				`band ${band} has ${lines.length} line(s) under it; it is a heading, not a rule`,
 			);
 		}
@@ -239,9 +249,13 @@ describe("what an agent arriving from AGENTS.md can work out", () => {
 		// the only thing keeping it correct is that its pointer still works.
 		const kickoff = read("docs/AUTONOMOUS_PROMPT.md");
 		assert.match(kickoff, /AGENTS\.md/);
+		// A bound, not a content claim. It used to be 400 against a file of 233
+		// characters, which fires on a one-line addition and says nothing about
+		// whether the pointer is right — the assertion above is what checks that.
+		// This only catches a kickoff that has started carrying a prompt.
 		assert.ok(
-			kickoff.length < 400,
-			"the kickoff has grown content; it is meant to be a pointer, not a prompt",
+			kickoff.trim().split("\n").length <= 4,
+			`the kickoff has grown to ${kickoff.trim().split("\n").length} lines; it is meant to be a pointer`,
 		);
 		const policy = read("docs/AGENT_POLICY.md");
 		assert.match(policy, /## 11\. Stop conditions/);

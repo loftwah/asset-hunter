@@ -118,10 +118,16 @@ for (const file of plates) {
 		//
 		//    Measured on the rendered glyph box, so it also catches the case a font
 		//    metric estimate would have let through.
+		//
+		// A `data-bleed` plate is exempted here for the same reason as check 2: a
+		// caption deliberately running past the crop is part of the composition, not
+		// a defect. Check 2 already established the flag's meaning, and a detector
+		// that ignores it would report the plates it is meant to protect.
 		for (const t of document.querySelectorAll("text")) {
 			if (!t.textContent.trim()) continue;
 			const r = t.getBoundingClientRect();
 			if (r.left < -1 || r.right > 801) {
+				if (bleed) continue;
 				problems.push(
 					`text is cut by the plate edge: "${t.textContent.trim().slice(0, 30)}" spans ${Math.round(
 						r.left,

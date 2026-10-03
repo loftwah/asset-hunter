@@ -168,13 +168,26 @@ export function verticalLabel(slug: string | null | undefined): string {
  * `/search`'s empty state had when "covers 13 verticals" was a literal in copy
  * (#77).
  *
+ * It also does not claim a representative exists. `origin: "none"` is a real
+ * value for an entry the hunt engine read evidence about but produced no plate
+ * for, and this sentence sits directly above tiles that read "No media yet" — so
+ * "each with a representative example" is contradicted by the first row beneath
+ * it. `withMedia` is counted rather than assumed.
+ *
  * Kept here, beside the labels, because a vertical's name and its one-line
  * description are the same fact and splitting them across files is how one of
  * them goes stale.
  */
-export function verticalBlurb(slug: string, count: number): string {
+export function verticalBlurb(
+	slug: string,
+	count: number,
+	withMedia: number = count,
+): string {
 	const entries = `${count} ${count === 1 ? "possibility" : "possibilities"}`;
-	return `${entries} in ${VERTICAL_LABEL[slug] ?? slug.replace(/-/g, " ")}, each with a representative example and what is actually cleared for use. This is a map of what has been catalogued, not a claim that the space is covered.`;
+	const coverage = withMedia
+		? `${withMedia} with a representative example, and what is actually cleared for use`
+		: "none with a representative example yet — what is recorded here is the evidence that was read";
+	return `${entries} in ${VERTICAL_LABEL[slug] ?? slug.replace(/-/g, " ")}, ${coverage}. This is a map of what has been catalogued, not a claim that the space is covered.`;
 }
 
 /**

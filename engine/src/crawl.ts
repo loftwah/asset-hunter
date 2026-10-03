@@ -560,12 +560,38 @@ export function crawl(options: CrawlOptions): Effect.Effect<CrawlOutcome> {
 			for (const [from, to] of renamed) say(`    → ${from} → ${to}`);
 		}
 
-		const payload = buildPayload(toPossibilities(activeCandidates(loadCandidates(root).values()), brief), [], {
+		const extracted = toPossibilities(
+			activeCandidates(loadCandidates(root).values()),
+			brief,
+		);
+		const payload = buildPayload(extracted.possibilities, [], {
 			huntId: `${briefFingerprint(brief)}:${mode === "hunt" ? (brief.queries[0] ?? "hunt") : "refresh"}`,
 			// The one non-deterministic input to the payload, and the one the merge
 			// policy treats as bookkeeping rather than as change.
 			syncedAt: now,
 		});
+
+		/*
+		 * Say what was inspected and not filed, and say it as a finding rather than
+		 * a footnote.
+		 *
+		 * This is the one place a run can quietly do nothing. `validatePayload`
+		 * accepts an empty possibility list, so a matcher that refuses every
+		 * candidate produces a green run, an empty payload, and a fingerprint the
+		 * next run will treat as already synced. Naming the repositories turns "this
+		 * brief found nothing" into something a reader can check.
+		 */
+		if (extracted.unfiled.length) {
+			const n = extracted.unfiled.length;
+			say(
+				`\n  ! ${n} inspected ${n === 1 ? "source fits" : "sources fit"} none of the declared verticals (${brief.verticals.join(", ")}) and ${n === 1 ? "was" : "were"} not filed:`,
+			);
+			for (const repo of extracted.unfiled) say(`    · ${repo}`);
+			say(
+				"    nothing was lost — they stay in candidates.json — but the brief's\n" +
+					"    vertical list or its wording may be wrong. See engine/src/vocabulary.ts.",
+			);
+		}
 
 		// The client's own record of whether GitHub throttled us. The honesty rule: a
 		// run that read less than it claims must not produce a payload that looks
@@ -1030,15 +1056,46 @@ function inspect(options: InspectOptions) {
  *    filed under the single declared vertical it fits best, so a brief produces
  *    one entry per treatment and the taxonomy is a statement rather than a
  *    multiplication. `verticalFit` is the rule, and a candidate that fits none of
- *    the declared terms is dropped rather than filed under the nearest.
+ *    the declared terms is refused rather than filed under the nearest.
+ *
+ * ## A refusal is reported, never silent
+ *
+ * `unfiled` comes back alongside the entries so the caller can say so. This used
+ * to be a bare `continue`, so a run that inspected 24 repositories, refused all
+ * 24 and wrote an empty payload reported:
+ *
+ *     checked 24 / changed 24 / new 24
+ *     ✔ payload 7f3a91c2 — 0 possibilities, 0 examples
+ *
+ * Every number there is true and the conclusion is completely misleading.
+ * `validatePayload` accepts an empty possibility list, so the hunt *succeeded*.
+ * An operator cannot distinguish "this brief found nothing" from "this brief's
+ * vertical matcher is wrong" — and the second is likelier, because a matcher that
+ * refuses everything looks exactly like a quiet afternoon.
+ *
+ * `engine/src/vocabulary.ts` states the rule this was violating: "silently
+ * dropping the entry would hide a hunt's results without saying why".
  */
-function toPossibilities(candidates: Candidate[], brief: HuntBrief): ExtractedPossibility[] {
-	const mine = candidatesForBrief(new Map(candidates.map((c) => [c.id, c])), briefFingerprint(brief));
+interface Extraction {
+	readonly possibilities: ExtractedPossibility[];
+	/** Candidates that were inspected and filed under no declared vertical. */
+	readonly unfiled: string[];
+}
+
+function toPossibilities(candidates: Candidate[], brief: HuntBrief): Extraction {
+	const mine = candidatesForBrief(
+		new Map(candidates.map((c) => [c.id, c])),
+		briefFingerprint(brief),
+	);
 	const relevant = mine.filter((c) => c.files.some((f) => f.kind !== "licence"));
 	const byVertical = new Map<string, Candidate[]>();
+	const unfiled: string[] = [];
 	for (const candidate of relevant) {
 		const vertical = verticalFit(candidate, brief.verticals);
-		if (!vertical) continue;
+		if (!vertical) {
+			unfiled.push(candidate.repo);
+			continue;
+		}
 		const bucket = byVertical.get(vertical) ?? [];
 		bucket.push(candidate);
 		byVertical.set(vertical, bucket);
@@ -1049,7 +1106,7 @@ function toPossibilities(candidates: Candidate[], brief: HuntBrief): ExtractedPo
 		if (!bucket?.length) continue;
 		out.push(...extractPossibilities(bucket, { vertical, intent: brief.intent }));
 	}
-	return out;
+	return { possibilities: out, unfiled };
 }
 
 /**
@@ -1079,6 +1136,33 @@ const stemAll = (text: string): Set<string> =>
 			.map(stem)
 			.filter((w) => w.length > 2),
 	);
+
+/**
+ * A vertical's matching terms, stemmed once and deduped.
+ *
+ * The dedupe is the point. `verticalTerms` merges three sources — the label, the
+ * extra terms, and the slug's own words — so it routinely holds both `logo` and
+ * `logos`, and both stem to `logo`. Scoring the surface forms independently gave
+ * one occurrence of "logo" twice the weight for `logos` that it earned for
+ * `branding`, which manufactured a tie between two verticals that overlap
+ * legitimately — and a tie is a refusal.
+ *
+ * Cached because it is called once per declared vertical per candidate, and a
+ * hunt scores hundreds of candidates against the same handful of slugs.
+ */
+const stemmedCache = new Map<string, Set<string>>();
+
+function stemmedTerms(vertical: string): Set<string> {
+	const cached = stemmedCache.get(vertical);
+	if (cached) return cached;
+	const out = new Set<string>();
+	for (const term of verticalTerms(vertical)) {
+		const word = stem(term);
+		if (word.length > 2) out.add(word);
+	}
+	stemmedCache.set(vertical, out);
+	return out;
+}
 
 /**
  * The one declared vertical a candidate belongs in, or null for none.
@@ -1113,20 +1197,33 @@ function verticalFit(candidate: Candidate, verticals: string[]): string | null {
 	// *music*; the repositories that brief is sent after say *sound*, *sfx* and
 	// *granular*. Matching the label alone refused a granular texture generator
 	// from a hunt for procedural sound effects — see `VERTICAL_TERMS`.
+	//
+	// The term set is stemmed **once**, here, and each term scores at most once.
+	// It used to be stemmed per-occurrence against a set built from three sources,
+	// so a set holding both `logos` and `logo` — which it does, from the label and
+	// from the terms — scored one occurrence of "logo" as +6 for `logos` and +3
+	// for `branding`, and the two tied. `branding` and `logos` share `logo`,
+	// `mark` and `wordmark`, and a brief declaring both refused a realistic "A
+	// vector mark design toolkit for identities and lockups" at 14–14. Scoring the
+	// stem rather than the surface fixes the inflation; `stemmedTerms` also dedupes
+	// so a word in both a label and a term list cannot be counted twice for the
+	// same vertical.
 	const scored = verticals.map((vertical) => {
 		let score = 0;
-		for (const term of verticalTerms(vertical)) {
-			const word = stem(term);
-			if (!word) continue;
+		for (const word of stemmedTerms(vertical)) {
 			if (own.has(word)) score += 3;
 			if (via.has(word)) score += 2;
 		}
-		if (own.has(stem(vertical))) score += 3;
-		if (vertical === "icons" && media.includes("vector")) score += 2;
-		if (vertical === "logos" && media.includes("vector")) score += 1;
+		// The medium, in the vocabulary `kindFor` actually produces: `image`,
+		// `motion`, `3d`, `audio`, `type`, `shader`, `code`, `generic`.
+		//
+		// This used to test for `vector` and `model`, neither of which is a member
+		// of that set — an SVG maps to `image` and a `.glb` maps to `3d` — so all
+		// three lines were dead for every candidate, including the worked example in
+		// this function's own docstring. A rule that can never fire reads as a rule.
 		if (vertical === "motion-video" && media.includes("motion")) score += 2;
 		if (vertical === "audio-music" && media.includes("audio")) score += 2;
-		if (vertical === "3d" && media.includes("model")) score += 2;
+		if (vertical === "3d" && media.includes("3d")) score += 2;
 		return { vertical, score };
 	});
 	scored.sort((a, b) => b.score - a.score);

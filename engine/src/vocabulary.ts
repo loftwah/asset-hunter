@@ -61,7 +61,12 @@ export const VERTICAL_TERMS: Readonly<Record<string, readonly string[]>> = {
 	typography: ["type", "typography", "font", "fonts", "lettering", "wordmark", "typeface"],
 	"motion-video": ["motion", "animation", "animate", "video", "transition", "easing", "kinetic"],
 	"audio-music": ["audio", "sound", "sfx", "music", "sonic", "synthesis", "sample", "granular"],
-	"3d": ["3d", "model", "mesh", "render", "blender", "glb", "gltf", "scene"],
+	// `"3d"` is absent deliberately: `stemAll` and `stemmedTerms` drop words of
+	// three characters or fewer, so it could never match, and listing a term that
+	// cannot fire is how a vocabulary starts looking authoritative when it is not.
+	// The slug's own words are added by `verticalTerms` regardless, and the medium
+	// rule (`mediaKindsOf` returning `3d`) covers the extension-based case.
+	"3d": ["model", "mesh", "render", "blender", "glb", "gltf", "scene"],
 	shaders: ["shader", "glsl", "fragment", "vertex", "procedural", "noise", "raymarch"],
 	"software-architecture": [
 		"architecture",

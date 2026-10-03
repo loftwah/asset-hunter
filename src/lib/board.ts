@@ -77,10 +77,42 @@ export function parseBoards(raw: string | null | undefined): Boards {
 	}
 	// The default board always exists so the UI has somewhere to save to.
 	if (!boards[DEFAULT_BOARD]) boards[DEFAULT_BOARD] = [];
-	const limited = Object.fromEntries(
-		Object.entries(boards).slice(0, Math.max(0, MAX_BOARDS - 1)),
-	) as Boards;
-	return { ...limited, [DEFAULT_BOARD]: boards[DEFAULT_BOARD] ?? [] };
+	return boundBoards(boards);
+}
+
+/**
+ * Holds a board map to `MAX_BOARDS` without clobbering a name.
+ *
+ * It used to `slice(0, MAX_BOARDS - 1)` and then *overwrite* the last slot with
+ * `DEFAULT_BOARD` when the default board was not already inside the slice. That
+ * silently destroyed a legitimate board to keep the default one — and it fired
+ * exactly when the reader had six boards and named a seventh, because renaming
+ * adds a key:
+ *
+ *     in:  {a, b, c, d, x, default}          six boards
+ *     out: {b, c, d, x, default}              `a` gone, and so was whatever it held
+ *
+ * The reader is then redirected to the board they just created, which does not
+ * exist, with a message saying their entries are there. So the fix is not to
+ * choose a better slot: it is to keep the default board *and* the first
+ * `MAX_BOARDS - 1` others, and to never write over a name that is already there.
+ *
+ * This is a backstop. Every action enforces the cap itself, so the only way to
+ * reach the truncation is a hand-written cookie.
+ */
+function boundBoards(boards: Boards): Boards {
+	// Empty boards are dropped first, and that is the whole fix. `rename` empties
+	// the source and adds a new key, so the map briefly holds a zero-entry board
+	// that was still consuming one of the six slots — and the truncation below
+	// then cut the *new* board, which is the one holding the reader's entries.
+	const filled = Object.entries(boards).filter(([, s]) => s.length > 0);
+	const others = filled.filter(([n]) => n !== DEFAULT_BOARD).slice(0, MAX_BOARDS - 1);
+	const bounded: Boards = {};
+	for (const [name, slugs] of others) bounded[name] = slugs;
+	const dflt = filled.find(([n]) => n === DEFAULT_BOARD);
+	if (dflt) bounded[DEFAULT_BOARD] = dflt[1];
+	else if (DEFAULT_BOARD in boards) bounded[DEFAULT_BOARD] = boards[DEFAULT_BOARD];
+	return bounded;
 }
 
 /**
@@ -96,15 +128,10 @@ export function serialiseBoards(boards: Boards): string {
 	for (const [name, slugs] of Object.entries(boards)) {
 		if (slugs.length) compact[name] = [...new Set(slugs)].slice(0, MAX_PER_BOARD);
 	}
-	// A final backstop on the count, ordered so the default board always survives.
-	const names = Object.keys(compact);
-	const limited = names.slice(0, MAX_BOARDS - 1);
-	if (names.includes(DEFAULT_BOARD)) {
-		limited[Math.max(0, limited.length - (limited.includes(DEFAULT_BOARD) ? 0 : 1))] =
-			DEFAULT_BOARD;
-	}
 	const bounded: Boards = {};
-	for (const name of new Set(limited)) bounded[name] = compact[name];
+	for (const name of new Set(Object.keys(boundBoards(compact)))) {
+		bounded[name] = compact[name] ?? [];
+	}
 	return encodeURIComponent(JSON.stringify(bounded));
 }
 
@@ -134,6 +161,77 @@ export function normaliseBoardName(input: string | null | undefined): string {
 }
 
 export type BoardAction = "save" | "unsave" | "remove" | "clear" | "rename";
+
+/**
+ * Why a move will not happen, or `null` when it will.
+ *
+ * This exists because a move can fail in five ways and three of them used to
+ * fail by *discarding the reader's entries* and then reporting success. The
+ * concrete case, reproduced rather than imagined:
+ *
+ *     in:  {default:[d1], pirates:[p0…p23], other:[o1, o2]}   // pirates is full
+ *     rename other → pirates
+ *     out: {default:[d1], pirates:[p0…p23], other:[]}          // o1 and o2 gone
+ *
+ * `next[to] = union(next[to], moved).slice(0, MAX_PER_BOARD)` keeps the
+ * *destination's* entries first, so a full destination pushes every moved entry
+ * off the end — and `next[from] = []` then empties the source regardless. The
+ * reader's shortlist is unrecoverable and the endpoint answers "moved, it now
+ * holds them".
+ *
+ * A partial move is not the alternative. Leaving what did not fit behind on a
+ * board the reader has just been told is empty is worse than refusing, because
+ * they will not go looking for it. So a move either happens whole or is
+ * refused in words.
+ *
+ * `applyAction` calls this, so the rule has exactly one implementation; the
+ * endpoint calls it too, and that is how it can explain itself.
+ */
+export type MoveRefusal =
+	| "no-entries"
+	| "no-name"
+	| "same-name"
+	| "destination-full"
+	| null;
+
+/**
+ * Whether a move from `from` to the name in `to` can happen.
+ *
+ * `to` is the **raw submitted value**, not a normalised name, and the difference
+ * is load-bearing. `normaliseBoardName("")` returns `DEFAULT_BOARD` rather than
+ * an empty string, so normalising first turns "the reader pressed Move with the
+ * field blank" into `moved=default` — which silently merges a named board into
+ * the default one and reports success. It is the single most likely input on the
+ * form, and it was the one input that destroyed data without complaint.
+ *
+ * There is deliberately no board-count refusal here. A rename empties its source
+ * and adds one name, so the number of boards with entries does not change — the
+ * bug it replaced was a truncation in `boundBoards` that counted an emptied board
+ * against the cap, and that is fixed there rather than prevented here.
+ */
+export function moveRefusal(
+	boards: Boards,
+	fromInput: string | null | undefined,
+	toInput: string | null | undefined,
+): MoveRefusal {
+	const from = normaliseBoardName(fromInput);
+	const moving = boards[from] ?? [];
+	if (moving.length === 0) return "no-entries";
+
+	// Nothing typed, or nothing but whitespace: not a rename into the default
+	// board. See the note above.
+	const typed = (toInput ?? "").trim();
+	if (!typed) return "no-name";
+
+	const to = normaliseBoardName(toInput);
+	if (!to) return "no-name";
+	if (to === from) return "same-name";
+
+	// Room for everything, or nothing happens at all. See the type's note.
+	const merged = new Set([...(boards[to] ?? []), ...moving]);
+	if (merged.size > MAX_PER_BOARD) return "destination-full";
+	return null;
+}
 
 /**
  * Applies one action. Pure, so the endpoint stays a thin shell and the rules
@@ -187,11 +285,25 @@ export function applyAction(
 	}
 
 	if (action === "rename") {
+		/*
+		 * The rule is `moveRefusal`, and this branch defers to it completely.
+		 *
+		 * It used to compute the merge itself and slice the result, which is how a
+		 * full destination turned a move into a deletion. Deciding here and
+		 * explaining there would be two implementations of one rule; instead the
+		 * refusal has a single home and the endpoint reads the same function to
+		 * find out which sentence to show.
+		 */
+		if (moveRefusal(next, board, options.to)) return next;
 		const from = board;
 		const to = normaliseBoardName(options.to);
-		if (from === to || !to) return next;
 		const moved = next[from] ?? [];
 		next[to] = [...new Set([...(next[to] ?? []), ...moved])].slice(0, MAX_PER_BOARD);
+		// Emptied, not deleted. `parseBoards` re-creates the default board on the
+		// next request either way, but "the default board always exists" is a stated
+		// invariant and nobody reading `applyAction` should have to know that a
+		// request boundary papers over it. `boundBoards` drops empty boards before
+		// counting them, so this costs no slot.
 		next[from] = [];
 		return next;
 	}
@@ -286,6 +398,15 @@ export function boardOutcome(
 	params: URLSearchParams,
 	titleFor: (slug: string) => string | undefined,
 	context: { keptElsewhere?: number } = {},
+	/*
+	 * How many entries the board the reader is *now on* actually holds.
+	 *
+	 * Only the moved sentence reads it, and only so "which now holds them" is a
+	 * count rather than an adjective. A second argument rather than another field
+	 * because it is not the same fact: `keptElsewhere` is about boards that are
+	 * not on screen, this is about the one that is.
+	 */
+	moveContext: { heldOnDestination?: number } = {},
 ): { tone: "ok" | "problem"; message: string } | null {
 	const saved = params.get("saved");
 	if (saved) {
@@ -321,39 +442,64 @@ export function boardOutcome(
 	 * "move" (#68) — and `DESIGN.md` §9.5 has always called this thing a
 	 * rename. One verb, and the verb is what the code does.
 	 *
-	 * The sentence also states what is true of the board the reader is looking at,
-	 * which is now empty: they have watched their entries leave the screen, and
-	 * the endpoint sends them to the destination rather than leaving them to work
-	 * that out.
+	 * The sentence names the board the reader is *now looking at*, which is the
+	 * destination, and says what is on it. An earlier version ended "This board
+	 * is empty", which was written when the endpoint redirected back to the
+	 * emptied board — and became false the moment the redirect was fixed to send
+	 * them where their entries actually are. It read:
+	 *
+	 *     Moved to default, which now holds them. This board is empty.   [2 tiles]
+	 *
+	 * Two false claims on one screen, and the second is the sort that erodes
+	 * trust in the first. The name is the reader's own where it can be, because
+	 * `boardLabel` turns the stored `default` into "Shortlist" — the sentence was
+	 * reading `default` out of the query string and printing a storage key as if
+	 * it were a name.
 	 */
 	const moved = params.get("moved");
 	if (moved) {
+		const held = moveContext.heldOnDestination;
+		const here = boardLabel(params.get("board") ?? moved);
 		return {
 			tone: "ok",
-			message: `Moved to ${moved}, which now holds them. This board is empty.`,
+			message:
+				held && held > 0
+					? `Moved to ${here}, which now holds ${held} ${held === 1 ? "entry" : "entries"}.`
+					: `Moved to ${here}.`,
 		};
 	}
 	/*
-	 * Two refusals, not one, because they are different failures with different
-	 * fixes (#68).
+	 * Three refusals, because they are three different failures with three
+	 * different fixes (#68, and the data loss found reviewing it).
 	 *
-	 * `nocopy` is "there was nothing on this board" — a form posted from a tab
+	 * `nocopy` — there was nothing on this board. A form posted from a tab
 	 * rendered before the board was emptied. What the reader needs is entries.
 	 *
-	 * `nomove` is "that name is not a name" — empty, whitespace, punctuation
-	 * only, or the board's own name. The reader has entries; what they lack is a
-	 * name that survives `normaliseBoardName`. `DESIGN.md` §8: an error says what
-	 * failed and what to try, and the single sentence that used to cover both
-	 * told a reader with a full board that their board was empty.
+	 * `nomove` — that name is not a name. Blank, whitespace, punctuation only, or
+	 * the board's own name. `DESIGN.md` §8: an error says what failed *and* what
+	 * to try. The blank case also used to succeed — `normaliseBoardName("")` is
+	 * the *default board*, so pressing Move with an empty field merged a named
+	 * board into it and reported success.
+	 *
+	 * `fullmove` — the destination has no room. The reader has entries and a
+	 * perfectly good name, and the only thing in the way is the per-board cap.
+	 * Saying so is the entire fix; silently dropping what did not fit is how a
+	 * shortlist became unrecoverable.
 	 */
 	if (params.get("nocopy")) {
 		return { tone: "problem", message: "Nothing to move: this board is empty." };
+	}
+	if (params.get("fullmove")) {
+		return {
+			tone: "problem",
+			message: `Nothing moved: that board already holds ${MAX_PER_BOARD} entries, which is the most one board can hold. Remove something from it first, or move to a new name.`,
+		};
 	}
 	if (params.get("nomove")) {
 		return {
 			tone: "problem",
 			message:
-				"That name was not usable, so nothing moved. Use letters, numbers or spaces — and not this board’s own name.",
+				"That name was not usable, so nothing moved. Type a name — letters, numbers or spaces — and not this board’s own name. Everything is still on this board.",
 		};
 	}
 	return null;

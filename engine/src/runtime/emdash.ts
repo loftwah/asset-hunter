@@ -276,21 +276,35 @@ export class EmDashApi extends Context.Service<
 						typeof fields === "object" && fields !== null && !Array.isArray(fields)
 							? (fields as Record<string, unknown>)
 							: {},
-					rev:
-						body.data?._rev ??
-						item._rev ??
-						// The route does not return the token, so it is rebuilt from the two
-						// fields it is made of. Before this, `rev` was `null` for every entry
-						// that had ever been written, so every sync POSTed a new revision of
-						// everything — which also means no version conflict could ever be
-						// detected, because there was never a token to conflict against.
-						revFromToken(item.version, item.updatedAt),
+					/*
+					 * `body.data._rev` first, because that is where the route puts it
+					 * (`handleContentGet` returns `{ item, _rev: encodeRev(item) }`).
+					 *
+					 * The fallback below is genuinely a fallback, and it was previously
+					 * documented as the *cause* of a bug that had not happened: the
+					 * comment claimed "the route does not return the token" and that
+					 * `rev` was therefore `null` for every written entry, so every sync
+					 * POSTed a fresh revision of everything and no version conflict could
+					 * ever be detected. None of that was true — the token has been in
+					 * the body all along.
+					 *
+					 * A wrong rationale is worse than none, because the next person reads
+					 * it, believes the primary path is broken, and removes it. The
+					 * fallback stays because a response shaped slightly differently —
+					 * a proxy that reshapes, a future route change — should degrade to
+					 * a rebuilt token rather than to a silent POST.
+					 *
+					 * `revFromToken` reproduces EmDash's own construction
+					 * (`encodeBase64(\`${version}:${updatedAt}\`)`,
+					 * `node_modules/emdash/src/api/rev.ts`), so a rebuilt token
+					 * validates identically to a delivered one.
+					 */
+					rev: body.data?._rev ?? item._rev ?? revFromToken(item.version, item.updatedAt),
 				} satisfies EntryFields;
 			});
 
 			/**
-			 * The list route is **offset-paginated and hard-capped at 100 rows** by
-			 * EmDash's own `CursorPaginationQuery`.
+			 * The list route is **cursor-paginated and hard-capped at 100 rows**.
 			 *
 			 * This asked for `limit=200`, which the route rejects with a 400. That is
 			 * not a cosmetic failure. `list("exclusions")` is how a takedown becomes
@@ -300,23 +314,45 @@ export class EmDashApi extends Context.Service<
 			 * withdrawn repository kept coming back and the only signal that anything
 			 * was wrong was a line of stderr above the results.
 			 *
-			 * So: page. `limit=100` per request, `offset` walking, stopping on the
-			 * reported `total` or on a short page, and bounded by the caller's own
-			 * limit. A takedown at row 150 has to be as visible as one at row 1 —
-			 * clamping to the first hundred would be the same failure in a quieter
-			 * shape, which is worse.
+			 * So: page. `limit=100` per request, walking the `nextCursor` the route
+			 * returns, bounded by the caller's own limit. A takedown at row 150 has
+			 * to be as visible as one at row 1 — clamping to the first hundred would
+			 * be the same failure in a quieter shape, which is worse.
+			 *
+			 * ## Why the cursor, and not an offset
+			 *
+			 * This used to send `?limit=100&offset=100`. `contentListQuery` extends
+			 * `cursorPaginationQuery`, which is `{ cursor?, limit? }` — so zod
+			 * **strips** `offset` before the handler sees it. Every request after the
+			 * first re-fetched page 1, `rows.length < page` never became true for a
+			 * collection of 100 or more, and the loop only ended when the accumulated
+			 * length passed the caller's limit. So `list("exclusions")` over 150
+			 * takedowns returned the first hundred, twice, and rows 101–150 were never
+			 * seen by anything.
+			 *
+			 * That is the exact failure the comment above promises not to be, and it
+			 * was invisible because the duplicates made the count *rise* fast enough to
+			 * exit early. `nextCursor` is the token the route actually hands back
+			 * (`node_modules/emdash/src/api/handlers/content.ts`, `nextCursor:
+			 * result.nextCursor`), so it is the token used here.
+			 *
+			 * A repeated cursor is a refusal rather than a loop: if the route ever
+			 * hands back a cursor it has already served, stop and say so, because
+			 * continuing would spin until the caller's limit with duplicates in place
+			 * of pages.
 			 */
 			const list = Effect.fn("EmDashApi.list")(function* (collection: string, limit = 400) {
 				const session = yield* signIn;
 				const operation = `list ${collection}`;
 				const page = Math.min(limit, EMDASH_LIST_PAGE_MAX);
 				const out: Record<string, unknown>[] = [];
-				let offset = 0;
+				const seenCursors = new Set<string>();
+				let cursor: string | null = null;
 
 				while (out.length < limit) {
 					const path =
 						`/_emdash/api/content/${encodeURIComponent(collection)}` +
-						`?limit=${page}&offset=${offset}`;
+						`?limit=${page}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
 					const response = yield* call(
 						operation,
 						path,
@@ -338,12 +374,18 @@ export class EmDashApi extends Context.Service<
 					// accepted — a stricter schema here would fail a run over a field
 					// placement that is not what anybody is being asked to reason about.
 					const envelope = raw as {
-						data?: { items?: unknown; total?: unknown } | null;
+						data?: {
+							items?: unknown;
+							total?: unknown;
+							nextCursor?: unknown;
+						} | null;
 						items?: unknown;
 						total?: unknown;
+						nextCursor?: unknown;
 					} | null;
 					const rows = envelope?.data?.items ?? envelope?.items;
 					const total = envelope?.data?.total ?? envelope?.total;
+					const next = envelope?.data?.nextCursor ?? envelope?.nextCursor;
 					if (!Array.isArray(rows) || rows.length === 0) break;
 					out.push(
 						...rows.filter(
@@ -351,12 +393,31 @@ export class EmDashApi extends Context.Service<
 								typeof row === "object" && row !== null && !Array.isArray(row),
 						),
 					);
-					// A short page is the end, and so is a `total` we have reached — both,
-					// because an absent `total` must not become an infinite loop and a
-					// wrong one must not stop us before the last takedown.
+					/*
+					 * Three ends, and which one fires depends on the route:
+					 *
+					 * - a short page is the end on a route that ignores the cursor;
+					 * - a `total` we have reached is the end, because an absent `total`
+					 *   must not become an infinite loop and a wrong one must not stop
+					 *   us before the last takedown;
+					 * - no `nextCursor` at all is the end, which is the normal
+					 *   last-page signal.
+					 *
+					 * A repeated cursor is not an end — it is a fault, and stopping
+					 * quietly would put duplicates where pages should be, which is the
+					 * bug this whole block exists to remove.
+					 */
 					if (rows.length < page) break;
 					if (typeof total === "number" && out.length >= total) break;
-					offset += rows.length;
+					if (typeof next !== "string" || !next) break;
+					if (seenCursors.has(next)) {
+						yield* Effect.logWarning(
+							`${operation}: the route returned a cursor it had already served, so pagination stopped at ${out.length} rows rather than looping.`,
+						);
+						break;
+					}
+					seenCursors.add(next);
+					cursor = next;
 				}
 				return out.slice(0, limit);
 			});

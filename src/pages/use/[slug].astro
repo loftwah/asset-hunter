@@ -233,9 +233,12 @@ const outcome = boardOutcome(
 				src={plate}
 				alt={p.tagline ? `${p.title} — ${p.tagline}` : p.title}
 				caption={
-					(p.representativeOrigin
-						? `${originLabelFor(p.representativeOrigin)} specimen`
-						: "Specimen") + " · preview, not the asset"
+					/* As on the drill-in: `none` must not be described as a plate. */
+					p.representativeOrigin === "none"
+						? "No representative media yet"
+						: (p.representativeOrigin
+								? `${originLabelFor(p.representativeOrigin)} specimen`
+								: "Specimen") + " · preview, not the asset"
 				}
 				loading="eager"
 				fetchpriority="high"

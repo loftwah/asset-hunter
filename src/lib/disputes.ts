@@ -396,10 +396,20 @@ const ORIGIN_ORDER = ["upstream", "derived", "generated", "none"];
 export function chooseRepresentative(
 	examples: readonly ExampleFacts[],
 ): ExampleFacts | null {
+	const rank = (origin: unknown) => {
+		const at = ORIGIN_ORDER.indexOf(String(origin ?? "generated"));
+		// An origin this array has not been taught sorts *last*, not first.
+		//
+		// `indexOf` returns -1, and -1 sorts ahead of everything — so any fifth
+		// value, or a typo, or a `null` that slipped past the `?? "generated"`,
+		// would outrank a real upstream asset and become the entry's face. The
+		// comment on `ORIGIN_ORDER` says sorting an absent origin before a real
+		// asset "would misreport the risk"; the comparator was doing exactly that
+		// for everything it did not recognise.
+		return at === -1 ? ORIGIN_ORDER.length : at;
+	};
 	const ranked = [...representable(examples)].sort((a, b) => {
-		const byOrigin =
-			ORIGIN_ORDER.indexOf(String(a.origin ?? "generated")) -
-			ORIGIN_ORDER.indexOf(String(b.origin ?? "generated"));
+		const byOrigin = rank(a.origin) - rank(b.origin);
 		if (byOrigin !== 0) return byOrigin;
 		const byRights =
 			RIGHTS_ORDER.indexOf(weakestRights([a.rightsStatus])) -

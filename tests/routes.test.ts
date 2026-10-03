@@ -9,6 +9,7 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { SIGNAL_FIXTURES } from "../src/lib/fixtures.ts";
+import { parseBoards } from "../src/lib/board.ts";
 import { SAME_ORIGIN_POST } from "./helpers.ts";
 
 const baseUrl = process.env.AH_URL ?? "http://localhost:4321";
@@ -444,61 +445,143 @@ describe("shortlist board", () => {
 	 * the others is still caught.
 	 */
 	live("a board with entries refuses a name that is not a name (#68)", async () => {
+		/*
+	 * The degenerate rename, driven end to end.
+	 *
+	 * #68's acceptance asks for this "verified on a populated board through the
+	 * browser, not only through `applyAction()`", and the pure-rule test cannot see
+	 * it: only a real POST over a real board proves the reader is *told* so, rather
+	 * than handed a confirmation claiming a move that never happened.
+	 *
+	 * Every case runs from **both** boards. That is what the first version got
+	 * wrong: it seeded an "Autumn picks" board and then posted from `default`, so
+	 * `""` and `"   "` passed only because `default` is what blank input normalises
+	 * to. On a named board those two silently merged the board into `default` — the
+	 * most likely input on the form, and the only one that lost data while
+	 * reporting success.
+	 */
+	const cases: Array<{ to: string | ((from: string) => string); why: string }> = [
+		{ to: "", why: "the placeholder as shipped" },
+		{ to: "   ", why: "whitespace" },
+		{ to: "???", why: "punctuation only" },
+		// The board's own name, resolved per board. Naming `Autumn picks` while on
+		// `default` is a perfectly good new board, so a table listing one fixed
+		// string here would assert a failure that does not exist.
+		{ to: (from) => from, why: "the board's own name" },
+	];
+
+	for (const from of ["default", "Autumn picks"]) {
 		const seeded = { default: ["density-gradient"], "Autumn picks": ["diegetic-damage"] };
-		const cases: Array<{ to: string; why: string }> = [
-			{ to: "", why: "the placeholder as shipped" },
-			{ to: "   ", why: "whitespace" },
-			{ to: "???", why: "punctuation only" },
-			{ to: "default", why: "the board's own name" },
-		];
+		const cookie = `ah_board=${encodeURIComponent(JSON.stringify(seeded))}`;
 
 		for (const { to, why } of cases) {
+			const name = typeof to === "function" ? to(from) : to;
 			const res = await fetch(`${baseUrl}/api/board`, {
 				method: "POST",
 				redirect: "manual",
-				headers: {
-					...SAME_ORIGIN_POST,
-					"content-type": "application/x-www-form-urlencoded",
-					cookie: `ah_board=${encodeURIComponent(JSON.stringify(seeded))}`,
-				},
-				body: new URLSearchParams({ action: "rename", board: "default", to }),
+				headers: { ...SAME_ORIGIN_POST, "content-type": "application/x-www-form-urlencoded", cookie },
+				body: new URLSearchParams({ action: "rename", board: from, to: name }),
 			});
 			assert.equal(res.status, 303);
 			const location = res.headers.get("location") ?? "";
 			assert.match(
 				location,
 				/nomove=1/,
-				`${why}: expected the refusal, got ${location}`,
+				`from ${from}, ${why}: expected the refusal, got ${location}`,
 			);
 			// The false claim from #68 must be gone from the URL, not just the page.
 			assert.doesNotMatch(
 				location,
-				/copied=/,
-				`${why}: still redirects with copied= over a board it did not change`,
+				/moved=/,
+				`from ${from}, ${why}: redirected claiming a move over a board it did not change`,
+			);
+			// A refusal keeps the reader where they were. It used to drop `board`, so
+			// every refusal bounced them to `default` — including this one, rendered
+			// over a full Shortlist they had never emptied. Encoded through
+			// `URLSearchParams` because the query string renders a space as `+`.
+			assert.ok(
+				location.includes(new URLSearchParams({ board: from }).toString()),
+				`from ${from}, ${why}: the reader was sent to a different board (${location})`,
+			);
+
+			// …and the board is genuinely unchanged, which is the point.
+			//
+			// Read back through `parseBoards`, not `JSON.parse`: the value is stored
+			// with Astro's encoding on top of `serialiseBoards`' own, so one
+			// `decodeURIComponent` leaves it encoded and two are needed. Rather than
+			// encode that in the test, the assertion uses the same parser the app uses —
+			// which is also the stronger claim, because "unchanged" then means
+			// unchanged *as the product reads it*.
+			const stored = res.headers.get("set-cookie")?.match(/ah_board=([^;]*)/)?.[1];
+			assert.ok(stored, `from ${from}, ${why}: the endpoint set no cookie`);
+			const after = parseBoards(decodeURIComponent(stored));
+			assert.deepEqual(
+				after[from],
+				seeded[from as keyof typeof seeded],
+				`from ${from}, ${why}: the board changed`,
 			);
 
 			const html = await (
 				await fetch(`${baseUrl}/board${location.slice(location.indexOf("?"))}`, {
-					headers: {
-						cookie: `ah_board=${encodeURIComponent(JSON.stringify(seeded))}`,
-					},
+					headers: { cookie: `ah_board=${encodeURIComponent(JSON.stringify(seeded))}` },
 				})
 			).text();
 			const body = text(html);
 			assert.match(
 				body,
 				/nothing moved/i,
-				`${why}: the refusal is not stated to the reader`,
+				`from ${from}, ${why}: the refusal is not stated to the reader`,
 			);
 			// The reader has entries. Being told the board is empty would be a
 			// different lie, and the one #65 was about.
 			assert.doesNotMatch(
 				body,
 				/this board is empty/i,
-				`${why}: told a full board it is empty`,
+				`from ${from}, ${why}: told a full board it is empty`,
 			);
-			assert.match(body, /nothing happened|was not usable/i);
 		}
+	}
+	});
+
+	live("a move into a full board is refused rather than losing entries (#68)", async () => {
+		// 24 is `MAX_PER_BOARD`, and the destination is filled to it.
+		const full = Array.from({ length: 24 }, (_, i) => `filler-${i}`);
+		const seeded = { default: ["density-gradient"], pirates: full, other: ["diegetic-damage"] };
+
+		const res = await fetch(`${baseUrl}/api/board`, {
+			method: "POST",
+			redirect: "manual",
+			headers: {
+				...SAME_ORIGIN_POST,
+				"content-type": "application/x-www-form-urlencoded",
+				cookie: `ah_board=${encodeURIComponent(JSON.stringify(seeded))}`,
+			},
+			body: new URLSearchParams({ action: "rename", board: "other", to: "pirates" }),
+		});
+		assert.equal(res.status, 303);
+		const location = res.headers.get("location") ?? "";
+		assert.match(location, /fullmove=1/, `expected the refusal, got ${location}`);
+		assert.doesNotMatch(location, /moved=/);
+
+		// The whole case: nothing was destroyed. Before this, the merged array
+		// sliced to 24 with the destination's own entries first, so the moved entry
+		// fell off the end and the source was emptied regardless — a green run and a
+		// shortlist gone.
+		const stored = res.headers.get("set-cookie")?.match(/ah_board=([^;]*)/)?.[1];
+		assert.ok(stored, "the endpoint set no cookie");
+		const after = parseBoards(decodeURIComponent(stored));
+		assert.deepEqual(after.other, ["diegetic-damage"], "the moved entry was destroyed");
+		assert.equal(after.pirates.length, 24);
+		assert.ok(!after.pirates.includes("diegetic-damage"));
+
+		// And the reader is told why, with the number they can check against the
+		// count printed beside the form.
+		const html = await (
+			await fetch(`${baseUrl}/board${location.slice(location.indexOf("?"))}`, {
+				headers: { cookie: `ah_board=${encodeURIComponent(JSON.stringify(seeded))}` },
+			})
+		).text();
+		assert.match(text(html), /already holds 24 entries/i);
 	});
 
 	live("a real move says which board the entries went to (#65, #68)", async () => {
@@ -512,11 +595,27 @@ describe("shortlist board", () => {
 		assert.equal(res.status, 303);
 		const location = res.headers.get("location") ?? "";
 		assert.match(location, /moved=Pirates/, `expected the destination board, got ${location}`);
+
+		/*
+		 * The reader lands on the board that now holds their entries.
+		 *
+		 * This was the substantive change and it had no assertion. The test used to
+		 * end on `assert.match(html, /board=Pirates/)`, and the rewrite replaced that
+		 * with a check that the page renders at all — so it asserted where the *page*
+		 * could be found rather than where the *reader* was sent, which is the one
+		 * thing the redirect decides.
+		 */
+		assert.match(
+			location,
+			/board=Pirates/,
+			"the reader was not sent to the board that holds their entries",
+		);
+
 		/*
 		 * Re-requested with the cookie the endpoint actually set, not the one that
-		 * was sent: after a move the board it came from is empty and the entries
-		 * live on `Pirates`, so re-reading the old cookie would show a board that
-		 * never existed and this test would pass for the wrong reason.
+		 * was sent: after a move the board it came from is empty and the entries live
+		 * on `Pirates`, so re-reading the old cookie would show a board that never
+		 * existed and this test would pass for the wrong reason.
 		 */
 		const updated = res.headers.get("set-cookie")?.match(/ah_board=([^;]*)/)?.[1];
 		assert.ok(updated, "the endpoint set no cookie");
@@ -527,9 +626,16 @@ describe("shortlist board", () => {
 		assert.match(html, /Moved to Pirates/, "the move does not say where the entries went");
 		assert.doesNotMatch(html, /both are empty/i, "the old false claim is still there");
 		assert.doesNotMatch(html, /Copied to/i, "the confirmation still uses the old verb");
-		// The reader is sent to the board that now holds their entries, so what is
-		// on screen underneath the answer is the entries themselves.
+		// The count is the count on the board now on screen.
+		assert.match(text(html), /holds 1 entry/i);
+		// …and that board is showing them.
 		assert.match(html, /density-gradient/, "the destination does not show what it received");
+		// It must not claim to be empty. The reader is looking at it.
+		assert.doesNotMatch(
+			text(html),
+			/this board is empty/i,
+			"told a board holding their entries that it is empty",
+		);
 	});
 
 	live("saving from the wall is a form POST that works without JavaScript", async () => {
