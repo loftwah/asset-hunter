@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Wordmark plate: a tracked-out wordmark, with the tracking value called out">
+	<defs>
+		<radialGradient id="bg" cx="50%" cy="32%" r="74%">
+			<stop offset="0%" stop-color="#1a1e22"/>
+			<stop offset="100%" stop-color="#08090a"/>
+		</radialGradient>
+	</defs>
+	<rect width="800" height="1000" fill="url(#bg)"/>
+
+	<!-- The mark. This is the content; everything below is its evidence. -->
+	<g transform="translate(400,300)">
+		<text x="0" y="44.800000000000004" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="147.20000000000002" font-weight="600" fill="#f4f2ee" letter-spacing="-7.68">KERNEL</text></g>
+	<text x="400" y="556" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="23" fill="#f4f2ee">the only decision is the space between the letters</text>
+
+	<path d="M96 600 H704" stroke="#2c3238" stroke-dasharray="2 6"/>
+	<text x="96" y="636" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">the same geometry, reduced</text>
+
+<g transform="translate(190,712)">
+		<text x="0" y="14" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="46" font-weight="600" fill="#f4f2ee" letter-spacing="-2.4">KERNEL</text></g>
+	<text x="190" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">100px</text>
+<g transform="translate(400,724)">
+		<text x="0" y="8.12" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="26.68" font-weight="600" fill="#f4f2ee" letter-spacing="-1.392">KERNEL</text></g>
+	<text x="400" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">58px</text>
+<g transform="translate(610,734)">
+		<text x="0" y="4.48" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="14.72" font-weight="600" fill="#f4f2ee" letter-spacing="-0.768">KERNEL</text></g>
+	<text x="610" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">32px</text>
+
+	<path d="M96 846 H704" stroke="#2c3238" stroke-dasharray="2 6"/>
+<text x="96" y="888" font-family="ui-monospace,Menlo,monospace" font-size="18" fill="#6a7178">Tracking is one number, applied per gap, not globally.</text>
+<text x="96" y="920" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#4c545c">Text zoom breaks it first, so state the large-text setting.</text>
+
+	<path d="M96 958 H704" stroke="#1c2126"/>
+	<text x="96" y="988" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">holds: one word · one tracking</text>
+	<text x="728" y="988" text-anchor="end" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#f2a33c">breaks at zoom under 1.4×</text>
+</svg>

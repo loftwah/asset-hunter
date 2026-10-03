@@ -24,6 +24,11 @@ import {
 import { isWorthReading } from "../engine/src/github.ts";
 import { candidateId, loadCandidates, recordCandidate, recordWave, summarise } from "../engine/src/candidates.ts";
 import {
+	VERTICAL_LABEL as ENGINE_VERTICAL_LABEL,
+	verticalLabel as engineVerticalLabel,
+} from "../engine/src/vocabulary.ts";
+import { VERTICAL_LABEL as APP_VERTICAL_LABEL } from "../src/lib/vocabulary.ts";
+import {
 	extractPossibilities,
 	keywordsOf,
 	leadPhrase,
@@ -78,6 +83,28 @@ const ND_TEXT = `Creative Commons Attribution-NonDerivatives 4.0 International
 
 You are free to share the material in any medium or format. You may not
 produce derivative material.`;
+
+describe("engine/app vocabulary", () => {
+	test("the engine's vertical labels are the app's", () => {
+		// Two declarations and a test, because `docs/ARCHITECTURE.md` forbids the
+		// engine importing app code. The failure this catches is silent: a vertical
+		// renamed in the app would leave the engine filing entries under a label the
+		// catalogue does not have, and nothing anywhere would say so.
+		assert.deepEqual(
+			{ ...ENGINE_VERTICAL_LABEL },
+			APP_VERTICAL_LABEL,
+			"the engine and the app disagree about a vertical's public name",
+		);
+	});
+
+	test("an unknown slug still reads as something", () => {
+		// A vertical the vocabulary has not been taught must not silently drop a
+		// hunt's results: hiding evidence without saying why is the one outcome
+		// this catalogue is not allowed to produce.
+		assert.equal(engineVerticalLabel("not-yet-a-vertical"), "not yet a vertical");
+		assert.equal(engineVerticalLabel(null), "Unclassified");
+	});
+});
 
 describe("hunt brief", () => {
 	test("accepts a brief that states intent, verticals and queries", () => {
@@ -249,6 +276,7 @@ describe("candidate store", () => {
 				firstSeen: "2026-01-01T00:00:00Z",
 				lastSeen: "2026-01-01T00:00:00Z",
 				observations: 1,
+	briefFingerprint: null,
 			};
 
 			const { isNew } = recordCandidate(dir, candidate);
@@ -318,6 +346,7 @@ const makeCandidate = (fullName: string, description: string, files: string[] = 
 	firstSeen: "2026-01-01T00:00:00Z",
 	lastSeen: "2026-01-01T00:00:00Z",
 	observations: 1,
+	briefFingerprint: null,
 });
 
 describe("compression into possibilities", () => {
@@ -390,6 +419,39 @@ describe("compression into possibilities", () => {
 
 		const none = extractPossibilities([sfxr, sfxrQt], { vertical: "audio-music", intent: "x" });
 		assert.equal(none[0].distinctSources, 0, "no readable licence means 0, not 2");
+	});
+
+	test("a brief naming two verticals produces distinct slugs, so it can sync at all", () => {
+		// The bug this exists to prevent: `toPossibilities` extracts the whole
+		// candidate set once per vertical, because one repository really can
+		// demonstrate a technique in two fields. The slug was `title + techniqueKey`
+		// and mentioned neither, so every multi-vertical brief emitted the same slug
+		// once per vertical — `validatePayload` refused the payload and the crawl
+		// wrote nothing. The run looked fine and the catalogue never changed.
+		//
+		// The first acceptance brief named one vertical, so nothing caught it.
+		const perVertical = ["logos", "icons"].map((vertical) =>
+			extractPossibilities([sfxr], { vertical, intent: "x" })[0]?.slug,
+		);
+		assert.notEqual(
+			perVertical[0],
+			perVertical[1],
+			"the same evidence filed under two verticals needs two entries, not one",
+		);
+		for (const [index, slug] of perVertical.entries()) {
+			const vertical = ["logos", "icons"][index];
+			assert.ok(
+				(slug ?? "").split("-").includes(vertical),
+				`the slug must carry the vertical as its own segment: ${slug}`,
+			);
+		}
+
+		// And uniqueness has to hold *within* one vertical too, for two groups
+		// whose representative shares a title and a technique key.
+		const twin = makeCandidate("a/twin", sfxr.description ?? "", sfxr.files.map((f) => f.path));
+		const twins = extractPossibilities([sfxr, twin], { vertical: "logos", intent: "x" });
+		const slugs = twins.map((p) => p.slug);
+		assert.equal(new Set(slugs).size, slugs.length, `duplicate slugs: ${slugs.join(", ")}`);
 	});
 
 	test("novelty and coverage are null, not estimated", () => {

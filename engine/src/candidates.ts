@@ -64,6 +64,25 @@ export interface Candidate {
 	 * every surprising entry.
 	 */
 	discoveredBy: { query: string; page: number; lane: string } | null;
+	/**
+	 * The brief that produced this candidate.
+	 *
+	 * Without it the store is a single undifferentiated pile: `candidates.json` is
+	 * shared across briefs, so a run of the logos brief extracted the audio
+	 * candidates the SFX brief had recorded and filed TicTacToe in Java as evidence
+	 * for a mark. That is not a rough edge — it is a provenance record pointing at
+	 * material that has nothing to do with the entry it is attached to, which is
+	 * the one thing this catalogue exists not to do.
+	 *
+	 * The brief fingerprint, not the brief id, so two briefs with the same
+	 * decisions share evidence and two briefs that differ do not.
+	 *
+	 * Optional and nullable because the store is read from disk and older state
+	 * files do not have it; `candidatesForBrief` treats "no brief" as "belongs to
+	 * whichever brief is running", which is the only safe reading of a record
+	 * written before this field existed.
+	 */
+	briefFingerprint: string | null;
 	/** Whether the unlicensed policy let this candidate keep its payload. */
 	policyApplied: "keep" | "metadata-only" | "rejected";
 	firstSeen: string;
@@ -149,6 +168,24 @@ function writeJson(path: string, value: unknown) {
 export function loadCandidates(root: string): Map<string, Candidate> {
 	const list = readJson<Candidate[]>(candidatesPath(root), []);
 	return new Map(list.map((c) => [c.id, c]));
+}
+
+/**
+ * The candidates one brief is allowed to build entries from.
+ *
+ * The filter is on the brief fingerprint, and a candidate recorded before the
+ * field existed is kept rather than dropped: a run must not lose its own evidence
+ * because the state file predates the field that describes it. A state file that
+ * is entirely pre-field therefore matches every brief, which is the honest reading
+ * of a store that cannot say where anything came from.
+ */
+export function candidatesForBrief(
+	candidates: Map<string, Candidate>,
+	fingerprint: string,
+): Candidate[] {
+	return [...candidates.values()].filter(
+		(candidate) => !candidate.briefFingerprint || candidate.briefFingerprint === fingerprint,
+	);
 }
 
 export function saveCandidates(root: string, candidates: Map<string, Candidate>) {

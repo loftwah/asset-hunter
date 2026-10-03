@@ -114,15 +114,55 @@ describe("wall", () => {
 		assert.ok((html.match(/class="tile__link"/g) ?? []).length > 0);
 	});
 
-	live("the tally reports zero verified sources rather than an estimate", async () => {
+	live("the tally counts verified sources rather than estimating them", async () => {
 		const html = await (await fetch(`${baseUrl}/`)).text();
 		// Astro appends a scoping attribute to class attributes, so match the
 		// class token rather than the whole attribute.
 		const tally = text(html.match(/<dl class="tally"[^>]*>([\s\S]*?)<\/dl>/)?.[1] ?? "");
-		// The label has to name what is being counted and the value has to be a
-		// real zero. An estimate here would be fabricated evidence, which is the
-		// thing this assertion exists to prevent.
-		assert.match(tally, /Verified sources\s*counted against a licence read at the source\s*0/i);
+
+		/*
+		 * Asserting the literal `0` was the wrong assertion, and it hid the
+		 * property that actually matters.
+		 *
+		 * It was wrong because the value is a real count and it is supposed to
+		 * move: the first crawl to read a licence at a commit makes it non-zero,
+		 * and a test demanding zero would then fail on correct behaviour — which
+		 * teaches the next person to pin it back to zero.
+		 *
+		 * What must never happen is a number nobody derived. So this compares the
+		 * tally against the sum of `distinct_sources` in the JSON contract, which
+		 * is built from the same loaders the page uses. A hardcoded figure, an
+		 * estimate, or a total computed over a different set all fail here; a
+		 * genuinely measured total passes. That is strictly harder to satisfy than
+		 * `0` — it is the property the original assertion was reaching for.
+		 */
+		const catalogue = (await (
+			await fetch(`${baseUrl}/api/catalogue.json?fresh=1`)
+		).json()) as { possibilities: Array<{ distinctSources?: number | null }> };
+		const expected = catalogue.possibilities.reduce(
+			(n, p) => n + (p.distinctSources ?? 0),
+			0,
+		);
+		assert.ok(
+			Number.isInteger(expected) && expected >= 0,
+			"the contract reported a non-count for distinct sources",
+		);
+
+		// The label has to name what is being counted, so the number cannot be
+		// read as some other measurement.
+		assert.match(
+			tally,
+			/Verified sources\s*counted against a licence read at the source/i,
+		);
+		const printed = tally.match(
+			/counted against a licence read at the source\s*([\d,]+)/i,
+		)?.[1];
+		assert.ok(printed, `could not read the verified-source figure from: ${tally}`);
+		assert.equal(
+			Number(printed.replace(/,/g, "")),
+			expected,
+			`the tally says ${printed} verified sources; the catalogue sums to ${expected}`,
+		);
 	});
 });
 
@@ -327,7 +367,7 @@ describe("shortlist board", () => {
 			/action="\/api\/board"/,
 			"the empty board still offers a form POST to the board endpoint",
 		);
-		assert.doesNotMatch(emptyHtml, /Copy board/, "the copy button is still on an empty board");
+		assert.doesNotMatch(emptyHtml, /Move board/, "the move button is still on an empty board");
 		assert.doesNotMatch(
 			emptyHtml,
 			/<button/,
@@ -336,7 +376,7 @@ describe("shortlist board", () => {
 		// …and it is absent because it is gated, not because it was deleted: a
 		// board with entries still gets it, which is what makes the comparison
 		// meaningful.
-		assert.match(loadedHtml, /Copy board/, "the copy control vanished from a loaded board");
+		assert.match(loadedHtml, /Move board/, "the move control vanished from a loaded board");
 		assert.match(loadedHtml, /action="\/api\/board"/);
 
 		// 3. The empty state leads. Its first action has to come before any
@@ -365,19 +405,19 @@ describe("shortlist board", () => {
 	live("a board whose every entry was dropped reads as empty, not as broken (#65)", async () => {
 		// Every slug in the cookie names something the catalogue does not have,
 		// so nothing renders. The board-management controls act on entries, so with
-		// none of them the copy form must be gone here too — and the drop is still
+		// none of them the move form must be gone here too — and the drop is still
 		// announced, because that is a correction the reader needs to hear.
 		const cookie = `ah_board=${encodeURIComponent(JSON.stringify({ default: ["nope-a", "nope-b"] }))}`;
 		const html = await (await fetch(`${baseUrl}/board`, { headers: { cookie } })).text();
 		assert.match(html, /does not have/, "the drop is announced, not hidden");
 		assert.match(html, /This board is empty/);
-		assert.doesNotMatch(html, /Copy board/, "a board with nothing on it still offers a copy");
+		assert.doesNotMatch(html, /Move board/, "a board with nothing on it still offers a move");
 	});
 
-	live("copying a board with nothing on it is refused in words (#65)", async () => {
+	live("moving a board with nothing on it is refused in words (#65, #68)", async () => {
 		// The form is not rendered on an empty board, but a request can arrive
 		// from a tab rendered before the board was emptied. It must not report a
-		// copy that did not happen.
+		// move that did not happen.
 		const res = await fetch(`${baseUrl}/api/board`, {
 			method: "POST",
 			redirect: "manual",
@@ -388,10 +428,80 @@ describe("shortlist board", () => {
 		const location = res.headers.get("location") ?? "";
 		assert.match(location, /nocopy=1/, `expected the refusal, got ${location}`);
 		const html = await (await fetch(`${baseUrl}/board${location.slice(location.indexOf("?"))}`)).text();
-		assert.match(html, /Nothing to copy/i, "the refusal is not stated to the reader");
+		assert.match(html, /Nothing to move/i, "the refusal is not stated to the reader");
 	});
 
-	live("a real copy says which board the entries went to (#65)", async () => {
+	/*
+	 * The degenerate rename, driven end to end (#68).
+	 *
+	 * #68's acceptance requires this "verified on a populated board through the
+	 * browser, not only through `applyAction()`", and the pure-rule test cannot
+	 * see it: four of the five names in that report produce an unchanged cookie,
+	 * and only a real POST over a real board can prove the reader is *told* so
+	 * rather than left with a confirmation claiming a copy that never happened.
+	 *
+	 * The table is the report's own, so a regression that fixed one name and left
+	 * the others is still caught.
+	 */
+	live("a board with entries refuses a name that is not a name (#68)", async () => {
+		const seeded = { default: ["density-gradient"], "Autumn picks": ["diegetic-damage"] };
+		const cases: Array<{ to: string; why: string }> = [
+			{ to: "", why: "the placeholder as shipped" },
+			{ to: "   ", why: "whitespace" },
+			{ to: "???", why: "punctuation only" },
+			{ to: "default", why: "the board's own name" },
+		];
+
+		for (const { to, why } of cases) {
+			const res = await fetch(`${baseUrl}/api/board`, {
+				method: "POST",
+				redirect: "manual",
+				headers: {
+					...SAME_ORIGIN_POST,
+					"content-type": "application/x-www-form-urlencoded",
+					cookie: `ah_board=${encodeURIComponent(JSON.stringify(seeded))}`,
+				},
+				body: new URLSearchParams({ action: "rename", board: "default", to }),
+			});
+			assert.equal(res.status, 303);
+			const location = res.headers.get("location") ?? "";
+			assert.match(
+				location,
+				/nomove=1/,
+				`${why}: expected the refusal, got ${location}`,
+			);
+			// The false claim from #68 must be gone from the URL, not just the page.
+			assert.doesNotMatch(
+				location,
+				/copied=/,
+				`${why}: still redirects with copied= over a board it did not change`,
+			);
+
+			const html = await (
+				await fetch(`${baseUrl}/board${location.slice(location.indexOf("?"))}`, {
+					headers: {
+						cookie: `ah_board=${encodeURIComponent(JSON.stringify(seeded))}`,
+					},
+				})
+			).text();
+			const body = text(html);
+			assert.match(
+				body,
+				/nothing moved/i,
+				`${why}: the refusal is not stated to the reader`,
+			);
+			// The reader has entries. Being told the board is empty would be a
+			// different lie, and the one #65 was about.
+			assert.doesNotMatch(
+				body,
+				/this board is empty/i,
+				`${why}: told a full board it is empty`,
+			);
+			assert.match(body, /nothing happened|was not usable/i);
+		}
+	});
+
+	live("a real move says which board the entries went to (#65, #68)", async () => {
 		const cookie = `ah_board=${encodeURIComponent(JSON.stringify({ default: ["density-gradient"] }))}`;
 		const res = await fetch(`${baseUrl}/api/board`, {
 			method: "POST",
@@ -401,10 +511,10 @@ describe("shortlist board", () => {
 		});
 		assert.equal(res.status, 303);
 		const location = res.headers.get("location") ?? "";
-		assert.match(location, /copied=Pirates/, `expected the destination board, got ${location}`);
+		assert.match(location, /moved=Pirates/, `expected the destination board, got ${location}`);
 		/*
 		 * Re-requested with the cookie the endpoint actually set, not the one that
-		 * was sent: after a copy the board it came from is empty and the entries
+		 * was sent: after a move the board it came from is empty and the entries
 		 * live on `Pirates`, so re-reading the old cookie would show a board that
 		 * never existed and this test would pass for the wrong reason.
 		 */
@@ -414,14 +524,12 @@ describe("shortlist board", () => {
 		const html = await (
 			await fetch(`${baseUrl}/board${query}`, { headers: { cookie: `ah_board=${updated}` } })
 		).text();
-		assert.match(html, /Copied to Pirates/, "the copy does not say where the entries went");
-		// The reader lands on the board they copied *from*, which is now empty,
-		// so the empty state has to be what is on screen underneath the answer.
-		assert.match(html, /This board is empty/);
+		assert.match(html, /Moved to Pirates/, "the move does not say where the entries went");
 		assert.doesNotMatch(html, /both are empty/i, "the old false claim is still there");
-		// …and the destination is reachable from there, which is what makes the
-		// sentence useful rather than merely different.
-		assert.match(html, /board=Pirates/, "the copy did not leave the entries findable");
+		assert.doesNotMatch(html, /Copied to/i, "the confirmation still uses the old verb");
+		// The reader is sent to the board that now holds their entries, so what is
+		// on screen underneath the answer is the entries themselves.
+		assert.match(html, /density-gradient/, "the destination does not show what it received");
 	});
 
 	live("saving from the wall is a form POST that works without JavaScript", async () => {

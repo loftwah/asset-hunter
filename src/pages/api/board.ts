@@ -152,19 +152,34 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
 	}
 	if (action === "clear") url.searchParams.set("cleared", "1");
 	/*
-	 * A copy names the board it copied into, because the reader is sent back to
-	 * the board they copied *from* — which is now empty — and "copied to a new
-	 * board" left them with no idea where their entries went. A copy of an empty
-	 * board says it did nothing instead.
+	 * The control is called **Move**, because `applyAction` moves: the entries
+	 * leave the board being renamed and join the destination. It used to be called
+	 * *Copy* over the same code, and `?copied=` said so in the URL, so a reader who
+	 * pressed *Copy* and watched their shortlist disappear had to read the
+	 * confirmation to learn the verb (#68).
+	 *
+	 * Three answers, because there are three different failures:
+	 *
+	 * - the board has nothing on it (`nocopy`) — posted from a tab rendered
+	 *   before the board was emptied;
+	 * - the name does not survive `normaliseBoardName`, or is the board's own
+	 *   name (`nomove`) — the reader has entries and no usable name;
+	 * - neither, so the move happened (`moved=<destination>`).
+	 *
+	 * A successful move also returns the reader to the board that now holds their
+	 * entries. Redirecting them back to the board they had just emptied was the
+	 * #65 fix for "copied to a new board" being unfollowable; naming the
+	 * destination in the URL and landing on it is the same fix without the detour.
 	 */
 	if (action === "rename") {
 		const destination = normaliseBoardName(to);
-		// A name that normalises to the board itself, or to nothing, changes
-		// nothing — so it is answered as the refusal it is too.
-		if (manageable && destination && destination !== board) {
-			url.searchParams.set("copied", destination);
-		} else {
+		if (!manageable) {
 			url.searchParams.set("nocopy", "1");
+		} else if (!destination || destination === board) {
+			url.searchParams.set("nomove", "1");
+		} else {
+			url.searchParams.set("moved", destination);
+			url.searchParams.set("board", destination);
 		}
 	}
 	return redirect(url.pathname + url.search, 303);

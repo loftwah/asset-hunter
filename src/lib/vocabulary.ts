@@ -7,7 +7,20 @@
  */
 
 export type RightsStatus = "cleared" | "attribution" | "review" | "reference";
-export type Origin = "upstream" | "derived" | "generated";
+/**
+ * Where a possibility's representative media came from — or that there is none.
+ *
+ * `none` is a real value and it was missing. A discovered entry arrives from the
+ * hunt engine with no plate: the engine records what it read, not what it
+ * rendered, and `representative_origin: "generated"` claimed a plate that did not
+ * exist. That is the exact failure this field exists to prevent — a generated
+ * plate and a derived one are different claims about provenance, and "generated"
+ * for something absent is a lie with a footnote.
+ *
+ * The honest value for "no representative media yet" is its own value, so the
+ * tile, the use page and the JSON contract can each say so.
+ */
+export type Origin = "upstream" | "derived" | "generated" | "none";
 export type Vertical = string;
 
 /**
@@ -106,12 +119,14 @@ export const ORIGIN_LABEL: Record<Origin, string> = {
 	upstream: "Upstream",
 	derived: "Derived",
 	generated: "Generated",
+	none: "No media yet",
 };
 
 export const ORIGIN_MEANING: Record<Origin, string> = {
 	upstream: "Shown directly from discovered material.",
 	derived: "A safe preview or showcase produced from discovered material.",
 	generated: "Newly generated to demonstrate a known possibility. Not a reproduction of any source asset.",
+	none: "No representative media has been produced for this entry yet. What is recorded here is the evidence that was read, not a picture of it.",
 };
 
 export const VERTICAL_LABEL: Record<string, string> = {
@@ -141,6 +156,25 @@ export const VERTICAL_LABEL: Record<string, string> = {
 export function verticalLabel(slug: string | null | undefined): string {
 	if (!slug) return "Unclassified";
 	return VERTICAL_LABEL[slug] ?? slug.replace(/-/g, " ");
+}
+
+/**
+ * One sentence saying what a vertical is, for the vertical's own page.
+ *
+ * `docs/VOCABULARY.md` owns what the words mean; this owns the sentence that
+ * introduces a vertical when it is the subject of the page rather than a filter
+ * on somebody else's. It is computed from the entries that actually rendered,
+ * so the count can never disagree with the wall underneath it — the failure
+ * `/search`'s empty state had when "covers 13 verticals" was a literal in copy
+ * (#77).
+ *
+ * Kept here, beside the labels, because a vertical's name and its one-line
+ * description are the same fact and splitting them across files is how one of
+ * them goes stale.
+ */
+export function verticalBlurb(slug: string, count: number): string {
+	const entries = `${count} ${count === 1 ? "possibility" : "possibilities"}`;
+	return `${entries} in ${VERTICAL_LABEL[slug] ?? slug.replace(/-/g, " ")}, each with a representative example and what is actually cleared for use. This is a map of what has been catalogued, not a claim that the space is covered.`;
 }
 
 /**

@@ -1,0 +1,24 @@
+{
+	"intent": "Marks, identity systems and the tools that produce them — the distinct ways a logo or wordmark gets made and constrained, with the licence read at a specific commit for each one.",
+	"verticals": ["logos", "branding", "icons", "typography"],
+	"queries": [
+		"logo generator svg",
+		"brand identity design system",
+		"geometric logo construction",
+		"wordmark typography generator",
+		"icon set design system svg",
+		"vector mark design tooling"
+	],
+	"constraints": {
+		"minStars": 20,
+		"rightsFloor": "any",
+		"maxCandidates": 24,
+		"excludeTopics": ["awesome-list", "tutorial-only"],
+		"unlicensedPolicy": "keep",
+		"budgets": {
+			"maxFilesPerRepo": 6,
+			"maxBytes": 12582912
+		}
+	},
+	"notes": "The second acceptance hunt, and the one the catalogue was missing: `logos` held a single generated plate and nothing discovered. This asks for marks and the systems that produce them rather than for any particular company's logo, because a company logo is trademarked by definition and this catalogue's whole rule is that material whose permission was never established is kept as evidence and never presented as cleared. Every entry carries a licence that was read at a commit, or says plainly that none was found."
+}

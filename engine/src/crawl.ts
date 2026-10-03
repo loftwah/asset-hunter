@@ -75,6 +75,7 @@ import {
 	activeCandidates,
 	candidateId,
 	latestByFullName,
+	candidatesForBrief,
 	loadCandidates,
 	loadWaves,
 	markRenamed,
@@ -87,7 +88,13 @@ import {
 	type FileEvidence,
 } from "./candidates.ts";
 import { describeExclusion, exclusionFor, type Exclusion } from "./exclusions.ts";
-import { extractPossibilities, kindFor, type ExtractedPossibility } from "./possibility.ts";
+import { verticalTerms } from "./vocabulary.ts";
+import {
+	extractPossibilities,
+	kindFor,
+	mediaKindsOf,
+	type ExtractedPossibility,
+} from "./possibility.ts";
 import { buildPayload, type PublishPayload } from "./publish.ts";
 import {
 	emptyMetrics,
@@ -992,6 +999,7 @@ function inspect(options: InspectOptions) {
 			firstSeen: now,
 			lastSeen: now,
 			observations: 1,
+			briefFingerprint: briefFingerprint(brief),
 		};
 		const { isNew } = recordCandidate(root, candidate);
 		const lfsNote = lfsPointers ? ` (${lfsPointers} LFS pointer skipped)` : "";
@@ -1003,12 +1011,126 @@ function inspect(options: InspectOptions) {
 	});
 }
 
-/** Groups the recorded evidence, one vertical at a time. */
+/**
+ * Groups the recorded evidence, one vertical at a time.
+ *
+ * Two things this deliberately does **not** do, both of which it used to do and
+ * both of which put false claims on the public catalogue:
+ *
+ * 1. **It does not see other briefs' candidates.** `candidates.json` is shared
+ *    across hunts, so extracting the whole store meant a run of the logos brief
+ *    filed the audio candidates the SFX brief had recorded — a logos entry with a
+ *    Java tic-tac-toe game listed as its evidence. The store is now filtered by
+ *    the brief's fingerprint, so an entry's examples are the sources that hunt
+ *    actually inspected.
+ * 2. **It does not file one candidate under every declared vertical.** It did,
+ *    which meant one repository produced four entries differing only by a slug
+ *    segment: a wall of the same mark four times with four different examples
+ *    lists, none of them more correct than the others. Each candidate is now
+ *    filed under the single declared vertical it fits best, so a brief produces
+ *    one entry per treatment and the taxonomy is a statement rather than a
+ *    multiplication. `verticalFit` is the rule, and a candidate that fits none of
+ *    the declared terms is dropped rather than filed under the nearest.
+ */
 function toPossibilities(candidates: Candidate[], brief: HuntBrief): ExtractedPossibility[] {
-	const relevant = candidates.filter((c) => c.files.some((f) => f.kind !== "licence"));
+	const mine = candidatesForBrief(new Map(candidates.map((c) => [c.id, c])), briefFingerprint(brief));
+	const relevant = mine.filter((c) => c.files.some((f) => f.kind !== "licence"));
+	const byVertical = new Map<string, Candidate[]>();
+	for (const candidate of relevant) {
+		const vertical = verticalFit(candidate, brief.verticals);
+		if (!vertical) continue;
+		const bucket = byVertical.get(vertical) ?? [];
+		bucket.push(candidate);
+		byVertical.set(vertical, bucket);
+	}
 	const out: ExtractedPossibility[] = [];
 	for (const vertical of brief.verticals) {
-		out.push(...extractPossibilities(relevant, { vertical, intent: brief.intent }));
+		const bucket = byVertical.get(vertical);
+		if (!bucket?.length) continue;
+		out.push(...extractPossibilities(bucket, { vertical, intent: brief.intent }));
 	}
 	return out;
+}
+
+/**
+ * A deliberately crude stem, and deliberately so.
+ *
+ * The failure it exists to fix was arithmetic, not linguistics: `Logos` split
+ * into `["logos"]`, and a repository or a query that said `logo` matched nothing,
+ * so a hunt whose whole intent was marks refused every mark it found. A real
+ * stemmer would be more code than this problem deserves and a place to be wrong
+ * quietly, so this collapses the two endings that actually cause it (`-s` and
+ * `-es`) and nothing else. Words shorter than three characters are dropped
+ * because they cannot discriminate.
+ */
+function stem(word: string): string {
+	const w = word.toLowerCase().replace(/[^a-z0-9]/g, "");
+	if (w.length <= 2) return "";
+	if (w.endsWith("ies")) return `${w.slice(0, -3)}y`;
+	if (w.endsWith("es") && w.length > 4) return w.slice(0, -2);
+	if (w.endsWith("s")) return w.slice(0, -1);
+	return w;
+}
+
+const stemAll = (text: string): Set<string> =>
+	new Set(
+		text
+			.split(/[^a-z0-9]+/)
+			.map(stem)
+			.filter((w) => w.length > 2),
+	);
+
+/**
+ * The one declared vertical a candidate belongs in, or null for none.
+ *
+ * Scored from three places, in this order of authority:
+ *
+ * 1. **The candidate's own words** — its name, description and topics. Strongest,
+ *    because it is evidence about the repository rather than about the hunt.
+ * 2. **The query that found it.** The operator wrote the queries, the brief
+ *    records them, and `discoveredBy.query` says which one surfaced this
+ *    repository. A favicon generator found by `"logo generator svg"` said
+ *    "logo" in the only sentence anyone wrote about the intent to find it, and
+ *    using that is not a guess — it is the brief doing its job.
+ * 3. **The medium the vertical produces.** A `vector` result is evidence about
+ *    an `icons` entry independently of what anybody called it.
+ *
+ * Refuses on no signal and on a tie. Filing under the first declared vertical
+ * because it happened to be listed first is exactly how a Java game ends up in a
+ * wall of logos, and a refusal is recoverable in a way a wrong entry is not.
+ */
+function verticalFit(candidate: Candidate, verticals: string[]): string | null {
+	const own = stemAll(
+		[
+			candidate.repo,
+			candidate.description ?? "",
+			...(candidate.topics ?? []),
+		].join(" "),
+	);
+	const via = stemAll(candidate.discoveredBy?.query ?? "");
+	const media = mediaKindsOf(candidate);
+	// The terms, not just the label. `audio-music`'s label words are *audio* and
+	// *music*; the repositories that brief is sent after say *sound*, *sfx* and
+	// *granular*. Matching the label alone refused a granular texture generator
+	// from a hunt for procedural sound effects — see `VERTICAL_TERMS`.
+	const scored = verticals.map((vertical) => {
+		let score = 0;
+		for (const term of verticalTerms(vertical)) {
+			const word = stem(term);
+			if (!word) continue;
+			if (own.has(word)) score += 3;
+			if (via.has(word)) score += 2;
+		}
+		if (own.has(stem(vertical))) score += 3;
+		if (vertical === "icons" && media.includes("vector")) score += 2;
+		if (vertical === "logos" && media.includes("vector")) score += 1;
+		if (vertical === "motion-video" && media.includes("motion")) score += 2;
+		if (vertical === "audio-music" && media.includes("audio")) score += 2;
+		if (vertical === "3d" && media.includes("model")) score += 2;
+		return { vertical, score };
+	});
+	scored.sort((a, b) => b.score - a.score);
+	if (!scored[0] || scored[0].score <= 0) return null;
+	if (scored[1] && scored[0].score === scored[1].score) return null;
+	return scored[0].vertical;
 }

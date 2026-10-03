@@ -107,7 +107,30 @@ for (const file of plates) {
 			break;
 		}
 
-		// 3. Elements that failed to lay out render as nothing. Only count
+		// 3. Text running off the plate is *cropped*, not colliding.
+		//
+		//    Its own detector, because a `<text>` longer than the frame is invisible
+		//    to both other checks: the static one reads attributes, and the collision
+		//    one needs a second box to intersect. That is how the `logos` plates
+		//    shipped a caption cut at *both* ends — an 855px string through an 800px
+		//    viewBox, and nothing complained, because a clipped text element is
+		//    perfectly well-formed XML.
+		//
+		//    Measured on the rendered glyph box, so it also catches the case a font
+		//    metric estimate would have let through.
+		for (const t of document.querySelectorAll("text")) {
+			if (!t.textContent.trim()) continue;
+			const r = t.getBoundingClientRect();
+			if (r.left < -1 || r.right > 801) {
+				problems.push(
+					`text is cut by the plate edge: "${t.textContent.trim().slice(0, 30)}" spans ${Math.round(
+						r.left,
+					)} → ${Math.round(r.right)} in an 800px frame`,
+				);
+			}
+		}
+
+		// 4. Elements that failed to lay out render as nothing. Only count
 		//    paintable shapes: a fill-only rect inside a clipPath has no
 		//    geometry of its own, and marker glyphs legitimately have zero
 		//    bounding box.

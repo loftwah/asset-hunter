@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Icon family plate: five line glyphs on one cap height, with the optical top and baseline the family shares">
+	<defs>
+		<radialGradient id="bg" cx="50%" cy="32%" r="74%">
+			<stop offset="0%" stop-color="#1a1e22"/>
+			<stop offset="100%" stop-color="#08090a"/>
+		</radialGradient>
+	</defs>
+	<rect width="800" height="1000" fill="url(#bg)"/>
+
+	<g transform="translate(400,300)">
+		<g stroke="#4cc2f0" stroke-width="2.8800000000000003" opacity=".5" stroke-dasharray="12.8 12.8">
+			<path d="M-54 -42 H54"/><path d="M-54 42 H54"/>
+		</g>
+		<g fill="none" stroke="#f4f2ee" stroke-width="22.400000000000002" stroke-linecap="butt" stroke-linejoin="miter">
+			<circle cx="-44" cy="0" r="34"/>
+			<rect x="-11" y="-34" width="68" height="68"/>
+			<path d="M22 34 L44 -34 L66 34"/>
+			<path d="M-52 -34 L-34 34 L-16 -34"/>
+			<path d="M-8 -34 H12 L-8 34 H12"/>
+		</g></g>
+	<text x="400" y="556" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#f4f2ee">one cap height, one stroke, one optical top — the set is the constraint</text>
+
+	<path d="M96 600 H704" stroke="#2c3238" stroke-dasharray="2 6"/>
+	<text x="96" y="636" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">the same construction, reduced</text>
+
+<g transform="translate(190,712)">
+		<g stroke="#4cc2f0" stroke-width="0.9" opacity=".5" stroke-dasharray="4 4">
+			<path d="M-54 -42 H54"/><path d="M-54 42 H54"/>
+		</g>
+		<g fill="none" stroke="#f4f2ee" stroke-width="7" stroke-linecap="butt" stroke-linejoin="miter">
+			<circle cx="-44" cy="0" r="34"/>
+			<rect x="-11" y="-34" width="68" height="68"/>
+			<path d="M22 34 L44 -34 L66 34"/>
+			<path d="M-52 -34 L-34 34 L-16 -34"/>
+			<path d="M-8 -34 H12 L-8 34 H12"/>
+		</g></g>
+	<text x="190" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">100px</text>
+<g transform="translate(400,724)">
+		<g stroke="#4cc2f0" stroke-width="0.522" opacity=".5" stroke-dasharray="2.32 2.32">
+			<path d="M-54 -42 H54"/><path d="M-54 42 H54"/>
+		</g>
+		<g fill="none" stroke="#f4f2ee" stroke-width="4.06" stroke-linecap="butt" stroke-linejoin="miter">
+			<circle cx="-44" cy="0" r="34"/>
+			<rect x="-11" y="-34" width="68" height="68"/>
+			<path d="M22 34 L44 -34 L66 34"/>
+			<path d="M-52 -34 L-34 34 L-16 -34"/>
+			<path d="M-8 -34 H12 L-8 34 H12"/>
+		</g></g>
+	<text x="400" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">58px</text>
+<g transform="translate(610,734)">
+		<g stroke="#4cc2f0" stroke-width="0.28800000000000003" opacity=".5" stroke-dasharray="1.28 1.28">
+			<path d="M-54 -42 H54"/><path d="M-54 42 H54"/>
+		</g>
+		<g fill="none" stroke="#f4f2ee" stroke-width="2.24" stroke-linecap="butt" stroke-linejoin="miter">
+			<circle cx="-44" cy="0" r="34"/>
+			<rect x="-11" y="-34" width="68" height="68"/>
+			<path d="M22 34 L44 -34 L66 34"/>
+			<path d="M-52 -34 L-34 34 L-16 -34"/>
+			<path d="M-8 -34 H12 L-8 34 H12"/>
+		</g></g>
+	<text x="610" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">32px</text>
+
+	<path d="M96 846 H704" stroke="#2c3238" stroke-dasharray="2 6"/>
+<text x="96" y="888" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">Circles overshoot the cap height and squares undershoot it.</text>
+<text x="96" y="920" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#4c545c">The optical top is where the set agrees, not the bounding box —</text>
+
+	<path d="M96 958 H704" stroke="#1c2126"/>
+	<text x="96" y="988" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">holds: one weight · one gate</text>
+	<text x="728" y="988" text-anchor="end" font-family="ui-monospace,Menlo,monospace" font-size="15" fill="#f2a33c">breaks when the gate is skipped</text>
+</svg>

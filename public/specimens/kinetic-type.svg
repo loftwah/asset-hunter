@@ -88,7 +88,8 @@
 
 	<g font-family="ui-monospace,Menlo,monospace" font-size="16">
 		<text x="72" y="890" fill="#f4f2ee">Cut type on the transient and it stops fighting the music.</text>
-		<text x="72" y="922" fill="#6a7178">Honest warning: you need the transient data, which means analysing the audio.</text>
-		<text x="72" y="954" fill="#4d565f">BPM detection alone is not enough — beats are not accents.</text>
+		<text x="72" y="916" fill="#6a7178">Honest warning: you need the transient data,</text>
+		<text x="72" y="940" fill="#6a7178">which means analysing the audio.</text>
+		<text x="72" y="972" fill="#4d565f">BPM detection alone is not enough — beats are not accents.</text>
 	</g>
 </svg>

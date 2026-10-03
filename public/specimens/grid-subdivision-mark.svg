@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Grid subdivision mark plate: a diagonal of three cells taken from a three by three division">
+	<defs>
+		<radialGradient id="bg" cx="50%" cy="32%" r="74%">
+			<stop offset="0%" stop-color="#1a1e22"/>
+			<stop offset="100%" stop-color="#08090a"/>
+		</radialGradient>
+	</defs>
+	<rect width="800" height="1000" fill="url(#bg)"/>
+
+	<!-- The mark. This is the content; everything below is its evidence. -->
+	<g transform="translate(400,300)">
+		<g stroke="#4cc2f0" stroke-width="2.5600000000000005" opacity=".45" fill="none">
+			<path d="M-106.66666666666669 0 H106.66666666666669 M0 -106.66666666666669 V106.66666666666669"/>
+			<path d="M106.66666666666669 0 H320.00000000000006 M0 106.66666666666669 V320.00000000000006"/>
+		</g>
+		<g fill="#ff5a1f">
+			<rect x="-106.66666666666669" y="-106.66666666666669" width="106.66666666666669" height="106.66666666666669"/>
+			<rect x="0" y="0" width="106.66666666666669" height="106.66666666666669"/>
+			<rect x="106.66666666666669" y="106.66666666666669" width="106.66666666666669" height="106.66666666666669"/>
+		</g></g>
+	<text x="400" y="556" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="20" fill="#f4f2ee">3 × 3, and nothing drawn that is not already on the grid</text>
+
+	<path d="M96 600 H704" stroke="#2c3238" stroke-dasharray="2 6"/>
+	<text x="96" y="636" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#6a7178">the same geometry, reduced</text>
+
+<g transform="translate(190,712)">
+		<g stroke="#4cc2f0" stroke-width="0.8" opacity=".45" fill="none">
+			<path d="M-33.333333333333336 0 H33.333333333333336 M0 -33.333333333333336 V33.333333333333336"/>
+			<path d="M33.333333333333336 0 H100 M0 33.333333333333336 V100"/>
+		</g>
+		<g fill="#ff5a1f">
+			<rect x="-33.333333333333336" y="-33.333333333333336" width="33.333333333333336" height="33.333333333333336"/>
+			<rect x="0" y="0" width="33.333333333333336" height="33.333333333333336"/>
+			<rect x="33.333333333333336" y="33.333333333333336" width="33.333333333333336" height="33.333333333333336"/>
+		</g></g>
+	<text x="190" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">100px</text>
+<g transform="translate(400,724)">
+		<g stroke="#4cc2f0" stroke-width="0.46399999999999997" opacity=".45" fill="none">
+			<path d="M-19.333333333333332 0 H19.333333333333332 M0 -19.333333333333332 V19.333333333333332"/>
+			<path d="M19.333333333333332 0 H58 M0 19.333333333333332 V58"/>
+		</g>
+		<g fill="#ff5a1f">
+			<rect x="-19.333333333333332" y="-19.333333333333332" width="19.333333333333332" height="19.333333333333332"/>
+			<rect x="0" y="0" width="19.333333333333332" height="19.333333333333332"/>
+			<rect x="19.333333333333332" y="19.333333333333332" width="19.333333333333332" height="19.333333333333332"/>
+		</g></g>
+	<text x="400" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">58px</text>
+<g transform="translate(610,734)">
+		<g stroke="#4cc2f0" stroke-width="0.256" opacity=".45" fill="none">
+			<path d="M-10.666666666666668 0 H10.666666666666668 M0 -10.666666666666668 V10.666666666666668"/>
+			<path d="M10.666666666666668 0 H32 M0 10.666666666666668 V32"/>
+		</g>
+		<g fill="#ff5a1f">
+			<rect x="-10.666666666666668" y="-10.666666666666668" width="10.666666666666668" height="10.666666666666668"/>
+			<rect x="0" y="0" width="10.666666666666668" height="10.666666666666668"/>
+			<rect x="10.666666666666668" y="10.666666666666668" width="10.666666666666668" height="10.666666666666668"/>
+		</g></g>
+	<text x="610" y="812" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">32px</text>
+
+	<path d="M96 846 H704" stroke="#2c3238" stroke-dasharray="2 6"/>
+<text x="96" y="888" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">The diagonal is the identity; the cells are how you got there.</text>
+<text x="96" y="920" font-family="ui-monospace,Menlo,monospace" font-size="18" fill="#4c545c">Ship the rule, not the file, and the mark cannot drift.</text>
+
+	<path d="M96 958 H704" stroke="#1c2126"/>
+	<text x="96" y="988" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#6a7178">holds: one grid · flat · reverse</text>
+	<text x="728" y="988" text-anchor="end" font-family="ui-monospace,Menlo,monospace" font-size="17" fill="#f2a33c">breaks: rule as drawing</text>
+</svg>

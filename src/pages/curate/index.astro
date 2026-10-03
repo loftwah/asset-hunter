@@ -485,6 +485,19 @@ const totals = {
 				\`coverage\` are null because nothing measured them, and \`distinct_sources\` is 0 because
 				no licence has been read. Publishing an estimate in any of those fields would be
 				fabricated evidence, which is the one thing this project will not do.
+				{/*
+					Measuring an entry is an edit, and EmDash owns every edit. This queue
+					used to be forty links to public drill-ins and nothing else, which
+					meant the queue could not be worked: the page's own rule is that it
+					queues decisions rather than making them, and it had no route to the
+					place the decision is made. It also dead-ended twice over — the list is
+					capped at forty, so the overflow had nowhere to go but nowhere.
+				*/}
+			</p>
+			<p class="section__why">
+				{" "}
+				<a href="/_emdash/admin/possibilities">Open the possibility list in the admin</a> to
+				measure, feature or withdraw any of these, including the ones below the fold.
 			</p>
 			<ul class="tags">
 				{unmeasured.slice(0, 40).map((p) => (

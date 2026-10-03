@@ -100,20 +100,43 @@ const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?
 
 				<BoardSwitcher boards={boards} active={active} manageable={manageable} />
 
+				{/*
+					One verb, and it is the verb the code performs.
+					`applyAction` moves: the entries leave this board and join the one
+					named here. The field said "Copy this board to a new name" and the
+					button said "Copy board" over that behaviour, so a reader who
+					pressed *Copy* and watched their shortlist vanish had to read the
+					confirmation to learn that it had moved (#68). `DESIGN.md` §9.5 has
+					always called this a rename.
+
+					So it is called **Move**, and the consequence is stated before the
+					press rather than after it: the entries come *from* here. A
+					destructive-sounding verb is fine when the sentence beside it says
+					exactly what leaves and where it goes.
+
+					The placeholder stays a fixed length rather than interpolating the
+					board's name. A 40-character board name would produce a 66-character
+					placeholder, and #80 is an open finding about this exact field being
+					wider than its box on three of four phone widths. The board being
+					emptied is already the heading directly above this form; the
+					confirmation states it again afterwards.
+				*/}
 				<form class="newboard" method="post" action="/api/board">
 					<input type="hidden" name="action" value="rename" />
 					<input type="hidden" name="board" value={active} />
 					<input type="hidden" name="back" value={back} />
-					<label class="visually-hidden" for="to">New board name</label>
+					<label class="visually-hidden" for="to">
+						Move these entries to a board named
+					</label>
 					<input
 						id="to"
 						type="text"
 						name="to"
-						placeholder="Copy this board to a new name"
+						placeholder="Move these entries to a new name"
 						maxlength="40"
 						autocomplete="off"
 					/>
-					<button type="submit">Copy board</button>
+					<button type="submit">Move board</button>
 				</form>
 			</header>
 		)
@@ -185,19 +208,25 @@ const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug)?
 							<article class="entry">
 								<PossibilityTile possibility={p} headingLevel="h2" />
 								<p class="entry__summary">{p.summary}</p>
-								<p class="entry__meta">
-									<span class="tag">{verticalLabel(p.vertical)}</span>
-									{p.mediaKind && (
-										<span class="tag">{MEDIA_LABEL[p.mediaKind] ?? p.mediaKind}</span>
-									)}
-									<span class="tag">
-										{p.exampleCount ?? 0} example{p.exampleCount === 1 ? "" : "s"}
-									</span>
-									<span class="tag">
-										{p.distinctSources ?? 0} verified source
-										{(p.distinctSources ?? 0) === 1 ? "" : "s"}
-									</span>
-								</p>
+									{/*
+									 *No per-entry meta line out here (#67).
+									 *
+									 *This row printed the vertical and the media kind again —
+									 *`PossibilityTile` directly above had already printed both — so a
+									 *motion entry read "Motion / Video · Motion" twice, 282px apart in
+									 *the same column. #63 removed exactly this duplication from the
+									 *search rows two commits earlier and could not remove it here,
+									 *because this was a third copy of the rule. One component
+									 *(`FacetTags`) now owns it.
+									 *
+									 *The counts moved inside the disclosure, which is the explicit
+									 *answer `DESIGN.md` §9.5 asks for: *source, licence and
+									 *technique sit behind a per-entry disclosure, because a
+									 *comparison that opens with metadata is a comparison you have
+									 *already lost.* How many examples an entry has and how many
+									 *sources back it are the first two numbers of that sentence, so
+									 *they sit with the rest of it.
+									 */}
 								<details class="entry__more">
 									<summary class="tag">Source, licence and technique</summary>
 									<dl class="facts">

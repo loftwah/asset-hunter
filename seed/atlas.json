@@ -1,26 +1,79 @@
 {
 	"$comment": "Asset Hunter vertical atlas — the seed content source of truth. scripts/build-seed.mjs composes this into seed/seed.json, which EmDash inlines. Edit here, then run `npm run seed:build`. JSON rather than JS so the file cannot break the generator with quoting. Honesty rules: every representative is a plate generated for this catalogue, so representative_origin is always `generated`; example_count is 1 (the plate) and distinct_sources is 0 until the hunt engine supplies real observations. Unverified counts are never invented.",
-
 	"verticals": [
-		{ "slug": "games", "label": "Games" },
-		{ "slug": "ui-web", "label": "UI / Web" },
-		{ "slug": "interaction", "label": "Interaction" },
-		{ "slug": "branding", "label": "Branding" },
-		{ "slug": "logos", "label": "Logos" },
-		{ "slug": "icons", "label": "Icons" },
-		{ "slug": "typography", "label": "Typography" },
-		{ "slug": "motion-video", "label": "Motion / Video" },
-		{ "slug": "audio-music", "label": "Audio / Music" },
-		{ "slug": "3d", "label": "3D" },
-		{ "slug": "shaders", "label": "Shaders" },
-		{ "slug": "software-architecture", "label": "Software / Architecture" },
-		{ "slug": "ai-products", "label": "AI Products" }
+		{
+			"slug": "games",
+			"label": "Games"
+		},
+		{
+			"slug": "ui-web",
+			"label": "UI / Web"
+		},
+		{
+			"slug": "interaction",
+			"label": "Interaction"
+		},
+		{
+			"slug": "branding",
+			"label": "Branding"
+		},
+		{
+			"slug": "logos",
+			"label": "Logos"
+		},
+		{
+			"slug": "icons",
+			"label": "Icons"
+		},
+		{
+			"slug": "typography",
+			"label": "Typography"
+		},
+		{
+			"slug": "motion-video",
+			"label": "Motion / Video"
+		},
+		{
+			"slug": "audio-music",
+			"label": "Audio / Music"
+		},
+		{
+			"slug": "3d",
+			"label": "3D"
+		},
+		{
+			"slug": "shaders",
+			"label": "Shaders"
+		},
+		{
+			"slug": "software-architecture",
+			"label": "Software / Architecture"
+		},
+		{
+			"slug": "ai-products",
+			"label": "AI Products"
+		}
 	],
-
-	"origins": ["generated", "derived", "upstream"],
-	"rights": ["cleared", "attribution", "review", "reference"],
-	"media": ["image", "motion", "audio", "3d", "code", "shader", "type"],
-
+	"origins": [
+		"generated",
+		"derived",
+		"upstream"
+	],
+	"rights": [
+		"cleared",
+		"attribution",
+		"review",
+		"reference"
+	],
+	"media": [
+		"image",
+		"motion",
+		"audio",
+		"3d",
+		"code",
+		"shader",
+		"type"
+	],
 	"possibilities": [
 		{
 			"id": "diegetic-damage",
@@ -357,9 +410,148 @@
 			"buildNotes": "Keep machine evidence separate from editorial judgement in the data model too, not only in the interface — otherwise a well-designed uncertainty display will be fed confident nonsense.",
 			"prompt": "Interface plate: a generated answer where strong clauses are set plainly and a weak clause is filled with diagonal hatching, outlined dashed and annotated with its support count. Below, coverage and novelty plotted as bars, and a note that uncertainty never uses colour alone.",
 			"editorialRank": 0.83
+		},
+		{
+			"id": "monoline-constant-weight",
+			"title": "A mark that is one weight at every size",
+			"tagline": "Fixed stroke, scaling geometry, nothing else to specify",
+			"vertical": "logos",
+			"media": "image",
+			"summary": "Build the mark from a single stroke weight and let everything else scale. The identity becomes a rule rather than a drawing: the same mark at a favicon and on a hoarding is recognisably the same mark, and a third party can reproduce it from one number. The trade is apparent weight — a fixed stroke looks heavier as it shrinks — which you either accept or correct deliberately at named sizes.",
+			"technique": "Draw once at a reference size with a single stroke weight and no optical compensation. Then produce a reduction ladder: the same geometry at 64, 44 and 28px with the weight unchanged, and a second ladder where you reduce the weight by one unit below 40px and open the gaps by one unit to match. Choose the ladder, not the file.",
+			"rights": "reference",
+			"rightsNote": "The rule is free to use and the drawing is not. A monoline construction is a technique; the particular geometry, ratios and angles are somebody's, and distinctiveness comes from the specifics you chose, not from the constraint you followed.",
+			"buildNotes": "One weight is checkable with a ruler and two weights is a judgement you have to defend every time. Ship the one-weight version as the default and document the ladder as an exception list, so the exception is the visible part.",
+			"prompt": "Mark construction plate on a dark ground: a large monoline glyph drawn at reference size with a measurement bracket calling out the single stroke weight, a reduction ladder at 64, 44 and 28 pixels below it with the weight held constant, and a second ladder with the weight and the gaps both reduced. Mono annotations, one accent, no gradients.",
+			"editorialRank": 0.78
+		},
+		{
+			"id": "lettermark-counter",
+			"title": "A lettermark whose hole is the mark",
+			"tagline": "Extract the counter of a letter and fill it",
+			"vertical": "logos",
+			"media": "image",
+			"summary": "Take a single letter, isolate its counter — the enclosed negative shape — and use that shape alone as the mark. The letter is the source, not the artwork: the identity is a silhouette derived from one piece of type, which gives it a recognisable lineage without carrying any of the wordmark's weight. It only works if the counter is generous enough to survive as a shape on its own.",
+			"technique": "Set the letter at the weight and optical size you will use, trace the counter exactly, then clear it and fill it as a solid. Test the extracted shape alone at 88, 48, 29 and 15px. Two radii meeting at a point hold; two radii meeting smoothly do not, because the point is what the eye was reading.",
+			"rights": "reference",
+			"rightsNote": "Letterforms in most jurisdictions are not copyrightable, but that is not the same as being free to ship. Check the licence on any typeface you draw the counter from, and do not extend a competitor's specific counter into your own identity.",
+			"buildNotes": "A counter narrower than the stroke closes solid at small sizes and stops being a mark at all. Decide early whether you can live with a mark that only works above 30px, because that decision constrains every container it will ever sit in.",
+			"prompt": "Lettermark construction plate: a heavy serif letter drawn in outline with its counter called out in a dashed accent, and beside it the counter lifted out and filled as a solid ember shape. Below, a reduction ladder of the extracted counter alone at 88, 48, 29 and a failing 15 pixels, with the 15 marked as a failure. Mono annotations on a dark ground.",
+			"editorialRank": 0.74
+		},
+		{
+			"id": "grid-subdivision-mark",
+			"title": "A mark you can rebuild from a division rule",
+			"tagline": "Three by three, and nothing drawn that is not already on the grid",
+			"vertical": "logos",
+			"media": "image",
+			"summary": "Define a square divided into ninths, then take the mark from a subset of those divisions. The value is not the shape — it is that the shape is a consequence, so anybody who has the rule can redraw the mark exactly, a contractor can extend it without a handover document, and a future designer cannot accidentally drift it by nudging one edge.",
+			"technique": "Fix the container as a square and the division as 3 × 3, then choose cells. Keep every edge of every drawn shape on a division line. Above 32px the cell pattern can be shown; below it, redraw the silhouette the cells describe, because the gaps close first.",
+			"rights": "reference",
+			"rightsNote": "Division systems are older than any of us and are not protectable as such. What is yours is the specific subset you chose, so do not reproduce a competitor's cell selection and describe it as systematic.",
+			"buildNotes": "The rule is the deliverable and the drawing is an instance of it — ship the rule. The moment the rule is the drawing, every future revision becomes an argument about whether the drift was intentional.",
+			"prompt": "Mark construction plate: a large square subdivided into a three by three grid, three cells filled to form a diagonal mark, the subdivision drawn in dashed cyan over a fine grid, and below a reduction ladder of the mark alone at 144, 79, 43 and a failing 23 pixels. Mono annotations, one accent, dark ground.",
+			"editorialRank": 0.8
+		},
+		{
+			"id": "wordmark-tracking-rhythm",
+			"title": "A wordmark whose only decision is the space",
+			"tagline": "Tracking specified as a number, gaps applied optically",
+			"vertical": "logos",
+			"media": "image",
+			"summary": "Some identities have no symbol at all — the word itself is the mark, and the only thing that makes it a wordmark rather than default interface type is the space between the letters. Specify the tracking as a number so it can be set consistently, then correct it optically per gap so it survives being used at sizes nobody checked.",
+			"technique": "Set the word in one weight at one size with negative tracking. Then measure the gaps between stems and set each individually: round-sided letters need less air than flat-sided ones, and a letter with a leg needs less again. Ship the per-gap values, not the global number, because the global number is what gets lost in a redesign.",
+			"rights": "reference",
+			"rightsNote": "Trademark distinctiveness in a wordmark comes from the specific letterforms and the specific spacing arrangement. A tracking value is not protectable and copying it is not infringement — but arriving at the same word with the same spacing by coincidence is a real legal question, not a design one.",
+			"buildNotes": "Text zoom breaks wordmarks before anything else does. If the identity depends on -2 units of tracking, it needs a second setting for large text sizes, and that second setting needs testing rather than assuming.",
+			"prompt": "Wordmark plate on a dark ground: a large tracked-out wordmark with a baseline rule and the tracking value called out in cyan, three stacked variants below showing uniform tracking, tracking dropped and tracking specified, and a final diagram showing per-gap values annotated in ember on six letters. Mono annotations, one accent.",
+			"editorialRank": 0.76
+		},
+		{
+			"id": "optical-correction-upscale",
+			"title": "A mark redrawn for its largest size, not scaled to it",
+			"tagline": "Master at 48px, every other size drawn from it",
+			"vertical": "logos",
+			"media": "image",
+			"summary": "A vector file scaled to poster size multiplies its stroke weight with its geometry, so the mark arrives heavier than it was drawn and the counters arrive softer. Treat every size as its own drawing session: nominate one master size, author the weight at each size, and open the counters back up as the mark grows.",
+			"technique": "Nominate the 48px square as the master. Produce the other sizes as redraws with an authored weight rather than as scaled copies — at 6× the stroke can drop from four units to under two and the counters come back. Record the size list in the asset itself so nobody has to guess which file is the master.",
+			"rights": "reference",
+			"rightsNote": "No rights question in the technique. The rights question is the one you create by shipping nine near-identical files and calling them one logo: that is a maintenance liability, not a legal one.",
+			"buildNotes": "If you cannot name the size list, you do not have a master — you have a directory. The list is short (favicon, 48, and the largest physical print) and it is the only thing that keeps a mark consistent across a brand's lifetime.",
+			"prompt": "Mark plate on a dark ground: two squares side by side, the left holding a mark scaled six times with visibly heavy joints labelled as a failure, the right holding the same geometry redrawn with an authored weight and open counters, plus a row of three delivery sizes below with the master called out. Mono annotations, one accent.",
+			"editorialRank": 0.79
+		},
+		{
+			"id": "arc-terminal-angle",
+			"title": "A mark defined by the angle cut across its stroke",
+			"tagline": "One angle, one weight, one radius — and a family that falls out of it",
+			"vertical": "logos",
+			"media": "image",
+			"summary": "Draw the mark as a stroked arc and cut the terminals at an angle rather than shaping them. The angle is the identity, and because it scales with the stroke it survives reduction where a bespoke terminal shape does not. The useful consequence is a family: one arc and one cut produce the whole set of sizes and radii the brand needs.",
+			"technique": "Set the cap angle as a single number — 45° is a defensible default — and apply it to both ends. Test 0° (a default cap, not a mark), 90° (a cut pipe) and 22.5° (too close to 0° to hold). Then derive the family by changing only the radius and the stroke weight, never the angle.",
+			"rights": "reference",
+			"rightsNote": "The angle-and-radius system is a technique. A competitor's specific arc, angle and radius combination is a drawing, and the combination can be distinctive — check before adopting one you found rather than invented.",
+			"buildNotes": "Below about 14px the cut stops being visible and the mark becomes an arc, which is a different mark. Either accept a floor of 16px on the identity, or state in advance which smaller cut replaces it.",
+			"prompt": "Mark construction plate on a dark ground: four stroked arcs of the same radius showing terminal cuts at 0, 45, 90 and 22.5 degrees, the 45 degree version drawn in paper white with its cut faces filled in ember, plus a small reduction ladder at 40, 24 and 12 pixels. Mono annotations, one accent, no gradients.",
+			"editorialRank": 0.75
+		},
+		{
+			"id": "single-weight-icon-family",
+			"title": "An icon family held together by a check, not a guideline",
+			"tagline": "One weight, one cap height, one radius — enforced in the build",
+			"vertical": "logos",
+			"media": "image",
+			"summary": "A family of marks is a constraint, and the failure is always the same: somebody adds a sixth icon later at a different weight with a different corner radius. Write the constraint as four machine-checkable numbers — stroke weight, rendered height, permitted radii, and a ban on scale() in the source — and enforce them in the build. A guideline nobody runs is not a constraint.",
+			"technique": "Write the constraint as assertions: stroke-width equals one value, rendered height equals one value within a tolerance, corner radius is in a permitted set, and no path uses scale(). Enforce them where the icons are built, not in a document. Every icon shares one cap height and one terminal angle, so optical tops align even when the geometry does not.",
+			"rights": "reference",
+			"rightsNote": "No rights question in the constraint. The rights question arrives when a family member is lifted from another system's icon set to fill a gap — at which point it is a drawing you did not draw.",
+			"buildNotes": "The gate is the deliverable and the icons are the instance of it, exactly as with the grid mark. Without the gate you get one wrong icon in every nine, and the wrong one is always the one somebody added in a hurry.",
+			"prompt": "Icon family plate on a dark ground: five line icons — circle, square, triangle, chevron, rounded square — drawn on one stroke weight with dashed optical-top and baseline rules in cyan, and below a sixth icon visibly off-weight with an ember overlay marking the drift, followed by four assertion lines. Mono annotations, one accent.",
+			"editorialRank": 0.77
+		},
+		{
+			"id": "lockup-ratio-relationship",
+			"title": "A lockup shipped as a relationship, not as a file",
+			"tagline": "Mark and wordmark on a shared axis, with a stated gap",
+			"vertical": "logos",
+			"media": "image",
+			"summary": "The mark-and-wordmark combination is where most identity systems are actually used, and it is the artefact most often exported wrongly — as one flattened file, at one width, with a gap somebody typed as a percentage. Ship the relationship: a shared optical axis, a gap stated in units of the mark's own width, and a horizontal, stacked and symbol-only variant for the three widths that matter.",
+			"technique": "Set the master lockup with the mark's cap height as the unit, the gap as a fixed number of those units, and the wordmark cap height as a stated fraction. Derive the horizontal, stacked and symbol-only variants by re-locking the same parts. Do not export the variants as scaled copies, and do not leave the gap as a percentage — a percentage gap closes as the mark shrinks.",
+			"rights": "reference",
+			"rightsNote": "No rights question in the lockup rule. There is one in the wordmark itself, and in any mark you adopted from a competitor's lockup rather than drew.",
+			"buildNotes": "Three lockups is the whole deliverable and all three have to be drawn, because a lockup is not a responsive layout. Above 180px the horizontal version, above 96px the stacked version, and below that the mark alone — with the thresholds stated so somebody else can apply them.",
+			"prompt": "Lockup plate on a dark ground: a large horizontal mark-and-wordmark lockup on a paper white field with the optical axis and gap called out in cyan, a smaller one at the same relationship, a third with a percentage gap closing and marked in amber, and below three container variants — horizontal, stacked and symbol only. Mono annotations, one accent.",
+			"editorialRank": 0.73
+		},
+		{
+			"id": "reversed-mark-pair",
+			"title": "A reversed mark that is a second drawing, not a colour swap",
+			"tagline": "Two files, two weights, one geometry",
+			"vertical": "logos",
+			"media": "image",
+			"summary": "Light ink on a dark ground spreads, so the same stroke reads heavier and a tight counter reads closed. The reversed mark therefore needs its own authored weight and its own opened counters — measured, not estimated. Shipping one file called \"the logo\" and letting somebody recolour it in a hurry is how a brand ends up with a reversed version nobody approved.",
+			"technique": "Draw the geometry once. Then draw it twice: once dark on light at the authored weight, once light on dark with the weight reduced by roughly 8 to 12 percent and the tightest counter opened by the same fraction. Place them side by side at the same size and measure the apparent difference before shipping.",
+			"rights": "reference",
+			"rightsNote": "No rights question in the method. There is one in shipping a competitor's reversed version, which is a distinct drawing rather than a colour change and is treated as such.",
+			"buildNotes": "Both files belong in the asset library with the same name and a reversed suffix, so the reversed one is what a designer reaches for rather than something they rebuild in the tool they happen to have open.",
+			"prompt": "Mark plate on a dark ground: a positive proof in dark ink on a paper white tile and a reversed proof in light ink on a near-black tile with the weight visibly reduced, then a second pair below using the same weight in both, the reversed one marked in amber as reading heavier. Mono annotations, one accent.",
+			"editorialRank": 0.72
+		},
+		{
+			"id": "symbol-clearspace-ratio",
+			"title": "A symbol sized for the containers it will live in",
+			"tagline": "Clearspace as a ratio of the mark, not as nine exported crops",
+			"vertical": "logos",
+			"media": "image",
+			"summary": "A symbol on its own is not a deliverable — a symbol on a square app tile, on a wide banner and on a tall avatar is three different drawings, because proportional shrinking closes the counters and filling the container kills the clearspace. State the clearspace as a ratio of the mark's own width, cap the mark at a percentage of each container, and draw the three containers rather than exporting crops of one.",
+			"technique": "Declare clearspace as a fraction of the mark's own width — a quarter is a defensible default — and apply it on every side of every container. Cap the mark at 50 percent of a square tile, 42 percent of a tall container's width, and never scale a container drawing proportionally: redraw it, or let the mark lose weight while the geometry holds.",
+			"rights": "reference",
+			"rightsNote": "No rights question in the ratio. There is one in the container artwork itself if it is a third party's photograph rather than a flat field — which is also why flat fields are the safer default.",
+			"buildNotes": "A new container shape is a new drawing, not a crop. Agree that up front, because every brand that has not agreed it up front ends up with a symbol stretched onto a surface it was never drawn for.",
+			"prompt": "Symbol plate on a dark ground: three paper white containers — a rounded square app tile, a wide banner and a tall avatar — each holding the same mark at a stated maximum width, and two wrong versions below, one filled to the edges and one proportionally shrunk with closed counters, both marked in amber. Mono annotations, one accent.",
+			"editorialRank": 0.71
 		}
 	],
-
 	"collections": [
 		{
 			"id": "replacing-the-obvious",
@@ -382,7 +574,12 @@
 			"title": "Procedural without an engine",
 			"tagline": "Simulation and geometry written as maths, not imported as a plugin",
 			"summary": "Approaches where the interesting part is the maths and the dependency budget is zero. Often cheaper, often smaller, occasionally the only thing that fits the constraint.",
-			"members": ["crowd-fluid", "raymarched-sdf", "edge-fade", "granular-texture"]
+			"members": [
+				"crowd-fluid",
+				"raymarched-sdf",
+				"edge-fade",
+				"granular-texture"
+			]
 		},
 		{
 			"id": "the-system-is-the-artwork",
@@ -404,16 +601,23 @@
 			"title": "Seams",
 			"tagline": "Problems that live entirely at a boundary",
 			"summary": "Loop points, edit points, cut points, boundaries between two colours. Each of these is a place where an artefact hides, and each becomes tractable once you solve for the right quantity.",
-			"members": ["seamless-loop", "match-cut", "kinetic-type", "granular-texture"]
+			"members": [
+				"seamless-loop",
+				"match-cut",
+				"kinetic-type",
+				"granular-texture"
+			]
 		}
 	],
-
 	"sections": [
 		{
 			"slug": "field-guide-intro",
 			"title": "Field guide",
 			"description": "Opening sentence shown under the catalogue wall's title. Read by src/pages/index.astro via src/lib/site-shell.ts.",
-			"keywords": ["intro", "home"],
+			"keywords": [
+				"intro",
+				"home"
+			],
 			"source": "theme",
 			"content": [
 				{
@@ -429,7 +633,6 @@
 			]
 		}
 	],
-
 	"pages": [
 		{
 			"id": "about",
@@ -437,7 +640,16 @@
 			"title": "What this is",
 			"summary": "A catalogue of distinct creative and technical possibilities, with representative examples and their provenance.",
 			"body": [
-				{ "_type": "block", "style": "h2", "children": [{ "_type": "span", "text": "Possibilities, not files" }] },
+				{
+					"_type": "block",
+					"style": "h2",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Possibilities, not files"
+						}
+					]
+				},
 				{
 					"_type": "block",
 					"style": "normal",
@@ -458,8 +670,26 @@
 						}
 					]
 				},
-				{ "_type": "block", "style": "h2", "children": [{ "_type": "span", "text": "Three things worth knowing" }] },
-				{ "_type": "block", "style": "h3", "children": [{ "_type": "span", "text": "Possibility is not permission" }] },
+				{
+					"_type": "block",
+					"style": "h2",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Three things worth knowing"
+						}
+					]
+				},
+				{
+					"_type": "block",
+					"style": "h3",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Possibility is not permission"
+						}
+					]
+				},
 				{
 					"_type": "block",
 					"style": "normal",
@@ -470,7 +700,16 @@
 						}
 					]
 				},
-				{ "_type": "block", "style": "h3", "children": [{ "_type": "span", "text": "Examples state their origin" }] },
+				{
+					"_type": "block",
+					"style": "h3",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Examples state their origin"
+						}
+					]
+				},
 				{
 					"_type": "block",
 					"style": "normal",
@@ -481,7 +720,16 @@
 						}
 					]
 				},
-				{ "_type": "block", "style": "h3", "children": [{ "_type": "span", "text": "Machine evidence and editorial judgement stay apart" }] },
+				{
+					"_type": "block",
+					"style": "h3",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Machine evidence and editorial judgement stay apart"
+						}
+					]
+				},
 				{
 					"_type": "block",
 					"style": "normal",
@@ -492,7 +740,16 @@
 						}
 					]
 				},
-				{ "_type": "block", "style": "h2", "children": [{ "_type": "span", "text": "What is here now" }] },
+				{
+					"_type": "block",
+					"style": "h2",
+					"children": [
+						{
+							"_type": "span",
+							"text": "What is here now"
+						}
+					]
+				},
 				{
 					"_type": "block",
 					"style": "normal",
@@ -511,8 +768,26 @@
 			"title": "Licensing and rights",
 			"summary": "How rights are classified, what each status means, and what this catalogue will never claim for you.",
 			"body": [
-				{ "_type": "block", "style": "h2", "children": [{ "_type": "span", "text": "The statuses" }] },
-				{ "_type": "block", "style": "h3", "children": [{ "_type": "span", "text": "Cleared" }] },
+				{
+					"_type": "block",
+					"style": "h2",
+					"children": [
+						{
+							"_type": "span",
+							"text": "The statuses"
+						}
+					]
+				},
+				{
+					"_type": "block",
+					"style": "h3",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Cleared"
+						}
+					]
+				},
 				{
 					"_type": "block",
 					"style": "normal",
@@ -523,7 +798,16 @@
 						}
 					]
 				},
-				{ "_type": "block", "style": "h3", "children": [{ "_type": "span", "text": "Attribution required" }] },
+				{
+					"_type": "block",
+					"style": "h3",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Attribution required"
+						}
+					]
+				},
 				{
 					"_type": "block",
 					"style": "normal",
@@ -534,7 +818,16 @@
 						}
 					]
 				},
-				{ "_type": "block", "style": "h3", "children": [{ "_type": "span", "text": "Review required" }] },
+				{
+					"_type": "block",
+					"style": "h3",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Review required"
+						}
+					]
+				},
 				{
 					"_type": "block",
 					"style": "normal",
@@ -545,7 +838,16 @@
 						}
 					]
 				},
-				{ "_type": "block", "style": "h3", "children": [{ "_type": "span", "text": "Reference only" }] },
+				{
+					"_type": "block",
+					"style": "h3",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Reference only"
+						}
+					]
+				},
 				{
 					"_type": "block",
 					"style": "normal",
@@ -556,7 +858,16 @@
 						}
 					]
 				},
-				{ "_type": "block", "style": "h2", "children": [{ "_type": "span", "text": "What this will not do" }] },
+				{
+					"_type": "block",
+					"style": "h2",
+					"children": [
+						{
+							"_type": "span",
+							"text": "What this will not do"
+						}
+					]
+				},
 				{
 					"_type": "block",
 					"style": "normal",
@@ -567,7 +878,16 @@
 						}
 					]
 				},
-				{ "_type": "block", "style": "h2", "children": [{ "_type": "span", "text": "If something here is wrong" }] },
+				{
+					"_type": "block",
+					"style": "h2",
+					"children": [
+						{
+							"_type": "span",
+							"text": "If something here is wrong"
+						}
+					]
+				},
 				{
 					"_type": "block",
 					"style": "normal",
@@ -588,7 +908,16 @@
 						}
 					]
 				},
-				{ "_type": "block", "style": "h2", "children": [{ "_type": "span", "text": "Taking something down" }] },
+				{
+					"_type": "block",
+					"style": "h2",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Taking something down"
+						}
+					]
+				},
 				{
 					"_type": "block",
 					"style": "normal",
@@ -637,7 +966,16 @@
 						}
 					]
 				},
-				{ "_type": "block", "style": "h2", "children": [{ "_type": "span", "text": "Serve the catalogue" }] },
+				{
+					"_type": "block",
+					"style": "h2",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Serve the catalogue"
+						}
+					]
+				},
 				{
 					"_type": "block",
 					"style": "normal",
@@ -648,7 +986,10 @@
 						}
 					]
 				},
-				{ "_type": "code", "code": "npm install\nnpm run dev" },
+				{
+					"_type": "code",
+					"code": "npm install\nnpm run dev"
+				},
 				{
 					"_type": "block",
 					"style": "normal",
@@ -659,7 +1000,10 @@
 						}
 					]
 				},
-				{ "_type": "code", "code": "curl localhost:4321/_emdash/api/setup/dev-bypass" },
+				{
+					"_type": "code",
+					"code": "curl localhost:4321/_emdash/api/setup/dev-bypass"
+				},
 				{
 					"_type": "block",
 					"style": "normal",
@@ -670,7 +1014,16 @@
 						}
 					]
 				},
-				{ "_type": "block", "style": "h2", "children": [{ "_type": "span", "text": "Publish new possibilities" }] },
+				{
+					"_type": "block",
+					"style": "h2",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Publish new possibilities"
+						}
+					]
+				},
 				{
 					"_type": "block",
 					"style": "normal",
@@ -681,8 +1034,20 @@
 						}
 					]
 				},
-				{ "_type": "code", "code": "export GITHUB_TOKEN=$(gh auth token)\nnpm run hunt -- sfx.json\nnpm run hunt:sync\nnpm run hunt:verify" },
-				{ "_type": "block", "style": "h2", "children": [{ "_type": "span", "text": "What a hunt does not do" }] },
+				{
+					"_type": "code",
+					"code": "export GITHUB_TOKEN=$(gh auth token)\nnpm run hunt -- sfx.json\nnpm run hunt:sync\nnpm run hunt:verify"
+				},
+				{
+					"_type": "block",
+					"style": "h2",
+					"children": [
+						{
+							"_type": "span",
+							"text": "What a hunt does not do"
+						}
+					]
+				},
 				{
 					"_type": "block",
 					"style": "normal",
@@ -693,8 +1058,20 @@
 						}
 					]
 				},
-				{ "_type": "code", "code": "npm run doctor" },
-				{ "_type": "block", "style": "h2", "children": [{ "_type": "span", "text": "Check it honestly" }] },
+				{
+					"_type": "code",
+					"code": "npm run doctor"
+				},
+				{
+					"_type": "block",
+					"style": "h2",
+					"children": [
+						{
+							"_type": "span",
+							"text": "Check it honestly"
+						}
+					]
+				},
 				{
 					"_type": "block",
 					"style": "normal",
@@ -705,7 +1082,10 @@
 						}
 					]
 				},
-				{ "_type": "code", "code": "npm run verify\nnpm run verify:full" },
+				{
+					"_type": "code",
+					"code": "npm run verify\nnpm run verify:full"
+				},
 				{
 					"_type": "block",
 					"style": "normal",
@@ -716,7 +1096,10 @@
 						}
 					]
 				},
-				{ "_type": "code", "code": "npm run catalogue -- summary\nnpm run catalogue -- search \"seam\"\nnpm run catalogue -- rights" }
+				{
+					"_type": "code",
+					"code": "npm run catalogue -- summary\nnpm run catalogue -- search \"seam\"\nnpm run catalogue -- rights"
+				}
 			]
 		}
 	]

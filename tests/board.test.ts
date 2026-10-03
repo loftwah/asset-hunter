@@ -177,23 +177,47 @@ describe("shortlist board", () => {
 		assert.equal(boardCanManage(-1), false);
 	});
 
-	test("a copy of an empty board is answered as a refusal, not as a copy (#65)", () => {
+	test("a move off an empty board is answered as a refusal, not as a move (#65, #68)", () => {
 		// The endpoint's `nocopy` answer: a form posted from a tab that was
-		// rendered before the board was emptied. Reporting a copy that did not
+		// rendered before the board was emptied. Reporting a move that did not
 		// happen is the same class of lie as a live button that copies nothing.
 		const outcome = boardOutcome(new URLSearchParams("nocopy=1"), () => undefined);
 		assert.equal(outcome?.tone, "problem");
-		assert.match(outcome?.message ?? "", /nothing to copy/i);
+		assert.match(outcome?.message ?? "", /nothing to move/i);
 		assert.match(outcome?.message ?? "", /empty/i, "says why, not just that it failed");
 	});
 
-	test("a real copy names the board the entries went to (#65)", () => {
-		const outcome = boardOutcome(new URLSearchParams("copied=Pirates"), () => undefined);
+	test("a name that is not a name is refused in words, and does not claim a move (#68)", () => {
+		// The degenerate rename from #68: `to` reduced to the board's own name, to
+		// nothing, or to punctuation. Four of the five names in that report used to
+		// redirect with `copied=1`, and `boardOutcome` rendered that as "Copied to a
+		// new board. Both are empty now." over a board that was full and unchanged.
+		// The refusal has to say what failed *and* what to try (`DESIGN.md` §8), and
+		// it must not tell a reader with entries that their board is empty.
+		const outcome = boardOutcome(new URLSearchParams("nomove=1"), () => undefined);
+		assert.equal(outcome?.tone, "problem");
+		assert.match(outcome?.message ?? "", /nothing moved/i);
+		assert.doesNotMatch(
+			outcome?.message ?? "",
+			/this board is empty/i,
+			"the reader has entries; only the name was unusable",
+		);
+		assert.match(outcome?.message ?? "", /letters, numbers or spaces/i);
+	});
+
+	test("a real move names the board the entries went to (#65, #68)", () => {
+		const outcome = boardOutcome(new URLSearchParams("moved=Pirates"), () => undefined);
 		assert.equal(outcome?.tone, "ok");
 		assert.match(outcome?.message ?? "", /Pirates/);
 		// The old wording claimed *both* boards were empty, which is false: the
-		// board copied from is emptied, the destination holds the entries.
+		// board moved from is emptied, the destination holds the entries.
 		assert.doesNotMatch(outcome?.message ?? "", /both are empty/i);
+		// The board being looked at really is empty afterwards, so the confirmation
+		// says so rather than leaving the reader to work it out from a redirect
+		// that lands them on a different board than the one they emptied.
+		assert.match(outcome?.message ?? "", /this board is empty/i);
+		// One verb throughout. The control is a Move, so the confirmation is too.
+		assert.doesNotMatch(outcome?.message ?? "", /copied/i);
 	});
 
 	test("clearing says where the entries actually are (#65)", () => {

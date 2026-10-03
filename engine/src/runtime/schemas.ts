@@ -149,6 +149,16 @@ export const EntryResponse = Schema.Struct({
 						Schema.Struct({
 							data: Schema.optional(Schema.NullOr(Schema.Unknown)),
 							_rev: Schema.optional(Schema.String),
+							/**
+							 * The two halves of the `_rev` token.
+							 *
+							 * The route does not return `_rev` in the body — it is a header — so
+							 * `revFromToken` reconstructs it from exactly what the token is
+							 * built from. See `EmDashApi.read` for what went wrong when this was
+							 * read as `data._rev` and came back `undefined` on every entry.
+							 */
+							version: Schema.optional(Schema.Number),
+							updatedAt: Schema.optional(Schema.String),
 						}),
 					),
 				),
@@ -157,3 +167,24 @@ export const EntryResponse = Schema.Struct({
 		),
 	),
 });
+
+/**
+ * The `_rev` token EmDash's write path expects: `base64("<version>:<updatedAt>")`.
+ *
+ * Reconstructed here rather than read, because the GET route does not put it in
+ * the body. This is the same construction `encodeRev` performs in
+ * `emdash/src/api/rev.ts`, and it is deliberately duplicated rather than imported:
+ * `docs/ARCHITECTURE.md` forbids the engine depending on CMS internals, and a
+ * token format is exactly the kind of detail that should break loudly if it
+ * changes rather than silently returning `null`.
+ *
+ * Returning `null` is the failure this replaced. With `rev` always null the engine
+ * POSTed instead of PUTing, so every sync wrote a fresh revision of every entry
+ * whether or not anything had changed — no version conflict could ever be
+ * detected, and `sync` reported `updated` for a payload identical to the one
+ * before it.
+ */
+export function revFromToken(version: unknown, updatedAt: unknown): string | null {
+	if (typeof version !== "number" || typeof updatedAt !== "string" || !updatedAt) return null;
+	return Buffer.from(`${version}:${updatedAt}`, "utf8").toString("base64");
+}

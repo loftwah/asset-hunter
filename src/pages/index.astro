@@ -15,7 +15,12 @@ import { loadPossibilities, tallyVerticals } from "../lib/catalogue";
 import { loadIntro } from "../lib/site-shell";
 import { runApp } from "../lib/effect/root";
 import { COOKIE_NAME, boardOutcome, boardTotals, parseBoards } from "../lib/board";
-import { RIGHTS_LABEL, RIGHTS_MEANING, verticalLabel } from "../lib/vocabulary";
+import {
+	RIGHTS_LABEL,
+	RIGHTS_MEANING,
+	verticalBlurb,
+	verticalLabel,
+} from "../lib/vocabulary";
 import { describeScale, requestedScale, scaleWall } from "../lib/scale-wall";
 
 const { possibilities, cacheHint } = await runApp(loadPossibilities(), { signal: Astro.request.signal });
@@ -91,6 +96,18 @@ const outcome = boardOutcome(Astro.url.searchParams, (slug) => bySlug.get(slug),
 	keptElsewhere: totals.items,
 });
 
+/*
+ * Whether every entry on screen shares one media kind.
+ *
+ * On a vertical's own wall they usually do — eleven logo entries are eleven
+ * `image` kinds — and printing "Image" under each of them is the #63
+ * duplication one level down: the heading already said which vertical this is
+ * and the plates already say what they are. So the facets are dropped when they
+ * would carry no information, and kept the moment they would.
+ */
+const mediaKinds = new Set(filtered.map((p) => p.mediaKind).filter(Boolean));
+const uniformFacets = mediaKinds.size <= 1;
+
 const rightsTally = new Map<string, number>();
 for (const p of filtered) {
 	if (p.rightsStatus) rightsTally.set(p.rightsStatus, (rightsTally.get(p.rightsStatus) ?? 0) + 1);
@@ -98,9 +115,13 @@ for (const p of filtered) {
 ---
 
 <Base
-	title="Catalogue"
-	description="A field guide to what can be made — distinct creative and technical possibilities across games, UI, branding, motion, audio, 3D, shaders, code and architecture, each with representative examples and their rights."
-	path="/"
+	title={activeVertical ? verticalLabel(activeVertical) : "Catalogue"}
+	description={
+		activeVertical
+			? `${filtered.length} ${filtered.length === 1 ? "possibility" : "possibilities"} in ${verticalLabel(activeVertical)}: what has already been made, with representative examples and their rights.`
+			: "A field guide to what can be made — distinct creative and technical possibilities across games, UI, branding, motion, audio, 3D, shaders, code and architecture, each with representative examples and their rights."
+	}
+	path={activeVertical ? `/?vertical=${activeVertical}` : "/"}
 >
 	{/*
 		The intro is a band, not a hero. Its whole job is to say what this is and
@@ -120,20 +141,70 @@ for (const p of filtered) {
 		`data-nav-source` exists on the masthead: a CMS field that silently stops
 		being read is the failure this whole change is about.
 	*/}
-	<section class="intro shell">
+	{/*
+	 * A filtered wall announces itself, and this is the fix for the question the
+	 * wall could not previously answer.
+	 *
+	 * `?vertical=logos` used to render the whole catalogue's headline over
+	 * whichever tiles survived the filter, so clicking a vertical in the rail, in
+	 * `/verticals`, in the masthead or in a search facet all landed on a page that
+	 * said "What can be made" and showed three plates. Nothing on the page said
+	 * which vertical it was, how many entries it held, or that it was a
+	 * destination at all — which is why a vertical was a filter rather than a
+	 * place, and why there was no reason to link one.
+	 *
+	 * It is the same band, the same type scale and the same vertical space as the
+	 * unfiltered intro, so the fold gate in `npm run check:visual` is unchanged:
+	 * one line of eyebrow, one headline, one lede, in both states. Only the words
+	 * differ, and the lede is computed from the entries that actually rendered.
+	 *
+	 * The CMS intro is deliberately *not* shown here. It is copy about the whole
+	 * catalogue, and putting it above eleven logo entries would be a sentence
+	 * about the wrong thing.
+	 */}
+	<section class="intro shell" data-intro-source={intro.source}>
 		<div class="intro__body" data-intro-source={intro.source}>
-			<p class="tag tag--ember">Option space, compressed</p>
+			<p class="tag tag--ember">
+				{activeVertical ? "Vertical" : "Option space, compressed"}
+			</p>
 			<h1 class="display intro__title">
-				What can be made, and the ways it has already been made
+				{
+					activeVertical
+						? verticalLabel(activeVertical)
+						: "What can be made, and the ways it has already been made"
+				}
 			</h1>
 			<div class="lede intro__lede">
-				<PortableText value={intro.blocks as never} />
+				{
+					activeVertical ? (
+						<>
+							<p>
+								{verticalBlurb(activeVertical, filtered.length)}
+							</p>
+							<p class="intro__back">
+								<a class="linkish" href="/">Back to the whole catalogue</a>
+							</p>
+						</>
+					) : (
+						<PortableText value={intro.blocks as never} />
+					)
+				}
 			</div>
 		</div>
+		{/*
+		 * The tally counts what is on screen, in both states.
+		 *
+		 * It counted the whole catalogue unconditionally, so a vertical's page
+		 * opened by reading "Possibilities 34" above eleven tiles — the same class
+		 * of lie as the search empty state asserting a coverage number in copy
+		 * (#77), and part of why a vertical read as a filter rather than a place.
+		 * "Verticals" stays the catalogue-wide number on a vertical page, because
+		 * that is the frame it gives the count.
+		 */}
 		<dl class="tally">
 			<div>
-				<dt class="tag">Possibilities</dt>
-				<dd class="tally__n" data-tally="possibilities">{catalogue.length}</dd>
+				<dt class="tag">{activeVertical ? "In this vertical" : "Possibilities"}</dt>
+				<dd class="tally__n" data-tally="possibilities">{filtered.length}</dd>
 			</div>
 			<div>
 				<dt class="tag">Verticals</dt>
@@ -144,7 +215,7 @@ for (const p of filtered) {
 					Verified sources
 					<span class="visually-hidden">counted against a licence read at the source</span>
 				</dt>
-				<dd class="tally__n">{catalogue.reduce((n, p) => n + (p.distinctSources ?? 0), 0)}</dd>
+				<dd class="tally__n">{filtered.reduce((n, p) => n + (p.distinctSources ?? 0), 0)}</dd>
 			</div>
 		</dl>
 		{/*
@@ -205,7 +276,11 @@ for (const p of filtered) {
 		</p>
 	</nav>
 
-	<section class="wall shell" aria-label="Possibilities" data-entries={catalogue.length}>
+	<section
+		class="wall shell"
+		aria-label={activeVertical ? `${verticalLabel(activeVertical)} possibilities` : "Possibilities"}
+		data-entries={filtered.length}
+	>
 		{
 			filtered.length === 0 ? (
 				<div class="empty">
@@ -224,7 +299,8 @@ for (const p of filtered) {
 						<PossibilityTile
 							possibility={p}
 							featured={i === 0 && !activeVertical}
-							hideVertical={false}
+							hideVertical={Boolean(activeVertical)}
+							hideFacets={uniformFacets}
 							eager={i < 4}
 							board={board}
 							savedToBoard={savedHere.has(p.slug)}
@@ -415,6 +491,26 @@ for (const p of filtered) {
 		font-size: var(--step-0);
 		max-width: 58ch;
 		color: var(--ink-3);
+	}
+
+	.intro__back {
+		margin-top: var(--sp-2);
+	}
+
+	/*
+	 * `.linkish` is page-scoped to `/use` and `/board`, so on the wall a bare `<a>`
+	 * inside the lede inherited the body colour with no underline — a link that
+	 * does not look like one. This is the same treatment `.flash a` already uses
+	 * here rather than a third convention.
+	 */
+	.intro__back a {
+		color: var(--ember);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+
+	.intro__back a:hover {
+		color: var(--ink);
 	}
 
 	.tally {

@@ -30,7 +30,12 @@ import {
 	allFixtures,
 	usePageFixtureFor,
 } from "../src/lib/fixtures.ts";
-import { MEDIA_LABEL, RIGHTS_MEANING, USE_STATE_MEANING } from "../src/lib/vocabulary.ts";
+import {
+	MEDIA_LABEL,
+	ORIGIN_MEANING,
+	RIGHTS_MEANING,
+	USE_STATE_MEANING,
+} from "../src/lib/vocabulary.ts";
 import { ratingSummary } from "../src/lib/rating.ts";
 import { useStateFor } from "../src/lib/asset-use.ts";
 
@@ -97,7 +102,27 @@ describe("the lab covers every state the catalogue has to survive", () => {
 		const covered = new Set(
 			ORIGIN_FIXTURES.map((f) => f.possibility.representativeOrigin).filter(Boolean),
 		);
-		assert.deepEqual([...covered].sort(), ["derived", "generated", "upstream"]);
+		/*
+		 * Driven from the vocabulary rather than from a literal list.
+		 *
+		 * The hardcoded `["derived", "generated", "upstream"]` had the same
+		 * failure the tally assertion had: adding a fourth origin (`none` — an
+		 * entry with no representative media yet) made the test fail on correct
+		 * behaviour. A list that has to be edited in step with the type is a list
+		 * that eventually gets pinned back instead of extended.
+		 *
+		 * This asserts the stronger property instead: every origin the product can
+		 * print has pixels somewhere in the lab, so a new origin cannot ship
+		 * unlooked-at. `none` in particular needs one, because "no media" is
+		 * exactly the state that is easy to render as an accidental gap rather
+		 * than a stated fact.
+		 */
+		for (const origin of Object.keys(ORIGIN_MEANING)) {
+			assert.ok(
+				covered.has(origin as never),
+				`no fixture for origin "${origin}" — it can be printed but has never been seen`,
+			);
+		}
 	});
 
 	test("honest zero and not-measured are both present and distinguishable", () => {

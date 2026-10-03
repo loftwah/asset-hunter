@@ -373,7 +373,9 @@ export function representable(examples: readonly ExampleFacts[]): ExampleFacts[]
 }
 
 /** Origin, most upstream first. A real asset represents better than our own plate. */
-const ORIGIN_ORDER = ["upstream", "derived", "generated"];
+// `none` is last on purpose: an entry with no media is not in the provenance
+// comparison at all, and sorting it before a real asset would misreport the risk.
+const ORIGIN_ORDER = ["upstream", "derived", "generated", "none"];
 
 /**
  * Which example represents a possibility.

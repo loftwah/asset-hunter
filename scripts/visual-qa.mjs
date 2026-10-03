@@ -2093,9 +2093,14 @@ function auditManifest(manifest) {
 	// The expected set, derived from the matrix rather than from what happened.
 	// This is what catches a route that threw halfway through and stopped writing
 	// files while the run still reported a green count.
+	//
+	// `capture: false` is skipped *here* for the same reason it is skipped in the
+	// screenshot call: the route is audited in full and photographed on purpose,
+	// so demanding a PNG for it would be the manifest reporting the harness's own
+	// decision as a lost artefact.
 	const expected = [];
 	for (const route of AUDITED) {
-		if (route.nonHtml) continue;
+		if (route.nonHtml || route.capture === false) continue;
 		for (const viewport of VIEWPORTS) {
 			expected.push(`${route.name}--${viewport.name}.png`);
 			if (route.scroll) expected.push(`${route.name}--${viewport.name}--scrolled.png`);

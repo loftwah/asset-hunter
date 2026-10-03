@@ -42,7 +42,8 @@
 		<text x="336" y="466" fill="#4fce8a">B · readable</text>
 		<text x="336" y="490" fill="#6a7178">weight low, stance wide</text>
 		<text x="576" y="466" fill="#ff8a4c">C · fails</text>
-		<text x="576" y="490" fill="#6a7178">one mass, no articulation</text>
+		<text x="576" y="490" fill="#6a7178">one mass, no</text>
+		<text x="576" y="512" fill="#6a7178">articulation</text>
 	</g>
 
 	<!-- the same three, reduced to the size the game actually uses -->

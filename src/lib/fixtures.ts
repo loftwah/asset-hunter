@@ -158,7 +158,7 @@ export const RIGHTS_FIXTURES: LabState[] = (
 }));
 
 /** Origin coding. Generated must never be confused with upstream. */
-export const ORIGIN_FIXTURES: LabState[] = (["upstream", "derived", "generated"] as const).map(
+export const ORIGIN_FIXTURES: LabState[] = (["upstream", "derived", "generated", "none"] as const).map(
 	(origin) => ({
 		note: `origin: ${origin}`,
 		possibility: base({
@@ -732,7 +732,7 @@ export const LAB_SECTIONS: LabSection[] = [
 	{
 		id: "origin",
 		title: "Origin coding",
-		why: "upstream, derived and generated. These must never be mixed in a row without their labels, and never be confusable at a glance.",
+		why: "upstream, derived, generated and none. These must never be mixed in a row without their labels, and never be confusable at a glance.",
 		fixtures: ORIGIN_FIXTURES,
 	},
 	{

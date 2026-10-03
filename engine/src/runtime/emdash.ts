@@ -24,7 +24,15 @@
  */
 import { Context, Effect, Layer, Schedule, Schema } from "effect";
 import { EngineConfig } from "./config.ts";
-import { EntryResponse } from "./schemas.ts";
+import { EntryResponse, revFromToken } from "./schemas.ts";
+
+/**
+ * EmDash's content list route caps `limit` at 100 and pages by `offset`.
+ *
+ * Declared here rather than inlined into the caller so the number that broke the
+ * engine is visible at the point that would break it again. See `EmDashApi.list`.
+ */
+const EMDASH_LIST_PAGE_MAX = 100;
 
 /** A content call that did not succeed. */
 export class EmDashApiError extends Schema.TaggedError<EmDashApiError>()("EmDashApiError", {
@@ -268,38 +276,89 @@ export class EmDashApi extends Context.Service<
 						typeof fields === "object" && fields !== null && !Array.isArray(fields)
 							? (fields as Record<string, unknown>)
 							: {},
-					rev: body.data?._rev ?? item._rev ?? null,
+					rev:
+						body.data?._rev ??
+						item._rev ??
+						// The route does not return the token, so it is rebuilt from the two
+						// fields it is made of. Before this, `rev` was `null` for every entry
+						// that had ever been written, so every sync POSTed a new revision of
+						// everything — which also means no version conflict could ever be
+						// detected, because there was never a token to conflict against.
+						revFromToken(item.version, item.updatedAt),
 				} satisfies EntryFields;
 			});
 
-			const list = Effect.fn("EmDashApi.list")(function* (collection: string, limit = 200) {
+			/**
+			 * The list route is **offset-paginated and hard-capped at 100 rows** by
+			 * EmDash's own `CursorPaginationQuery`.
+			 *
+			 * This asked for `limit=200`, which the route rejects with a 400. That is
+			 * not a cosmetic failure. `list("exclusions")` is how a takedown becomes
+			 * visible to a run, and `hunt` catches the error and continues with an
+			 * empty list — so every hunt announced, in its own output, that it *could
+			 * not honour a takedown it cannot see*, and then crawled anyway. A
+			 * withdrawn repository kept coming back and the only signal that anything
+			 * was wrong was a line of stderr above the results.
+			 *
+			 * So: page. `limit=100` per request, `offset` walking, stopping on the
+			 * reported `total` or on a short page, and bounded by the caller's own
+			 * limit. A takedown at row 150 has to be as visible as one at row 1 —
+			 * clamping to the first hundred would be the same failure in a quieter
+			 * shape, which is worse.
+			 */
+			const list = Effect.fn("EmDashApi.list")(function* (collection: string, limit = 400) {
 				const session = yield* signIn;
 				const operation = `list ${collection}`;
-				const path = `/_emdash/api/content/${encodeURIComponent(collection)}?limit=${limit}`;
-				const response = yield* call(operation, path, { method: "GET", headers: { ...session.headers } }, session);
-				const raw = yield* Effect.tryPromise({
-					async try() {
-						return (await response.json()) as unknown;
-					},
-					catch: (cause) =>
-						new EmDashApiError({
-							operation,
-							status: response.status,
-							detail: `body is not JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
-						}),
-				});
-				// EmDash nests the list under `data` on this route, so both shapes are
-				// accepted — a stricter schema here would fail a run over a field
-				// placement that is not what anybody is being asked to reason about.
-				const items = (body: unknown) => {
-					const envelope = body as { data?: { items?: unknown } | null; items?: unknown } | null;
-					const list = envelope?.data?.items ?? envelope?.items;
-					return Array.isArray(list) ? list : [];
-				};
-				return items(raw).filter(
-					(row): row is Record<string, unknown> =>
-						typeof row === "object" && row !== null && !Array.isArray(row),
-				);
+				const page = Math.min(limit, EMDASH_LIST_PAGE_MAX);
+				const out: Record<string, unknown>[] = [];
+				let offset = 0;
+
+				while (out.length < limit) {
+					const path =
+						`/_emdash/api/content/${encodeURIComponent(collection)}` +
+						`?limit=${page}&offset=${offset}`;
+					const response = yield* call(
+						operation,
+						path,
+						{ method: "GET", headers: { ...session.headers } },
+						session,
+					);
+					const raw = yield* Effect.tryPromise({
+						async try() {
+							return (await response.json()) as unknown;
+						},
+						catch: (cause) =>
+							new EmDashApiError({
+								operation,
+								status: response.status,
+								detail: `body is not JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
+							}),
+					});
+					// EmDash nests the list under `data` on this route, so both shapes are
+					// accepted — a stricter schema here would fail a run over a field
+					// placement that is not what anybody is being asked to reason about.
+					const envelope = raw as {
+						data?: { items?: unknown; total?: unknown } | null;
+						items?: unknown;
+						total?: unknown;
+					} | null;
+					const rows = envelope?.data?.items ?? envelope?.items;
+					const total = envelope?.data?.total ?? envelope?.total;
+					if (!Array.isArray(rows) || rows.length === 0) break;
+					out.push(
+						...rows.filter(
+							(row): row is Record<string, unknown> =>
+								typeof row === "object" && row !== null && !Array.isArray(row),
+						),
+					);
+					// A short page is the end, and so is a `total` we have reached — both,
+					// because an absent `total` must not become an infinite loop and a
+					// wrong one must not stop us before the last takedown.
+					if (rows.length < page) break;
+					if (typeof total === "number" && out.length >= total) break;
+					offset += rows.length;
+				}
+				return out.slice(0, limit);
 			});
 
 			const write = Effect.fn("EmDashApi.write")(function* (

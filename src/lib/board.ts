@@ -311,22 +311,50 @@ export function boardOutcome(
 		};
 	}
 	/*
-	 * `copied` carries the destination board's name, because "both are empty now"
-	 * was wrong twice over: only the board you copied *from* is empty, and a
-	 * reader who just watched entries leave the screen deserves to be told which
-	 * board now holds them.
+	 * `moved` carries the destination board's name, because the control that sets
+	 * it is called **Move** and the code behind it moves.
+	 *
+	 * It used to be `copied`, behind a button labelled "Copy board" and a
+	 * placeholder reading "Copy this board to a new name", over `applyAction`
+	 * doing `next[from] = []`. A reader who pressed *Copy* and found their
+	 * shortlist gone had to read the confirmation to discover that "copy" meant
+	 * "move" (#68) — and `DESIGN.md` §9.5 has always called this thing a
+	 * rename. One verb, and the verb is what the code does.
+	 *
+	 * The sentence also states what is true of the board the reader is looking at,
+	 * which is now empty: they have watched their entries leave the screen, and
+	 * the endpoint sends them to the destination rather than leaving them to work
+	 * that out.
 	 */
-	const copied = params.get("copied");
-	if (copied) {
-		return { tone: "ok", message: `Copied to ${copied}, which now holds them.` };
+	const moved = params.get("moved");
+	if (moved) {
+		return {
+			tone: "ok",
+			message: `Moved to ${moved}, which now holds them. This board is empty.`,
+		};
 	}
 	/*
-	 * A copy posted from a form that was rendered before the board was cleared.
-	 * It changed nothing, and the honest answer says so in words rather than
-	 * reporting a copy that never happened (#65).
+	 * Two refusals, not one, because they are different failures with different
+	 * fixes (#68).
+	 *
+	 * `nocopy` is "there was nothing on this board" — a form posted from a tab
+	 * rendered before the board was emptied. What the reader needs is entries.
+	 *
+	 * `nomove` is "that name is not a name" — empty, whitespace, punctuation
+	 * only, or the board's own name. The reader has entries; what they lack is a
+	 * name that survives `normaliseBoardName`. `DESIGN.md` §8: an error says what
+	 * failed and what to try, and the single sentence that used to cover both
+	 * told a reader with a full board that their board was empty.
 	 */
 	if (params.get("nocopy")) {
-		return { tone: "problem", message: "Nothing to copy: this board is empty." };
+		return { tone: "problem", message: "Nothing to move: this board is empty." };
+	}
+	if (params.get("nomove")) {
+		return {
+			tone: "problem",
+			message:
+				"That name was not usable, so nothing moved. Use letters, numbers or spaces — and not this board’s own name.",
+		};
 	}
 	return null;
 }
